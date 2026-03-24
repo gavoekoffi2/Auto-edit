@@ -7,6 +7,7 @@ interface Props {
 
 export default function VideoPlayer({ src }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const blobUrlRef = useRef<string>('')
   const [playing, setPlaying] = useState(false)
   const [muted, setMuted] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -33,6 +34,7 @@ export default function VideoPlayer({ src }: Props) {
         const blob = await res.blob()
         if (!cancelled) {
           const url = URL.createObjectURL(blob)
+          blobUrlRef.current = url
           setBlobUrl(url)
         }
       } catch (err) {
@@ -48,7 +50,10 @@ export default function VideoPlayer({ src }: Props) {
     return () => {
       cancelled = true
       controller.abort()
-      if (blobUrl) URL.revokeObjectURL(blobUrl)
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current)
+        blobUrlRef.current = ''
+      }
     }
   }, [src])
 

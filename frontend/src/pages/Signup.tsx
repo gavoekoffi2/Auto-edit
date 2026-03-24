@@ -8,6 +8,7 @@ import { toast } from '../components/ui/Toast'
 export default function Signup() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [fullName, setFullName] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -27,6 +28,11 @@ export default function Signup() {
     }
     if (!/[0-9]/.test(password)) {
       setError('Password must contain at least one number')
+      setLoading(false)
+      return
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match')
       setLoading(false)
       return
     }
@@ -105,6 +111,21 @@ export default function Signup() {
               onChange={(e) => setPassword(e.target.value)}
               className="input-field"
               placeholder="Min 8 characters, include a number"
+              minLength={8}
+              required
+              autoComplete="new-password"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="confirmPassword" className="block text-sm font-medium text-dark-300 mb-1">Confirm Password</label>
+            <input
+              id="confirmPassword"
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="input-field"
+              placeholder="Re-enter your password"
               minLength={8}
               required
               autoComplete="new-password"

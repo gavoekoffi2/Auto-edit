@@ -69,7 +69,7 @@ export default function UploadZone({ onUploadComplete }: Props) {
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="w-12 h-12 text-primary-500 animate-spin" />
           <p className="text-lg font-medium">Uploading... {progress}%</p>
-          <div className="w-64 bg-dark-700 rounded-full h-2">
+          <div className="w-full max-w-xs bg-dark-700 rounded-full h-2">
             <div
               className="bg-primary-500 h-2 rounded-full transition-all duration-300"
               style={{ width: `${progress}%` }}

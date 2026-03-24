@@ -35,7 +35,7 @@ export default function Navbar() {
                     <User className="w-4 h-4" />
                     {user?.email || 'Account'}
                   </span>
-                  <button onClick={handleLogout} className="text-dark-400 hover:text-white transition-colors">
+                  <button onClick={handleLogout} className="text-dark-400 hover:text-white transition-colors" aria-label="Log out">
                     <LogOut className="w-5 h-5" />
                   </button>
                 </div>

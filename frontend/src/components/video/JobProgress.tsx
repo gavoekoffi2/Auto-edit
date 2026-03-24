@@ -21,11 +21,13 @@ export default function JobProgress({ jobId, onComplete, onRetry }: Props) {
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>
     let cancelled = false
+    let errorCount = 0
 
     const poll = async () => {
       try {
         const data = await getJob(jobId)
         if (cancelled) return
+        errorCount = 0
         setJob(data)
 
         if (data.status === 'completed') {
@@ -37,7 +39,11 @@ export default function JobProgress({ jobId, onComplete, onRetry }: Props) {
           toast('error', data.error_message || 'Processing failed')
         }
       } catch {
-        // silently retry on polling errors
+        errorCount++
+        if (errorCount >= 5 && !cancelled) {
+          clearInterval(interval)
+          toast('error', 'Lost connection to server. Please refresh the page.')
+        }
       }
     }
 
