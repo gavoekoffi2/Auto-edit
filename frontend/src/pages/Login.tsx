@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Zap, Loader2 } from 'lucide-react'
 import { login } from '../api/auth'
 import { useAuthStore } from '../store/authStore'
+import { toast } from '../components/ui/Toast'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -20,14 +21,18 @@ export default function Login() {
     try {
       const data = await login(email, password)
       setTokens(data.access_token, data.refresh_token)
+      toast('success', 'Welcome back!')
       navigate('/dashboard')
     } catch (err: unknown) {
+      let msg = 'Login failed'
       if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { detail?: string } } }
-        setError(axiosErr.response?.data?.detail || 'Login failed')
-      } else {
-        setError('Login failed')
+        const axiosErr = err as { response?: { data?: { detail?: string }, status?: number } }
+        msg = axiosErr.response?.data?.detail || msg
+        if (axiosErr.response?.status === 429) {
+          msg = 'Too many login attempts. Please wait and try again.'
+        }
       }
+      setError(msg)
     } finally {
       setLoading(false)
     }
@@ -50,26 +55,30 @@ export default function Login() {
           )}
 
           <div>
-            <label className="block text-sm font-medium text-dark-300 mb-1">Email</label>
+            <label htmlFor="email" className="block text-sm font-medium text-dark-300 mb-1">Email</label>
             <input
+              id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="input-field"
               placeholder="you@example.com"
               required
+              autoComplete="email"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-dark-300 mb-1">Password</label>
+            <label htmlFor="password" className="block text-sm font-medium text-dark-300 mb-1">Password</label>
             <input
+              id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="input-field"
               placeholder="Your password"
               required
+              autoComplete="current-password"
             />
           </div>
 

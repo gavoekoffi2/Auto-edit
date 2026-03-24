@@ -1,11 +1,15 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import String, DateTime, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.db.base import Base
+
+
+def _utc_now():
+    return datetime.now(timezone.utc)
 
 
 class User(Base):
@@ -22,8 +26,12 @@ class User(Base):
         default="free",
         server_default="free",
     )
+    is_active: Mapped[bool] = mapped_column(default=True, server_default="true")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, nullable=False
+        DateTime(timezone=True), default=_utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False
     )
 
     videos = relationship("Video", back_populates="user", cascade="all, delete-orphan")

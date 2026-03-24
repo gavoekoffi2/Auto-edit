@@ -24,7 +24,7 @@ MODE_PRESETS = {
             "speed": 1.05,
         },
         "subtitles": True,
-        "max_duration": 60,  # seconds
+        "max_duration": 60,
     },
     "youtube": {
         "transcribe": True,
@@ -73,6 +73,14 @@ def run_pipeline(
     from app.processing.effects import apply_effects, add_subtitles
     from app.config import settings
 
+    # Validate input video exists
+    if not os.path.exists(video_path):
+        raise FileNotFoundError(f"Input video not found: {video_path}")
+
+    # Validate input video is not empty
+    if os.path.getsize(video_path) == 0:
+        raise ValueError("Input video file is empty")
+
     # Merge mode preset with custom params
     config = {}
     if mode and mode in MODE_PRESETS:
@@ -93,8 +101,10 @@ def run_pipeline(
     results = {
         "mode": mode,
         "steps_completed": [],
+        "steps_failed": [],
     }
     current_video = video_path
+    intermediate_files = []
 
     def update_progress(progress: int, message: str):
         if progress_callback:
@@ -114,8 +124,9 @@ def run_pipeline(
             results["steps_completed"].append("transcribe")
             update_progress(25, "Transcription complete")
         except Exception as e:
-            logger.error(f"Transcription failed: {e}")
+            logger.error(f"Transcription failed: {e}", exc_info=True)
             results["transcription_error"] = str(e)
+            results["steps_failed"].append("transcribe")
 
     # Step 2: Silence Removal (25-50%)
     if config.get("silence_removal"):
@@ -127,13 +138,22 @@ def run_pipeline(
                 margin=config.get("silence_margin", "0.2s"),
                 threshold=config.get("silence_threshold", "4%"),
             )
-            current_video = silence_result["output_path"]
-            results["silence_removal"] = silence_result
-            results["steps_completed"].append("silence_removal")
+            new_video = silence_result["output_path"]
+            if os.path.exists(new_video) and os.path.getsize(new_video) > 0:
+                intermediate_files.append(current_video if current_video != video_path else None)
+                current_video = new_video
+                results["silence_removal"] = {
+                    "output_path": new_video,
+                }
+                results["steps_completed"].append("silence_removal")
+            else:
+                logger.warning("Silence removal produced empty output, keeping original")
+                results["steps_failed"].append("silence_removal")
             update_progress(50, "Silence removal complete")
         except Exception as e:
-            logger.error(f"Silence removal failed: {e}")
+            logger.error(f"Silence removal failed: {e}", exc_info=True)
             results["silence_removal_error"] = str(e)
+            results["steps_failed"].append("silence_removal")
 
     # Step 3: Scene Detection (50-65%)
     if config.get("scene_detection"):
@@ -148,8 +168,9 @@ def run_pipeline(
             results["steps_completed"].append("scene_detection")
             update_progress(65, f"Detected {scenes_result['scene_count']} scenes")
         except Exception as e:
-            logger.error(f"Scene detection failed: {e}")
+            logger.error(f"Scene detection failed: {e}", exc_info=True)
             results["scene_detection_error"] = str(e)
+            results["steps_failed"].append("scene_detection")
 
     # Step 4: Apply Effects (65-85%)
     effects_config = config.get("effects", {})
@@ -161,32 +182,44 @@ def run_pipeline(
                 output_dir,
                 effects_config=effects_config,
             )
-            current_video = effects_result["output_path"]
-            results["effects"] = effects_result
-            results["steps_completed"].append("effects")
+            new_video = effects_result["output_path"]
+            if os.path.exists(new_video) and os.path.getsize(new_video) > 0:
+                intermediate_files.append(current_video if current_video != video_path else None)
+                current_video = new_video
+                results["effects"] = effects_result
+                results["steps_completed"].append("effects")
+            else:
+                results["steps_failed"].append("effects")
             update_progress(85, "Effects applied")
         except Exception as e:
-            logger.error(f"Effects failed: {e}")
+            logger.error(f"Effects failed: {e}", exc_info=True)
             results["effects_error"] = str(e)
+            results["steps_failed"].append("effects")
 
     # Step 5: Add Subtitles (85-95%)
-    if config.get("subtitles") and results.get("transcription", {}).get("srt_path"):
+    srt_path = results.get("transcription", {}).get("srt_path")
+    if config.get("subtitles") and srt_path and os.path.exists(srt_path):
         update_progress(88, "Adding subtitles...")
         try:
-            srt_path = results["transcription"]["srt_path"]
             sub_result = add_subtitles(
                 current_video,
                 srt_path,
                 output_dir,
                 style=config.get("subtitle_style"),
             )
-            current_video = sub_result["output_path"]
-            results["subtitles"] = sub_result
-            results["steps_completed"].append("subtitles")
+            new_video = sub_result["output_path"]
+            if os.path.exists(new_video) and os.path.getsize(new_video) > 0:
+                intermediate_files.append(current_video if current_video != video_path else None)
+                current_video = new_video
+                results["subtitles"] = sub_result
+                results["steps_completed"].append("subtitles")
+            else:
+                results["steps_failed"].append("subtitles")
             update_progress(95, "Subtitles added")
         except Exception as e:
-            logger.error(f"Subtitles failed: {e}")
+            logger.error(f"Subtitles failed: {e}", exc_info=True)
             results["subtitles_error"] = str(e)
+            results["steps_failed"].append("subtitles")
 
     # Final: Copy result to standard output name
     final_output = os.path.join(output_dir, "final_output.mp4")
@@ -194,10 +227,20 @@ def run_pipeline(
         if current_video != final_output:
             shutil.copy2(current_video, final_output)
     else:
+        # No processing changed the video, copy original
         shutil.copy2(video_path, final_output)
 
+    # Validate final output
+    if not os.path.exists(final_output) or os.path.getsize(final_output) == 0:
+        raise RuntimeError("Pipeline produced empty or missing output file")
+
     results["output_path"] = final_output
+    results["output_size_bytes"] = os.path.getsize(final_output)
     results["steps_completed"].append("export")
     update_progress(100, "Pipeline complete!")
+
+    # Cleanup intermediate files
+    from app.services.storage import cleanup_directory
+    cleanup_directory(output_dir)
 
     return results

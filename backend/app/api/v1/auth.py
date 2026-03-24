@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import logging
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -13,12 +16,19 @@ from app.services.auth import (
     decode_token,
 )
 from app.api.deps import get_current_user
+from app.services.rate_limiter import check_rate_limit
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
 @router.post("/signup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-async def signup(data: UserCreate, db: AsyncSession = Depends(get_db)):
+async def signup(data: UserCreate, request: Request, db: AsyncSession = Depends(get_db)):
+    # Rate limit signups by IP
+    client_ip = request.client.host if request.client else "unknown"
+    await check_rate_limit(f"signup:{client_ip}", max_attempts=10, window_seconds=3600)
+
     # Check if user exists
     result = await db.execute(select(User).where(User.email == data.email))
     if result.scalar_one_or_none():
@@ -35,6 +45,8 @@ async def signup(data: UserCreate, db: AsyncSession = Depends(get_db)):
     db.add(user)
     await db.flush()
 
+    logger.info(f"New user signup: {data.email}")
+
     return TokenResponse(
         access_token=create_access_token(str(user.id)),
         refresh_token=create_refresh_token(str(user.id)),
@@ -42,15 +54,28 @@ async def signup(data: UserCreate, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
+async def login(data: UserLogin, request: Request, db: AsyncSession = Depends(get_db)):
+    # Rate limit login by IP
+    client_ip = request.client.host if request.client else "unknown"
+    await check_rate_limit(f"login:{client_ip}", max_attempts=5, window_seconds=900)
+
     result = await db.execute(select(User).where(User.email == data.email))
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(data.password, user.password_hash):
+        logger.warning(f"Failed login attempt for: {data.email} from IP: {client_ip}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is deactivated",
+        )
+
+    logger.info(f"User login: {data.email}")
 
     return TokenResponse(
         access_token=create_access_token(str(user.id)),
@@ -68,6 +93,16 @@ async def refresh_token(data: TokenRefresh, db: AsyncSession = Depends(get_db)):
         )
 
     user_id = payload.get("sub")
+
+    # Verify user still exists and is active
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or deactivated",
+        )
+
     return TokenResponse(
         access_token=create_access_token(user_id),
         refresh_token=create_refresh_token(user_id),

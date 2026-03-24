@@ -25,12 +25,15 @@ def upgrade() -> None:
     op.create_table(
         "users",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("email", sa.String(255), unique=True, nullable=False, index=True),
+        sa.Column("email", sa.String(255), unique=True, nullable=False),
         sa.Column("password_hash", sa.String(255), nullable=False),
         sa.Column("full_name", sa.String(255), nullable=True),
         sa.Column("plan", user_plan, server_default="free"),
-        sa.Column("created_at", sa.DateTime, nullable=False),
+        sa.Column("is_active", sa.Boolean(), server_default="true"),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     )
+    op.create_index("ix_users_email", "users", ["email"], unique=True)
 
     op.create_table(
         "videos",
@@ -41,8 +44,10 @@ def upgrade() -> None:
         sa.Column("duration_s", sa.Float, nullable=True),
         sa.Column("size_bytes", sa.BigInteger, nullable=False),
         sa.Column("status", video_status, server_default="uploaded"),
-        sa.Column("created_at", sa.DateTime, nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     )
+    op.create_index("ix_videos_user_id", "videos", ["user_id"])
+    op.create_index("ix_videos_user_created", "videos", ["user_id", "created_at"])
 
     op.create_table(
         "jobs",
@@ -56,21 +61,27 @@ def upgrade() -> None:
         sa.Column("progress", sa.Integer, server_default="0"),
         sa.Column("result", sa.JSON, nullable=True),
         sa.Column("error_message", sa.String(2000), nullable=True),
-        sa.Column("created_at", sa.DateTime, nullable=False),
-        sa.Column("completed_at", sa.DateTime, nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
     )
+    op.create_index("ix_jobs_user_id", "jobs", ["user_id"])
+    op.create_index("ix_jobs_video_id", "jobs", ["video_id"])
+    op.create_index("ix_jobs_user_status", "jobs", ["user_id", "status"])
 
     op.create_table(
         "payments",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column("user_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("users.id"), nullable=False),
-        sa.Column("fedapay_tx_id", sa.String(255), nullable=True),
+        sa.Column("fedapay_tx_id", sa.String(255), nullable=True, unique=True),
         sa.Column("amount", sa.Integer, nullable=False),
         sa.Column("currency", sa.String(10)),
         sa.Column("status", payment_status, server_default="pending"),
         sa.Column("plan", payment_plan, nullable=False),
-        sa.Column("created_at", sa.DateTime, nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     )
+    op.create_index("ix_payments_user_id", "payments", ["user_id"])
+    op.create_index("ix_payments_fedapay_tx", "payments", ["fedapay_tx_id"], unique=True)
 
 
 def downgrade() -> None:

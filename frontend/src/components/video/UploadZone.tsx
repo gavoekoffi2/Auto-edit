@@ -2,6 +2,9 @@ import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Upload, Film, Loader2 } from 'lucide-react'
 import { uploadVideo } from '../../api/videos'
+import { toast } from '../ui/Toast'
+
+const MAX_FILE_SIZE_MB = 500
 
 interface Props {
   onUploadComplete: (video: { id: string; title: string }) => void
@@ -10,24 +13,36 @@ interface Props {
 export default function UploadZone({ onUploadComplete }: Props) {
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
-  const [error, setError] = useState('')
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0]
     if (!file) return
 
+    // Client-side size validation
+    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+      toast('error', `File too large. Maximum size: ${MAX_FILE_SIZE_MB}MB`)
+      return
+    }
+
     setUploading(true)
-    setError('')
     setProgress(0)
 
     try {
       const video = await uploadVideo(file, setProgress)
+      toast('success', 'Video uploaded successfully!')
       onUploadComplete(video)
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Upload failed'
-      setError(msg)
+      let msg = 'Upload failed. Please try again.'
+      if (err && typeof err === 'object' && 'response' in err) {
+        const axiosErr = err as { response?: { data?: { detail?: string } } }
+        msg = axiosErr.response?.data?.detail || msg
+      } else if (err instanceof Error) {
+        msg = err.message
+      }
+      toast('error', msg)
     } finally {
       setUploading(false)
+      setProgress(0)
     }
   }, [onUploadComplete])
 
@@ -37,6 +52,7 @@ export default function UploadZone({ onUploadComplete }: Props) {
       'video/*': ['.mp4', '.mov', '.avi', '.mkv', '.webm'],
     },
     maxFiles: 1,
+    maxSize: MAX_FILE_SIZE_MB * 1024 * 1024,
     disabled: uploading,
   })
 
@@ -71,12 +87,12 @@ export default function UploadZone({ onUploadComplete }: Props) {
             <p className="text-lg font-medium">
               {isDragActive ? 'Drop your video here' : 'Drag & drop your video'}
             </p>
-            <p className="text-dark-500 mt-1">or click to browse (MP4, MOV, AVI, MKV, WebM)</p>
+            <p className="text-dark-500 mt-1">
+              or click to browse (MP4, MOV, AVI, MKV, WebM - max {MAX_FILE_SIZE_MB}MB)
+            </p>
           </div>
         </div>
       )}
-
-      {error && <p className="text-red-400 mt-4">{error}</p>}
     </div>
   )
 }

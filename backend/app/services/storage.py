@@ -1,38 +1,105 @@
 import os
 import uuid
 import aiofiles
+import subprocess
+import logging
 from pathlib import Path
-from fastapi import UploadFile
+from fastapi import UploadFile, HTTPException, status
 
 from app.config import settings
 
+logger = logging.getLogger(__name__)
 
-async def save_upload(file: UploadFile, user_id: str) -> tuple[str, int]:
-    """Save uploaded file and return (relative_path, size_bytes)."""
+
+def _validate_path(relative_path: str) -> None:
+    """Validate path to prevent directory traversal attacks."""
+    normalized = os.path.normpath(relative_path)
+    if ".." in normalized or normalized.startswith("/"):
+        raise ValueError("Invalid file path")
+
+
+async def save_upload(
+    file: UploadFile, user_id: str, max_size_mb: int = None
+) -> tuple[str, int]:
+    """Save uploaded file with size validation. Returns (relative_path, size_bytes)."""
+    max_size = (max_size_mb or settings.MAX_UPLOAD_SIZE_MB) * 1024 * 1024
+
     upload_dir = Path(settings.UPLOAD_DIR) / user_id
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    ext = Path(file.filename).suffix if file.filename else ".mp4"
+    ext = Path(file.filename).suffix.lower() if file.filename else ".mp4"
     filename = f"{uuid.uuid4()}{ext}"
     file_path = upload_dir / filename
 
     size = 0
     async with aiofiles.open(file_path, "wb") as f:
         while chunk := await file.read(1024 * 1024):  # 1MB chunks
-            await f.write(chunk)
             size += len(chunk)
+            if size > max_size:
+                # Clean up partial file
+                await f.close()
+                os.unlink(file_path)
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail=f"File too large. Maximum size: {settings.MAX_UPLOAD_SIZE_MB}MB",
+                )
+            await f.write(chunk)
 
     relative_path = f"{user_id}/{filename}"
     return relative_path, size
 
 
 def get_absolute_path(relative_path: str) -> str:
-    """Get absolute file path from relative storage path."""
-    return str(Path(settings.UPLOAD_DIR) / relative_path)
+    """Get absolute file path from relative storage path. Validates against traversal."""
+    _validate_path(relative_path)
+    abs_path = os.path.abspath(os.path.join(settings.UPLOAD_DIR, relative_path))
+
+    # Ensure path is within UPLOAD_DIR
+    upload_root = os.path.abspath(settings.UPLOAD_DIR)
+    if not abs_path.startswith(upload_root):
+        raise ValueError("Path traversal detected")
+
+    return abs_path
 
 
 def get_output_dir(user_id: str, job_id: str) -> str:
     """Get output directory for a processing job."""
+    _validate_path(user_id)
+    _validate_path(job_id)
     output_dir = Path(settings.UPLOAD_DIR) / user_id / "output" / job_id
     output_dir.mkdir(parents=True, exist_ok=True)
     return str(output_dir)
+
+
+def get_video_duration(file_path: str) -> float | None:
+    """Get video duration in seconds using ffprobe."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                file_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return float(result.stdout.strip())
+    except (subprocess.TimeoutExpired, ValueError, FileNotFoundError):
+        pass
+    return None
+
+
+def cleanup_directory(dir_path: str, keep_files: set[str] = None) -> None:
+    """Clean up intermediate files in a directory, keeping specified files."""
+    keep = keep_files or {"final_output.mp4", "subtitles.srt", "transcript.json", "scenes.csv"}
+    try:
+        for f in Path(dir_path).iterdir():
+            if f.is_file() and f.name not in keep:
+                f.unlink()
+                logger.debug(f"Cleaned up: {f}")
+    except Exception as e:
+        logger.warning(f"Cleanup failed for {dir_path}: {e}")

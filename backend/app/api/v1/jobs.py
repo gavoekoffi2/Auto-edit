@@ -1,9 +1,12 @@
+import os
+import logging
 from uuid import UUID
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.db.session import get_db
 from app.models.user import User
@@ -12,6 +15,8 @@ from app.models.job import Job
 from app.schemas.job import JobCreate, JobResponse
 from app.api.deps import get_current_user
 from app.services.storage import get_absolute_path
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -30,16 +35,24 @@ async def create_job(
     if not video:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found")
 
+    # Verify video file exists on disk
+    video_file = get_absolute_path(video.original_path)
+    if not os.path.exists(video_file):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Video file not found on disk. Please re-upload.",
+        )
+
     # Check plan limits for free users
     if current_user.plan == "free":
         count_result = await db.execute(
-            select(Job).where(
+            select(func.count()).select_from(Job).where(
                 Job.user_id == current_user.id,
                 Job.status.in_(["pending", "processing"]),
             )
         )
-        active_jobs = count_result.scalars().all()
-        if len(active_jobs) >= 2:
+        active_count = count_result.scalar() or 0
+        if active_count >= 2:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Free plan limited to 2 concurrent jobs. Upgrade to Pro for unlimited.",
@@ -55,14 +68,12 @@ async def create_job(
     db.add(job)
     await db.flush()
 
-    # Update video status
-    video.status = "processing"
-
     # Trigger async processing
     from app.workers.tasks import process_video_task
 
     process_video_task.delay(str(job.id))
 
+    logger.info(f"Job created: {job.id} type={data.job_type} mode={data.mode} by user {current_user.id}")
     return job
 
 
@@ -83,14 +94,16 @@ async def get_job(
 
 @router.get("", response_model=list[JobResponse])
 async def list_jobs(
-    video_id: UUID = None,
+    video_id: Optional[UUID] = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     query = select(Job).where(Job.user_id == current_user.id)
     if video_id:
         query = query.where(Job.video_id == video_id)
-    query = query.order_by(Job.created_at.desc()).limit(50)
+    query = query.order_by(Job.created_at.desc()).offset(skip).limit(limit)
 
     result = await db.execute(query)
     return result.scalars().all()
@@ -123,6 +136,12 @@ async def download_result(
         )
 
     absolute_path = get_absolute_path(output_path)
+    if not os.path.exists(absolute_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Output file no longer exists on disk",
+        )
+
     return FileResponse(
         absolute_path,
         media_type="video/mp4",

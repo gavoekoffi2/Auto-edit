@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Film, Trash2, Clock, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
+import { Film, Trash2, Clock, CheckCircle, AlertCircle, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
 import UploadZone from '../components/video/UploadZone'
 import { listVideos, deleteVideo } from '../api/videos'
 import { useAuthStore } from '../store/authStore'
 import { getMe } from '../api/auth'
+import { toast } from '../components/ui/Toast'
 
 interface Video {
   id: string
@@ -29,41 +30,54 @@ const statusColors: Record<string, string> = {
   error: 'text-red-400',
 }
 
+const PAGE_SIZE = 10
+
 export default function Dashboard() {
   const [videos, setVideos] = useState<Video[]>([])
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(0)
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
   const { setUser, user } = useAuthStore()
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    setLoading(true)
     try {
       const [videosData, userData] = await Promise.all([
-        listVideos(),
-        getMe(),
+        listVideos(page * PAGE_SIZE, PAGE_SIZE),
+        user ? Promise.resolve(null) : getMe(),
       ])
       setVideos(videosData.videos)
-      setUser(userData)
-    } catch {
-      // ignore
+      setTotal(videosData.total)
+      if (userData) setUser(userData)
+    } catch (err) {
+      toast('error', 'Failed to load dashboard data')
     } finally {
       setLoading(false)
     }
-  }
+  }, [page, user, setUser])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   const handleUploadComplete = (video: { id: string; title: string }) => {
     navigate(`/editor/${video.id}`)
   }
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!confirm('Delete this video? This cannot be undone.')) return
+
+    // Optimistic update
+    setVideos((prev) => prev.filter((v) => v.id !== id))
     try {
       await deleteVideo(id)
-      setVideos(videos.filter((v) => v.id !== id))
+      toast('success', 'Video deleted')
+      setTotal((t) => t - 1)
     } catch {
-      // ignore
+      toast('error', 'Failed to delete video')
+      loadData() // Reload on error
     }
   }
 
@@ -72,6 +86,14 @@ export default function Dashboard() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
+  const formatDuration = (sec: number) => {
+    const m = Math.floor(sec / 60)
+    const s = Math.floor(sec % 60)
+    return `${m}:${s.toString().padStart(2, '0')}`
+  }
+
+  const totalPages = Math.ceil(total / PAGE_SIZE)
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex items-center justify-between mb-8">
@@ -79,6 +101,7 @@ export default function Dashboard() {
           <h1 className="text-3xl font-bold">Dashboard</h1>
           <p className="text-dark-400 mt-1">
             {user ? `${user.plan.toUpperCase()} plan` : 'Manage your videos'}
+            {total > 0 && ` · ${total} video${total !== 1 ? 's' : ''}`}
           </p>
         </div>
       </div>
@@ -102,51 +125,76 @@ export default function Dashboard() {
             <p className="text-dark-400">No videos yet. Upload your first video above!</p>
           </div>
         ) : (
-          <div className="grid gap-4">
-            {videos.map((video) => {
-              const StatusIcon = statusIcons[video.status] || Film
-              const statusColor = statusColors[video.status] || 'text-dark-400'
+          <>
+            <div className="grid gap-4">
+              {videos.map((video) => {
+                const StatusIcon = statusIcons[video.status] || Film
+                const statusColor = statusColors[video.status] || 'text-dark-400'
 
-              return (
-                <div
-                  key={video.id}
-                  className="card flex items-center justify-between hover:border-dark-600 transition-colors cursor-pointer"
-                  onClick={() => navigate(`/editor/${video.id}`)}
+                return (
+                  <div
+                    key={video.id}
+                    className="card flex items-center justify-between hover:border-dark-600 transition-colors cursor-pointer"
+                    onClick={() => navigate(`/editor/${video.id}`)}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-dark-800 rounded-lg flex items-center justify-center">
+                        <Film className="w-6 h-6 text-dark-500" />
+                      </div>
+                      <div>
+                        <h3 className="font-medium">{video.title}</h3>
+                        <p className="text-sm text-dark-500">
+                          {formatSize(video.size_bytes)}
+                          {video.duration_s != null && ` · ${formatDuration(video.duration_s)}`}
+                          {' · '}
+                          {new Date(video.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                      <span className={`flex items-center gap-1 text-sm ${statusColor}`}>
+                        <StatusIcon className={`w-4 h-4 ${video.status === 'processing' ? 'animate-spin' : ''}`} />
+                        {video.status}
+                      </span>
+                      <button
+                        onClick={(e) => handleDelete(video.id, e)}
+                        className="text-dark-500 hover:text-red-400 transition-colors"
+                        aria-label="Delete video"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-4 mt-6">
+                <button
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                  className="btn-secondary py-2 px-3 disabled:opacity-30"
+                  aria-label="Previous page"
                 >
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-dark-800 rounded-lg flex items-center justify-center">
-                      <Film className="w-6 h-6 text-dark-500" />
-                    </div>
-                    <div>
-                      <h3 className="font-medium">{video.title}</h3>
-                      <p className="text-sm text-dark-500">
-                        {formatSize(video.size_bytes)}
-                        {video.duration_s && ` · ${Math.round(video.duration_s)}s`}
-                        {' · '}
-                        {new Date(video.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-4">
-                    <span className={`flex items-center gap-1 text-sm ${statusColor}`}>
-                      <StatusIcon className={`w-4 h-4 ${video.status === 'processing' ? 'animate-spin' : ''}`} />
-                      {video.status}
-                    </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleDelete(video.id)
-                      }}
-                      className="text-dark-500 hover:text-red-400 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="text-sm text-dark-400">
+                  Page {page + 1} of {totalPages}
+                </span>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                  disabled={page >= totalPages - 1}
+                  className="btn-secondary py-2 px-3 disabled:opacity-30"
+                  aria-label="Next page"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

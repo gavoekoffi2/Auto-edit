@@ -1,4 +1,4 @@
-import client from './client'
+import client, { downloadWithAuth } from './client'
 
 export interface JobCreateData {
   video_id: string
@@ -23,8 +23,6 @@ export async function listJobs(videoId?: string) {
   return res.data
 }
 
-export function getDownloadUrl(jobId: string) {
-  const token = localStorage.getItem('access_token')
-  const base = import.meta.env.VITE_API_URL || '/api'
-  return `${base}/v1/jobs/${jobId}/download?token=${token}`
+export async function downloadJobResult(jobId: string) {
+  await downloadWithAuth(`/jobs/${jobId}/download`, `autoedit_${jobId}.mp4`)
 }

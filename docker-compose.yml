@@ -4,9 +4,9 @@ services:
   postgres:
     image: postgres:15-alpine
     environment:
-      POSTGRES_USER: autoedit
-      POSTGRES_PASSWORD: autoedit
-      POSTGRES_DB: autoedit
+      POSTGRES_USER: ${POSTGRES_USER:-autoedit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-autoedit}
+      POSTGRES_DB: ${POSTGRES_DB:-autoedit}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -19,6 +19,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
     ports:
       - "6379:6379"
     healthcheck:
@@ -36,13 +37,17 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://autoedit:autoedit@postgres:5432/autoedit
-      - DATABASE_URL_SYNC=postgresql://autoedit:autoedit@postgres:5432/autoedit
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-autoedit}:${POSTGRES_PASSWORD:-autoedit}@postgres:5432/${POSTGRES_DB:-autoedit}
+      - DATABASE_URL_SYNC=postgresql://${POSTGRES_USER:-autoedit}:${POSTGRES_PASSWORD:-autoedit}@postgres:5432/${POSTGRES_DB:-autoedit}
       - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=dev-secret-key-change-in-production
+      - SECRET_KEY=${SECRET_KEY:-}
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://localhost
       - UPLOAD_DIR=/app/uploads
+      - MAX_UPLOAD_SIZE_MB=500
       - WHISPER_MODEL=base
       - FEDAPAY_ENV=sandbox
+      - FEDAPAY_SECRET_KEY=${FEDAPAY_SECRET_KEY:-}
+      - FEDAPAY_PUBLIC_KEY=${FEDAPAY_PUBLIC_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -56,10 +61,10 @@ services:
       - ./backend:/app
       - uploads_data:/app/uploads
     environment:
-      - DATABASE_URL=postgresql+asyncpg://autoedit:autoedit@postgres:5432/autoedit
-      - DATABASE_URL_SYNC=postgresql://autoedit:autoedit@postgres:5432/autoedit
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-autoedit}:${POSTGRES_PASSWORD:-autoedit}@postgres:5432/${POSTGRES_DB:-autoedit}
+      - DATABASE_URL_SYNC=postgresql://${POSTGRES_USER:-autoedit}:${POSTGRES_PASSWORD:-autoedit}@postgres:5432/${POSTGRES_DB:-autoedit}
       - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=dev-secret-key-change-in-production
+      - SECRET_KEY=${SECRET_KEY:-}
       - UPLOAD_DIR=/app/uploads
       - WHISPER_MODEL=base
     depends_on:

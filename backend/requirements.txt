@@ -18,3 +18,4 @@ scenedetect[opencv]==0.6.2
 auto-editor==23w46a
 requests==2.31.0
 httpx==0.26.0
+python-dateutil==2.8.2

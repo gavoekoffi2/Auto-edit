@@ -1,15 +1,23 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
-from sqlalchemy import String, DateTime, Float, BigInteger, ForeignKey, Enum as SAEnum
+from sqlalchemy import String, DateTime, Float, BigInteger, ForeignKey, Enum as SAEnum, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.db.base import Base
 
 
+def _utc_now():
+    return datetime.now(timezone.utc)
+
+
 class Video(Base):
     __tablename__ = "videos"
+    __table_args__ = (
+        Index("ix_videos_user_id", "user_id"),
+        Index("ix_videos_user_created", "user_id", "created_at"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -27,7 +35,7 @@ class Video(Base):
         server_default="uploaded",
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, nullable=False
+        DateTime(timezone=True), default=_utc_now, nullable=False
     )
 
     user = relationship("User", back_populates="videos")

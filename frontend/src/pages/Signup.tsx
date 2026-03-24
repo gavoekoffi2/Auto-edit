@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Zap, Loader2 } from 'lucide-react'
 import { signup } from '../api/auth'
 import { useAuthStore } from '../store/authStore'
+import { toast } from '../components/ui/Toast'
 
 export default function Signup() {
   const [email, setEmail] = useState('')
@@ -18,17 +19,35 @@ export default function Signup() {
     setLoading(true)
     setError('')
 
+    // Client-side validation
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters')
+      setLoading(false)
+      return
+    }
+    if (!/[0-9]/.test(password)) {
+      setError('Password must contain at least one number')
+      setLoading(false)
+      return
+    }
+
     try {
       const data = await signup(email, password, fullName || undefined)
       setTokens(data.access_token, data.refresh_token)
+      toast('success', 'Account created! Welcome to AutoEdit.')
       navigate('/dashboard')
     } catch (err: unknown) {
+      let msg = 'Signup failed'
       if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { detail?: string } } }
-        setError(axiosErr.response?.data?.detail || 'Signup failed')
-      } else {
-        setError('Signup failed')
+        const axiosErr = err as { response?: { data?: { detail?: string | { msg: string }[] } } }
+        const detail = axiosErr.response?.data?.detail
+        if (typeof detail === 'string') {
+          msg = detail
+        } else if (Array.isArray(detail)) {
+          msg = detail.map((d) => d.msg).join('. ')
+        }
       }
+      setError(msg)
     } finally {
       setLoading(false)
     }
@@ -51,38 +70,44 @@ export default function Signup() {
           )}
 
           <div>
-            <label className="block text-sm font-medium text-dark-300 mb-1">Full Name</label>
+            <label htmlFor="fullName" className="block text-sm font-medium text-dark-300 mb-1">Full Name</label>
             <input
+              id="fullName"
               type="text"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               className="input-field"
               placeholder="John Doe"
+              autoComplete="name"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-dark-300 mb-1">Email</label>
+            <label htmlFor="email" className="block text-sm font-medium text-dark-300 mb-1">Email</label>
             <input
+              id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="input-field"
               placeholder="you@example.com"
               required
+              autoComplete="email"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-dark-300 mb-1">Password</label>
+            <label htmlFor="password" className="block text-sm font-medium text-dark-300 mb-1">Password</label>
             <input
+              id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="input-field"
-              placeholder="Min 8 characters"
+              placeholder="Min 8 characters, include a number"
               minLength={8}
               required
+              autoComplete="new-password"
             />
           </div>
 

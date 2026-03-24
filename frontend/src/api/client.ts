@@ -7,6 +7,7 @@ const client = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 30000, // 30s timeout
 })
 
 // Add auth token to requests
@@ -18,23 +19,25 @@ client.interceptors.request.use((config) => {
   return config
 })
 
-// Handle 401 responses
+// Handle 401 responses with token refresh
 client.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401) {
+    const originalRequest = error.config
+    if (error.response?.status === 401 && !originalRequest._retry) {
       const refreshToken = localStorage.getItem('refresh_token')
-      if (refreshToken && !error.config._retry) {
-        error.config._retry = true
+      if (refreshToken) {
+        originalRequest._retry = true
         try {
           const res = await axios.post(`${API_URL}/v1/auth/refresh`, {
             refresh_token: refreshToken,
           })
-          const { access_token, refresh_token } = res.data
-          localStorage.setItem('access_token', access_token)
-          localStorage.setItem('refresh_token', refresh_token)
-          error.config.headers.Authorization = `Bearer ${access_token}`
-          return client(error.config)
+          if (res.data?.access_token && res.data?.refresh_token) {
+            localStorage.setItem('access_token', res.data.access_token)
+            localStorage.setItem('refresh_token', res.data.refresh_token)
+            originalRequest.headers.Authorization = `Bearer ${res.data.access_token}`
+            return client(originalRequest)
+          }
         } catch {
           localStorage.removeItem('access_token')
           localStorage.removeItem('refresh_token')
@@ -45,5 +48,20 @@ client.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+/**
+ * Download a file using auth header instead of token in URL.
+ */
+export async function downloadWithAuth(url: string, filename: string): Promise<void> {
+  const response = await client.get(url, { responseType: 'blob' })
+  const blob = new Blob([response.data])
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(link.href)
+}
 
 export default client

@@ -1,6 +1,10 @@
+import os
+import logging
 from uuid import UUID
+from datetime import datetime, timezone
+from dateutil.relativedelta import relativedelta
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, status
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -10,7 +14,10 @@ from app.models.user import User
 from app.models.video import Video
 from app.schemas.video import VideoResponse, VideoListResponse
 from app.api.deps import get_current_user
-from app.services.storage import save_upload, get_absolute_path
+from app.services.storage import save_upload, get_absolute_path, get_video_duration
+from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -31,25 +38,78 @@ async def upload_video(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"File type not allowed. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
             )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Filename is required",
+        )
 
+    # Check monthly video quota for free users
+    if current_user.plan == "free":
+        month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        count_result = await db.execute(
+            select(func.count()).select_from(Video).where(
+                Video.user_id == current_user.id,
+                Video.created_at >= month_start,
+            )
+        )
+        monthly_count = count_result.scalar() or 0
+        if monthly_count >= settings.MAX_VIDEOS_PER_MONTH_FREE:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Free plan limited to {settings.MAX_VIDEOS_PER_MONTH_FREE} videos/month. Upgrade to Pro.",
+            )
+
+    # Save file with size validation
     relative_path, size_bytes = await save_upload(file, str(current_user.id))
+
+    # Get video duration
+    abs_path = get_absolute_path(relative_path)
+    duration = get_video_duration(abs_path)
+
+    # Check duration limits
+    if duration is not None and current_user.plan == "free":
+        if duration > settings.MAX_VIDEO_DURATION_FREE:
+            # Clean up uploaded file
+            try:
+                os.unlink(abs_path)
+            except OSError:
+                pass
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Free plan limited to {settings.MAX_VIDEO_DURATION_FREE // 60} min videos. "
+                       f"Your video is {duration / 60:.1f} min. Upgrade to Pro.",
+            )
+    elif duration is not None and current_user.plan == "pro":
+        if duration > settings.MAX_VIDEO_DURATION_PRO:
+            try:
+                os.unlink(abs_path)
+            except OSError:
+                pass
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Pro plan limited to {settings.MAX_VIDEO_DURATION_PRO // 60} min videos. "
+                       f"Upgrade to Enterprise for unlimited.",
+            )
 
     video = Video(
         user_id=current_user.id,
-        title=file.filename or "Untitled",
+        title=file.filename,
         original_path=relative_path,
         size_bytes=size_bytes,
+        duration_s=duration,
     )
     db.add(video)
     await db.flush()
 
+    logger.info(f"Video uploaded: {video.id} by user {current_user.id} ({size_bytes} bytes)")
     return video
 
 
 @router.get("", response_model=VideoListResponse)
 async def list_videos(
-    skip: int = 0,
-    limit: int = 20,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -99,6 +159,9 @@ async def stream_video(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found")
 
     file_path = get_absolute_path(video.original_path)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video file not found on disk")
+
     return FileResponse(file_path, media_type="video/mp4")
 
 
@@ -115,4 +178,13 @@ async def delete_video(
     if not video:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found")
 
+    # Clean up file on disk
+    try:
+        file_path = get_absolute_path(video.original_path)
+        if os.path.exists(file_path):
+            os.unlink(file_path)
+    except Exception as e:
+        logger.warning(f"Failed to delete file for video {video_id}: {e}")
+
     await db.delete(video)
+    await db.flush()
