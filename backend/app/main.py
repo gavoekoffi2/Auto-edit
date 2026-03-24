@@ -69,12 +69,10 @@ async def health_check():
 
     # Check Redis
     try:
-        import redis as redis_lib
-
-        r = redis_lib.from_url(settings.REDIS_URL)
-        r.ping()
+        from app.services.rate_limiter import _get_redis
+        r = await _get_redis()
+        await r.ping()
         health["redis"] = "connected"
-        r.close()
     except Exception as e:
         health["redis"] = f"error: {str(e)}"
         health["status"] = "degraded"

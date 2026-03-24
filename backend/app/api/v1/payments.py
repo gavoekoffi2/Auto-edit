@@ -108,23 +108,45 @@ async def payment_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     if payment.status == "completed":
         return {"status": "already_processed"}
 
-    if tx_status == "approved":
-        payment.status = "completed"
+    try:
+        if tx_status == "approved":
+            payment.status = "completed"
 
-        # Upgrade user plan
-        user_result = await db.execute(
-            select(User).where(User.id == payment.user_id)
+            # Upgrade user plan
+            user_result = await db.execute(
+                select(User).where(User.id == payment.user_id)
+            )
+            user = user_result.scalar_one_or_none()
+            if user:
+                user.plan = payment.plan
+                logger.info(f"User {user.id} upgraded to {payment.plan} via payment {payment.id}")
+
+        elif tx_status in ("declined", "cancelled"):
+            payment.status = "failed"
+            logger.info(f"Payment {payment.id} failed: {tx_status}")
+
+    except Exception as e:
+        logger.error(f"Webhook processing error for tx {tx_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Webhook processing failed",
         )
-        user = user_result.scalar_one_or_none()
-        if user:
-            user.plan = payment.plan
-            logger.info(f"User {user.id} upgraded to {payment.plan} via payment {payment.id}")
-
-    elif tx_status in ("declined", "cancelled"):
-        payment.status = "failed"
-        logger.info(f"Payment {payment.id} failed: {tx_status}")
 
     return {"status": "processed"}
+
+
+@router.get("/history", response_model=list[PaymentResponse])
+async def payment_history(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get payment history for the current user."""
+    result = await db.execute(
+        select(Payment)
+        .where(Payment.user_id == current_user.id)
+        .order_by(Payment.created_at.desc())
+    )
+    return result.scalars().all()
 
 
 @router.get("/plans")

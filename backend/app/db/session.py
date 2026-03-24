@@ -5,13 +5,27 @@ from sqlalchemy.orm import sessionmaker
 from app.config import settings
 
 # Async engine for FastAPI
-async_engine = create_async_engine(settings.DATABASE_URL, echo=False)
+async_engine = create_async_engine(
+    settings.DATABASE_URL,
+    echo=False,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+    pool_size=10,
+    max_overflow=20,
+)
 AsyncSessionLocal = async_sessionmaker(
     async_engine, class_=AsyncSession, expire_on_commit=False
 )
 
 # Sync engine for Celery workers
-sync_engine = create_engine(settings.DATABASE_URL_SYNC, echo=False)
+sync_engine = create_engine(
+    settings.DATABASE_URL_SYNC,
+    echo=False,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+    pool_size=5,
+    max_overflow=10,
+)
 SyncSessionLocal = sessionmaker(bind=sync_engine)
 
 

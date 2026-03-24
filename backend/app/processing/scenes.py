@@ -32,13 +32,16 @@ def detect_scenes(
     logger.info(f"Detecting scenes in: {video_path}")
 
     video = open_video(video_path)
-    scene_manager = SceneManager()
-    scene_manager.add_detector(
-        ContentDetector(threshold=threshold, min_scene_len=min_scene_len)
-    )
+    try:
+        scene_manager = SceneManager()
+        scene_manager.add_detector(
+            ContentDetector(threshold=threshold, min_scene_len=min_scene_len)
+        )
 
-    scene_manager.detect_scenes(video)
-    scene_list = scene_manager.get_scene_list()
+        scene_manager.detect_scenes(video)
+        scene_list = scene_manager.get_scene_list()
+    finally:
+        video.release()
 
     scenes = []
     for start, end in scene_list:

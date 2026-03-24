@@ -35,7 +35,7 @@ async def create_checkout(
         "customer": {"email": user_email},
     }
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
         # Create transaction
         resp = await client.post(
             f"{FEDAPAY_API_URL}/v1/transactions",
