@@ -76,19 +76,21 @@ def split_video_by_scenes(
     from moviepy.editor import VideoFileClip
 
     clip = VideoFileClip(video_path)
-    output_paths = []
-
-    for i, scene in enumerate(scenes):
-        scene_clip = clip.subclip(scene["start"], scene["end"])
-        output_path = os.path.join(output_dir, f"scene_{i+1:03d}.mp4")
-        scene_clip.write_videofile(
-            output_path,
-            codec="libx264",
-            audio_codec="aac",
-            logger=None,
-        )
-        scene_clip.close()
-        output_paths.append(output_path)
-
-    clip.close()
+    try:
+        output_paths = []
+        for i, scene in enumerate(scenes):
+            scene_clip = clip.subclip(scene["start"], scene["end"])
+            try:
+                output_path = os.path.join(output_dir, f"scene_{i+1:03d}.mp4")
+                scene_clip.write_videofile(
+                    output_path,
+                    codec="libx264",
+                    audio_codec="aac",
+                    logger=None,
+                )
+                output_paths.append(output_path)
+            finally:
+                scene_clip.close()
+    finally:
+        clip.close()
     return output_paths

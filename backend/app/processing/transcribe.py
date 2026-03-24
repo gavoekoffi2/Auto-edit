@@ -2,9 +2,27 @@
 import os
 import json
 import logging
+import threading
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Cache Whisper model per worker process to avoid reloading on every call
+_model_cache: dict = {}
+_model_lock = threading.Lock()
+
+
+def _get_model(model_name: str):
+    """Get or load a cached Whisper model (thread-safe)."""
+    import whisper
+
+    if model_name not in _model_cache:
+        with _model_lock:
+            # Double-check after acquiring lock
+            if model_name not in _model_cache:
+                logger.info(f"Loading Whisper model: {model_name} (will be cached for reuse)")
+                _model_cache[model_name] = whisper.load_model(model_name)
+    return _model_cache[model_name]
 
 
 def transcribe_video(video_path: str, output_dir: str, model_name: str = "base") -> dict:
@@ -17,10 +35,7 @@ def transcribe_video(video_path: str, output_dir: str, model_name: str = "base")
         - srt_path: path to generated SRT subtitle file
         - language: detected language
     """
-    import whisper
-
-    logger.info(f"Loading Whisper model: {model_name}")
-    model = whisper.load_model(model_name)
+    model = _get_model(model_name)
 
     logger.info(f"Transcribing: {video_path}")
     result = model.transcribe(video_path, verbose=False)

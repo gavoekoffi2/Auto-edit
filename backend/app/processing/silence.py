@@ -1,9 +1,14 @@
 """Silence removal module using auto-editor."""
 import os
+import re
 import subprocess
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Validation patterns for auto-editor parameters
+_MARGIN_PATTERN = re.compile(r"^\d+(\.\d+)?s$")
+_THRESHOLD_PATTERN = re.compile(r"^\d+(\.\d+)?%$")
 
 
 def remove_silence(
@@ -27,6 +32,14 @@ def remove_silence(
         - output_path: path to processed video
         - duration_saved: estimated seconds saved
     """
+    # Validate parameters to prevent command injection
+    if not _MARGIN_PATTERN.match(margin):
+        raise ValueError(f"Invalid margin format: {margin}. Expected format: '0.2s'")
+    if not _THRESHOLD_PATTERN.match(threshold):
+        raise ValueError(f"Invalid threshold format: {threshold}. Expected format: '4%'")
+    if not (0 < speed_silent <= 99999):
+        raise ValueError(f"Invalid speed_silent: {speed_silent}. Must be between 0 and 99999")
+
     output_filename = "no_silence.mp4"
     output_path = os.path.join(output_dir, output_filename)
 

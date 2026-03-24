@@ -33,3 +33,24 @@
     @apply bg-gradient-to-r from-primary-400 to-accent-400 bg-clip-text text-transparent;
   }
 }
+
+@layer utilities {
+  .animate-in {
+    animation: animate-in 0.3s ease-out;
+  }
+
+  .slide-in-from-right {
+    --tw-enter-translate-x: 100%;
+  }
+}
+
+@keyframes animate-in {
+  from {
+    opacity: 0;
+    transform: translateX(var(--tw-enter-translate-x, 0)) translateY(var(--tw-enter-translate-y, 0));
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) translateY(0);
+  }
+}

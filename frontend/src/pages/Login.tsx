@@ -86,12 +86,19 @@ export default function Login() {
             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Log In'}
           </button>
 
-          <p className="text-center text-dark-400 text-sm">
-            Don't have an account?{' '}
-            <Link to="/signup" className="text-primary-400 hover:underline">
-              Sign up
-            </Link>
-          </p>
+          <div className="text-center space-y-2">
+            <p className="text-dark-400 text-sm">
+              <Link to="/forgot-password" className="text-primary-400 hover:underline">
+                Forgot your password?
+              </Link>
+            </p>
+            <p className="text-dark-400 text-sm">
+              Don't have an account?{' '}
+              <Link to="/signup" className="text-primary-400 hover:underline">
+                Sign up
+              </Link>
+            </p>
+          </div>
         </form>
       </div>
     </div>

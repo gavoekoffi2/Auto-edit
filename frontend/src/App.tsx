@@ -1,10 +1,11 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store/authStore'
 import Navbar from './components/layout/Navbar'
 import ErrorBoundary from './components/ui/ErrorBoundary'
 import ToastContainer from './components/ui/Toast'
 import { Loader2 } from 'lucide-react'
+import { getMe } from './api/auth'
 
 // Lazy-loaded pages for code splitting
 const Landing = lazy(() => import('./pages/Landing'))
@@ -13,6 +14,8 @@ const Signup = lazy(() => import('./pages/Signup'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Editor = lazy(() => import('./pages/Editor'))
 const Pricing = lazy(() => import('./pages/Pricing'))
+const NotFound = lazy(() => import('./pages/NotFound'))
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
 
 function PageLoader() {
   return (
@@ -29,6 +32,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  const token = useAuthStore((s) => s.accessToken)
+  const setUser = useAuthStore((s) => s.setUser)
+
+  useEffect(() => {
+    if (token) {
+      getMe().then(setUser).catch(() => {})
+    }
+  }, [token, setUser])
+
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-dark-950">
@@ -40,6 +52,7 @@ export default function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/pricing" element={<Pricing />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route
               path="/dashboard"
               element={
@@ -56,6 +69,7 @@ export default function App() {
                 </ProtectedRoute>
               }
             />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
       </div>

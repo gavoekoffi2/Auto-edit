@@ -7,7 +7,10 @@ from sqlalchemy import select
 
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.user import UserCreate, UserLogin, UserResponse, TokenResponse, TokenRefresh
+from app.schemas.user import (
+    UserCreate, UserLogin, UserResponse, TokenResponse, TokenRefresh,
+    PasswordResetRequest, PasswordResetConfirm,
+)
 from app.services.auth import (
     hash_password,
     verify_password,
@@ -112,3 +115,59 @@ async def refresh_token(data: TokenRefresh, db: AsyncSession = Depends(get_db)):
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+@router.post("/password-reset/request")
+async def request_password_reset(
+    data: PasswordResetRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Request a password reset. Always returns success (prevents email enumeration)."""
+    client_ip = request.client.host if request.client else "unknown"
+    await check_rate_limit(f"pw_reset:{client_ip}", max_attempts=3, window_seconds=900)
+
+    result = await db.execute(select(User).where(User.email == data.email))
+    user = result.scalar_one_or_none()
+
+    if user and user.is_active:
+        # Generate a short-lived reset token (15 min)
+        from app.services.auth import _create_reset_token
+        token = _create_reset_token(str(user.id))
+        # In production, send this via email. For now, log it.
+        logger.info(f"Password reset token generated for {data.email} (token: {token[:10]}...)")
+        # TODO: Integrate email provider (SendGrid/SES/Mailgun) to send reset link
+
+    # Always return success to prevent email enumeration
+    return {"message": "If that email is registered, a reset link has been sent."}
+
+
+@router.post("/password-reset/confirm")
+async def confirm_password_reset(
+    data: PasswordResetConfirm,
+    db: AsyncSession = Depends(get_db),
+):
+    """Confirm password reset with token."""
+    payload = decode_token(data.token)
+    if not payload or payload.get("type") != "reset":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    user_id = payload.get("sub")
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    user.password_hash = hash_password(data.new_password)
+    user.updated_at = datetime.now(timezone.utc)
+    await db.flush()
+
+    logger.info(f"Password reset completed for user {user.id}")
+    return {"message": "Password has been reset successfully."}

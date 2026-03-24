@@ -79,7 +79,7 @@ async def payment_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     # Verify webhook signature if secret key is configured
     if settings.FEDAPAY_SECRET_KEY:
         signature = request.headers.get("X-Fedapay-Signature", "")
-        expected = hmac.new(
+        expected = hmac.HMAC(
             settings.FEDAPAY_SECRET_KEY.encode(),
             raw_body,
             hashlib.sha256,
