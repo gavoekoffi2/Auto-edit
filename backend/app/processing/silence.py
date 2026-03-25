@@ -1,6 +1,7 @@
 """Silence removal module using auto-editor."""
 import os
 import re
+import signal
 import subprocess
 import logging
 
@@ -61,6 +62,7 @@ def remove_silence(
             capture_output=True,
             text=True,
             timeout=600,  # 10 minute timeout
+            start_new_session=True,  # Create process group for clean kill
         )
 
         if result.returncode != 0:

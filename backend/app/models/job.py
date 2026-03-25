@@ -33,7 +33,7 @@ class Job(Base):
     mode: Mapped[str] = mapped_column(String(50), nullable=True)
     params: Mapped[dict] = mapped_column(JSON, nullable=True, default=dict)
     status: Mapped[str] = mapped_column(
-        SAEnum("pending", "processing", "completed", "failed", name="job_status"),
+        SAEnum("pending", "processing", "completed", "failed", "cancelled", name="job_status"),
         default="pending",
         server_default="pending",
     )

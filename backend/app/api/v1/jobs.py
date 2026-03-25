@@ -109,6 +109,41 @@ async def list_jobs(
     return result.scalars().all()
 
 
+@router.post("/{job_id}/cancel", response_model=JobResponse)
+async def cancel_job(
+    job_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Cancel a pending or processing job."""
+    result = await db.execute(
+        select(Job).where(Job.id == job_id, Job.user_id == current_user.id)
+    )
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+
+    if job.status not in ("pending", "processing"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot cancel job with status '{job.status}'",
+        )
+
+    # Revoke the Celery task if it's still queued
+    if job.status == "pending":
+        try:
+            from app.workers.celery_app import celery_app
+            celery_app.control.revoke(str(job.id), terminate=True)
+        except Exception as e:
+            logger.warning(f"Failed to revoke Celery task {job.id}: {e}")
+
+    job.status = "cancelled"
+    await db.flush()
+
+    logger.info(f"Job {job.id} cancelled by user {current_user.id}")
+    return job
+
+
 @router.get("/{job_id}/download")
 async def download_result(
     job_id: UUID,

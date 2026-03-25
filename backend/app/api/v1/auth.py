@@ -9,7 +9,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.schemas.user import (
     UserCreate, UserLogin, UserResponse, TokenResponse, TokenRefresh,
-    PasswordResetRequest, PasswordResetConfirm,
+    PasswordResetRequest, PasswordResetConfirm, PasswordChange,
 )
 from app.services.auth import (
     hash_password,
@@ -115,6 +115,27 @@ async def refresh_token(data: TokenRefresh, db: AsyncSession = Depends(get_db)):
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+@router.post("/password-change")
+async def change_password(
+    data: PasswordChange,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Change password for authenticated user."""
+    if not verify_password(data.current_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+
+    current_user.password_hash = hash_password(data.new_password)
+    current_user.updated_at = datetime.now(timezone.utc)
+    await db.flush()
+
+    logger.info(f"Password changed for user {current_user.id}")
+    return {"message": "Password changed successfully."}
 
 
 @router.post("/password-reset/request")
