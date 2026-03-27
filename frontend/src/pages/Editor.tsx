@@ -237,7 +237,7 @@ export default function Editor() {
           </button>
 
           {/* Transcription result */}
-          {completedResult?.transcription && (
+          {!!completedResult?.transcription && (
             <div className="card">
               <h3 className="font-semibold mb-2">Transcription</h3>
               <p className="text-sm text-dark-400 max-h-40 overflow-y-auto leading-relaxed">
@@ -247,7 +247,7 @@ export default function Editor() {
           )}
 
           {/* Steps summary */}
-          {completedResult?.steps_completed && (
+          {!!completedResult?.steps_completed && (
             <div className="card">
               <h3 className="font-semibold mb-2">Processing Summary</h3>
               <div className="text-sm space-y-1">
