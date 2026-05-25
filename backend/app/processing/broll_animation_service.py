@@ -147,6 +147,8 @@ class BrollAnimationService:
 
         # `zoompan` calcule un zoom 1..(1+strength). On peut piloter x/y selon le motion.
         zmax = 1.0 + max(0.05, min(0.5, zoom_strength))
+        # FFmpeg zoompan does not expose a `total` variable; bake the frame count into expressions.
+        frame_denominator = max(1, total_frames - 1)
         if motion == "zoom_in":
             z_expr = f"min(zoom+0.0008,{zmax})"
             x_expr = "iw/2-(iw/zoom/2)"
@@ -157,15 +159,15 @@ class BrollAnimationService:
             y_expr = "ih/2-(ih/zoom/2)"
         elif motion == "pan_lr":
             z_expr = f"{zmax}"
-            x_expr = "on/(total-1)*(iw-iw/zoom)"
+            x_expr = f"on/{frame_denominator}*(iw-iw/zoom)"
             y_expr = "ih/2-(ih/zoom/2)"
         elif motion == "pan_rl":
             z_expr = f"{zmax}"
-            x_expr = "(1-on/(total-1))*(iw-iw/zoom)"
+            x_expr = f"(1-on/{frame_denominator})*(iw-iw/zoom)"
             y_expr = "ih/2-(ih/zoom/2)"
         else:  # ken_burns
             z_expr = f"min(zoom+0.0006,{zmax})"
-            x_expr = "on/(total-1)*(iw-iw/zoom)"
+            x_expr = f"on/{frame_denominator}*(iw-iw/zoom)"
             y_expr = "ih/2-(ih/zoom/2)"
 
         zoompan = (

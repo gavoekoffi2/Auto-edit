@@ -26,3 +26,5 @@ frontend/build/
 *.swp
 *.swo
 celerybeat-schedule
+.env.localtest
+autoedit_test.db

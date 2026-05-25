@@ -75,7 +75,8 @@ class Settings(BaseSettings):
 
     # Image generation (B-roll IA africain)
     IMAGE_GENERATION_PROVIDER: str = "openrouter"
-    IMAGE_GENERATION_MODEL: str = "google/gemini-2.5-flash-image-preview"
+    # Cheapest Nano Banana image model currently visible on OpenRouter.
+    IMAGE_GENERATION_MODEL: str = "google/gemini-2.5-flash-image"
     OPENROUTER_API_KEY: Optional[str] = None
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
     OPENROUTER_HTTP_REFERER: str = "https://autoedit.app"
