@@ -58,12 +58,24 @@ async def create_job(
                 detail="Free plan limited to 2 concurrent jobs. Upgrade to Pro for unlimited.",
             )
 
+    # Merge params + options dans le payload du job (options prennent le pas)
+    merged_params: dict = dict(data.params or {})
+    if data.options is not None:
+        # exclude_none=True pour ne pas écraser des défauts par des None
+        opts = data.options.model_dump(exclude_none=True)
+        if opts:
+            merged_params["options"] = opts
+
+    from app.config import settings
+    pipeline_version = data.pipeline_version or settings.PIPELINE_VERSION
+
     job = Job(
         video_id=data.video_id,
         user_id=current_user.id,
         job_type=data.job_type,
         mode=data.mode,
-        params=data.params or {},
+        params=merged_params,
+        pipeline_version=pipeline_version,
     )
     db.add(job)
     await db.flush()
@@ -73,7 +85,10 @@ async def create_job(
 
     process_video_task.delay(str(job.id))
 
-    logger.info(f"Job created: {job.id} type={data.job_type} mode={data.mode} by user {current_user.id}")
+    logger.info(
+        f"Job created: {job.id} type={data.job_type} mode={data.mode} "
+        f"pipeline={pipeline_version} by user {current_user.id}"
+    )
     return job
 
 

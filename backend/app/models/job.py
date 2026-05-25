@@ -38,6 +38,9 @@ class Job(Base):
         server_default="pending",
     )
     progress: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    pipeline_version: Mapped[str] = mapped_column(
+        String(10), default="v1", server_default="v1", nullable=False
+    )
     result: Mapped[dict] = mapped_column(JSON, nullable=True)
     error_message: Mapped[str] = mapped_column(String(2000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

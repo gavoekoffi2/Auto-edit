@@ -140,7 +140,8 @@ def run_pipeline(
             )
             new_video = silence_result["output_path"]
             if os.path.exists(new_video) and os.path.getsize(new_video) > 0:
-                intermediate_files.append(current_video if current_video != video_path else None)
+                if current_video != video_path:
+                    intermediate_files.append(current_video)
                 current_video = new_video
                 results["silence_removal"] = {
                     "output_path": new_video,
@@ -184,7 +185,8 @@ def run_pipeline(
             )
             new_video = effects_result["output_path"]
             if os.path.exists(new_video) and os.path.getsize(new_video) > 0:
-                intermediate_files.append(current_video if current_video != video_path else None)
+                if current_video != video_path:
+                    intermediate_files.append(current_video)
                 current_video = new_video
                 results["effects"] = effects_result
                 results["steps_completed"].append("effects")
@@ -209,7 +211,8 @@ def run_pipeline(
             )
             new_video = sub_result["output_path"]
             if os.path.exists(new_video) and os.path.getsize(new_video) > 0:
-                intermediate_files.append(current_video if current_video != video_path else None)
+                if current_video != video_path:
+                    intermediate_files.append(current_video)
                 current_video = new_video
                 results["subtitles"] = sub_result
                 results["steps_completed"].append("subtitles")

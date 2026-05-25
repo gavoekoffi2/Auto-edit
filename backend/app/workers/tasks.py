@@ -51,7 +51,10 @@ def _update_video_status(video_id: str, new_status: str):
     retry_backoff=True,
 )
 def process_video_task(self, job_id: str):
-    """Main video processing task with retry support."""
+    """Main video processing task with retry support.
+
+    Dispatch v1 (pipeline.py) ou v2 (pipeline_v2.py) selon `job.pipeline_version`.
+    """
     from app.processing.pipeline import run_pipeline
 
     session = SyncSessionLocal()
@@ -90,14 +93,25 @@ def process_video_task(self, job_id: str):
             _update_job(job_id, progress=progress)
             self.update_state(state="PROGRESS", meta={"progress": progress, "message": message})
 
-        # Run the pipeline
-        result = run_pipeline(
-            video_path=video_path,
-            output_dir=output_dir,
-            mode=job.mode,
-            params=job.params,
-            progress_callback=progress_callback,
-        )
+        # Choisit le pipeline selon job.pipeline_version (défaut v1)
+        pipeline_version = getattr(job, "pipeline_version", "v1") or "v1"
+        if pipeline_version == "v2":
+            from app.processing.pipeline_v2 import run_pipeline_v2
+            result = run_pipeline_v2(
+                video_path=video_path,
+                output_dir=output_dir,
+                mode=job.mode,
+                params=job.params,
+                progress_callback=progress_callback,
+            )
+        else:
+            result = run_pipeline(
+                video_path=video_path,
+                output_dir=output_dir,
+                mode=job.mode,
+                params=job.params,
+                progress_callback=progress_callback,
+            )
 
         # Convert absolute output path to relative for storage
         output_path = result.get("output_path", "")
@@ -133,13 +147,18 @@ def process_video_task(self, job_id: str):
             error_message=error_msg,
             completed_at=datetime.now(timezone.utc),
         )
-        # Update video status
+        # Update linked video status — la session principale est peut-être cassée,
+        # on ré-ouvre une session courte dédiée.
         try:
-            job = session.query(Job).filter(Job.id == job_id).first()
-            if job:
-                _update_video_status(str(job.video_id), "error")
-        except Exception:
-            pass
+            lookup_session = SyncSessionLocal()
+            try:
+                failed_job = lookup_session.query(Job).filter(Job.id == job_id).first()
+                if failed_job is not None and failed_job.video_id is not None:
+                    _update_video_status(str(failed_job.video_id), "error")
+            finally:
+                lookup_session.close()
+        except Exception as inner:
+            logger.warning(f"Could not update video status for failed job {job_id}: {inner}")
         raise
 
     finally:

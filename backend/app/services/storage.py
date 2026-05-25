@@ -94,8 +94,22 @@ def get_video_duration(file_path: str) -> float | None:
 
 
 def cleanup_directory(dir_path: str, keep_files: set[str] = None) -> None:
-    """Clean up intermediate files in a directory, keeping specified files."""
-    keep = keep_files or {"final_output.mp4", "subtitles.srt", "transcript.json", "scenes.csv"}
+    """Clean up intermediate files in a directory, keeping specified files.
+
+    Itère uniquement les fichiers au premier niveau — les sous-dossiers
+    (`broll/`, `overlays/`) sont préservés intacts.
+    """
+    keep = keep_files or {
+        # v1
+        "final_output.mp4",
+        "subtitles.srt",
+        "transcript.json",
+        "scenes.csv",
+        # v2
+        "words.json",
+        "edl.json",
+        "concat.txt",
+    }
     try:
         for f in Path(dir_path).iterdir():
             if f.is_file() and f.name not in keep:

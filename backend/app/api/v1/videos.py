@@ -1,4 +1,5 @@
 import os
+import mimetypes
 import logging
 from uuid import UUID
 from datetime import datetime, timezone
@@ -162,7 +163,11 @@ async def stream_video(
     if not os.path.exists(file_path):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video file not found on disk")
 
-    return FileResponse(file_path, media_type="video/mp4")
+    guessed_type, _ = mimetypes.guess_type(file_path)
+    media_type = guessed_type or "application/octet-stream"
+    if not media_type.startswith("video/"):
+        media_type = "video/mp4"
+    return FileResponse(file_path, media_type=media_type)
 
 
 @router.delete("/{video_id}", status_code=status.HTTP_204_NO_CONTENT)
