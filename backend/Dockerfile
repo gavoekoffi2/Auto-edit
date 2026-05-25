@@ -1,31 +1,54 @@
-FROM python:3.11-slim
+FROM python:3.11-slim AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
 
-# Install system dependencies for video processing
+# Dependances systeme (FFmpeg, ImageMagick, libs pour OpenCV/PySceneDetect)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     imagemagick \
     libsm6 \
     libxext6 \
+    libmagic1 \
     git \
     curl \
+    tini \
     && rm -rf /var/lib/apt/lists/* \
     && sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/' /etc/ImageMagick-6/policy.xml 2>/dev/null || true
+
+# User non-root (UID/GID 1000 — match l'host pour eviter les soucis de volume)
+RUN groupadd --system --gid 1000 app \
+    && useradd --system --uid 1000 --gid app --create-home --home-dir /home/app app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN mkdir -p /app/uploads
+# Volumes attendus
+RUN mkdir -p /app/uploads /app/whisper_cache \
+    && chown -R app:app /app /home/app
 
-# Entrypoint: run migrations then start server
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# Pre-cache du modele Whisper "base" pour eviter le download au 1er job.
+# Geree par une variable d'env pour permettre de skip en local si besoin.
+ARG PREDOWNLOAD_WHISPER=base
+ENV XDG_CACHE_HOME=/app/whisper_cache
+RUN if [ -n "$PREDOWNLOAD_WHISPER" ] && [ "$PREDOWNLOAD_WHISPER" != "skip" ]; then \
+        python -c "import whisper; whisper.load_model('$PREDOWNLOAD_WHISPER')" \
+        && chown -R app:app /app/whisper_cache; \
+    fi
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8000/api/health || exit 1
+USER app
+
+COPY --chown=app:app entrypoint.sh /entrypoint.sh
+# (chmod via COPY n'est pas possible sans BuildKit, donc on prend les droits 755 du fichier source)
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -fsS http://localhost:8000/api/health || exit 1
 
 EXPOSE 8000
 

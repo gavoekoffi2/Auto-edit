@@ -1,0 +1,54 @@
+version: "3.9"
+
+# =========================================================================
+# Override de production.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Differences vs dev:
+#   - APP_ENV=production (active fail-closed rate limit + SECRET_KEY strict)
+#   - pas de --reload uvicorn
+#   - pas de bind-mount ./backend (le code est dans l'image)
+#   - postgres/redis ne sont PLUS exposes sur l'host
+#   - workers concurrency par defaut = 4 (override via CELERY_CONCURRENCY)
+#   - logging json + log-level info
+# =========================================================================
+
+services:
+  postgres:
+    ports: !reset []           # ne pas exposer publiquement
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+    command: postgres -c log_min_duration_statement=200
+
+  redis:
+    ports: !reset []
+
+  backend:
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --proxy-headers
+      --forwarded-allow-ips=*
+      --log-level info
+      --workers 2
+    volumes: !reset []         # pas de bind-mount en prod
+    ports: !reset []           # nginx parle au backend en interne
+    environment:
+      APP_ENV: production
+
+  worker:
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-4} --prefetch-multiplier=1
+    volumes:
+      - uploads_data:/app/uploads
+    environment:
+      APP_ENV: production
+
+  frontend:
+    ports: !reset []
+
+  nginx:
+    ports:
+      - "80:80"
+      - "443:443"

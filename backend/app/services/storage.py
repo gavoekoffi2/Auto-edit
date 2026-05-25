@@ -11,6 +11,41 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 
+# Magic bytes des conteneurs video supportes. La detection se fait en lisant
+# les premiers octets du fichier upload, en complement de la verification
+# d'extension dans l'endpoint.
+_VIDEO_SIGNATURES: dict[str, list[bytes]] = {
+    "mp4":  [b"ftyp"],          # offset 4
+    "mov":  [b"moov", b"ftyp"], # offset 4 (mov est un container similaire mp4)
+    "webm": [b"\x1a\x45\xdf\xa3"],
+    "mkv":  [b"\x1a\x45\xdf\xa3"],
+    "avi":  [b"RIFF"],
+    "flv":  [b"FLV"],
+    "wmv":  [b"\x30\x26\xb2\x75"],
+}
+
+
+def _looks_like_video(head: bytes) -> bool:
+    if not head or len(head) < 12:
+        return False
+    # MP4/MOV/3GP: bytes 4-8 sont "ftyp"
+    if head[4:8] in (b"ftyp", b"moov", b"mdat", b"free", b"skip"):
+        return True
+    # Matroska / WebM
+    if head[:4] == b"\x1a\x45\xdf\xa3":
+        return True
+    # AVI
+    if head[:4] == b"RIFF" and head[8:12] == b"AVI ":
+        return True
+    # FLV
+    if head[:3] == b"FLV":
+        return True
+    # WMV / ASF
+    if head[:4] == b"\x30\x26\xb2\x75":
+        return True
+    return False
+
+
 def _validate_path(relative_path: str) -> None:
     """Validate path to prevent directory traversal attacks."""
     normalized = os.path.normpath(relative_path)
@@ -32,8 +67,11 @@ async def save_upload(
     file_path = upload_dir / filename
 
     size = 0
+    first_chunk: bytes = b""
     async with aiofiles.open(file_path, "wb") as f:
         while chunk := await file.read(1024 * 1024):  # 1MB chunks
+            if not first_chunk:
+                first_chunk = chunk[:32]
             size += len(chunk)
             if size > max_size:
                 # Clean up partial file
@@ -44,6 +82,17 @@ async def save_upload(
                     detail=f"File too large. Maximum size: {settings.MAX_UPLOAD_SIZE_MB}MB",
                 )
             await f.write(chunk)
+
+    # Validation magic bytes: l'extension ne suffit pas en sécurité.
+    if not _looks_like_video(first_chunk):
+        try:
+            os.unlink(file_path)
+        except OSError:
+            pass
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File does not look like a valid video (magic bytes check failed).",
+        )
 
     relative_path = f"{user_id}/{filename}"
     return relative_path, size

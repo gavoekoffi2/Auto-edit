@@ -72,11 +72,40 @@ async def checkout(
 
 @router.post("/webhook")
 async def payment_webhook(request: Request, db: AsyncSession = Depends(get_db)):
-    """Handle FedaPay webhook callbacks with signature verification."""
-    raw_body = await request.body()
-    body = await request.json()
+    """Handle FedaPay webhook callbacks.
 
-    # Verify webhook signature if secret key is configured
+    Securite:
+      - FEDAPAY_SECRET_KEY OBLIGATOIRE en production. Si la cle est absente,
+        on rejette le webhook avec 503 plutot que d'upgrader un compte
+        sans verification.
+      - HMAC-SHA256 sur le corps brut.
+      - Idempotence: SELECT FOR UPDATE + check du statut deja "completed".
+    """
+    client_host = request.client.host if request.client else "unknown"
+
+    if not settings.FEDAPAY_SECRET_KEY:
+        if settings.is_production:
+            # Sans cle, n'importe qui peut upgrader des comptes. On refuse.
+            logger.error(
+                "Webhook recu mais FEDAPAY_SECRET_KEY absent en production "
+                "— webhook REJETE (from=%s)", client_host,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Payment webhook is not configured.",
+            )
+        logger.warning("[dev] Webhook signature non verifiee (FEDAPAY_SECRET_KEY absent)")
+
+    raw_body = await request.body()
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid JSON body",
+        )
+
+    # Verification de signature si cle presente
     if settings.FEDAPAY_SECRET_KEY:
         signature = request.headers.get("X-Fedapay-Signature", "")
         expected = hmac.HMAC(
@@ -84,49 +113,49 @@ async def payment_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             raw_body,
             hashlib.sha256,
         ).hexdigest()
-
         if not hmac.compare_digest(signature, expected):
-            logger.warning(f"Invalid webhook signature from {request.client.host if request.client else 'unknown'}")
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid signature")
+            logger.warning("Invalid webhook signature from %s", client_host)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Invalid signature"
+            )
 
-    entity = body.get("entity", {})
-    tx_id = str(entity.get("id", ""))
-    tx_status = entity.get("status", "")
+    entity = body.get("entity") or {}
+    tx_id = str(entity.get("id") or "")
+    tx_status = entity.get("status") or ""
 
     if not tx_id:
         return {"status": "ignored"}
 
+    # Lock pessimiste pour eviter une race condition entre deux webhooks
     result = await db.execute(
-        select(Payment).where(Payment.fedapay_tx_id == tx_id)
+        select(Payment).where(Payment.fedapay_tx_id == tx_id).with_for_update()
     )
     payment = result.scalar_one_or_none()
     if not payment:
-        logger.warning(f"Webhook for unknown transaction: {tx_id}")
+        logger.warning("Webhook for unknown transaction: %s", tx_id)
         return {"status": "not_found"}
 
-    # Prevent duplicate processing
     if payment.status == "completed":
         return {"status": "already_processed"}
 
     try:
         if tx_status == "approved":
             payment.status = "completed"
-
-            # Upgrade user plan
             user_result = await db.execute(
                 select(User).where(User.id == payment.user_id)
             )
             user = user_result.scalar_one_or_none()
             if user:
                 user.plan = payment.plan
-                logger.info(f"User {user.id} upgraded to {payment.plan} via payment {payment.id}")
-
+                logger.info(
+                    "User %s upgraded to %s via payment %s",
+                    user.id, payment.plan, payment.id,
+                )
         elif tx_status in ("declined", "cancelled"):
             payment.status = "failed"
-            logger.info(f"Payment {payment.id} failed: {tx_status}")
-
+            logger.info("Payment %s failed: %s", payment.id, tx_status)
     except Exception as e:
-        logger.error(f"Webhook processing error for tx {tx_id}: {e}")
+        logger.error("Webhook processing error for tx %s: %s", tx_id, e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Webhook processing failed",

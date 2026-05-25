@@ -88,11 +88,20 @@ async def login(data: UserLogin, request: Request, db: AsyncSession = Depends(ge
 
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh_token(data: TokenRefresh, db: AsyncSession = Depends(get_db)):
+    from app.services.auth import is_token_revoked
     payload = decode_token(data.refresh_token)
     if not payload or payload.get("type") != "refresh":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token",
+        )
+
+    # Bloque les refresh tokens revoques (logout)
+    jti = payload.get("jti")
+    if jti and await is_token_revoked(jti):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token revoked",
         )
 
     user_id = payload.get("sub")
@@ -115,6 +124,24 @@ async def refresh_token(data: TokenRefresh, db: AsyncSession = Depends(get_db)):
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+@router.post("/logout", status_code=status.HTTP_200_OK)
+async def logout(data: TokenRefresh, current_user: User = Depends(get_current_user)):
+    """Revoke a refresh token (logout).
+
+    Le client doit ensuite supprimer ses tokens du localStorage.
+    L'access token (15 min) expirera de lui-meme.
+    """
+    from app.services.auth import revoke_token
+    payload = decode_token(data.refresh_token)
+    if payload and payload.get("type") == "refresh":
+        jti = payload.get("jti")
+        exp = payload.get("exp")
+        ttl = max(0, int(exp - datetime.now(timezone.utc).timestamp())) if exp else 0
+        if jti and ttl > 0:
+            await revoke_token(jti, ttl)
+    return {"message": "Logged out"}
 
 
 @router.post("/password-change")
@@ -154,13 +181,24 @@ async def request_password_reset(
     if user and user.is_active:
         # Generate a short-lived reset token (15 min)
         from app.services.auth import _create_reset_token
+        from app.services.email import send_password_reset_email
+        from app.config import settings
+
         token = _create_reset_token(str(user.id))
-        # In production, send this via email. For now, log it.
-        logger.info(f"Password reset token generated for {data.email} (token: {token[:10]}...)")
-        # TODO: Integrate email provider (SendGrid/SES/Mailgun) to send reset link
+        reset_url = f"{settings.PUBLIC_APP_URL.rstrip('/')}/reset-password?token={token}"
+        # ATTENTION: ne JAMAIS logger le token ni l'URL contenant le token.
+        sent = send_password_reset_email(to_email=data.email, reset_url=reset_url)
+        logger.info("Password reset requested user_id=%s email=%s sent=%s",
+                    user.id, _hash_email(data.email), sent)
 
     # Always return success to prevent email enumeration
     return {"message": "If that email is registered, a reset link has been sent."}
+
+
+def _hash_email(email: str) -> str:
+    """Hash partiel pour logger un email sans l'exposer en clair."""
+    import hashlib
+    return hashlib.sha256(email.encode()).hexdigest()[:10]
 
 
 @router.post("/password-reset/confirm")

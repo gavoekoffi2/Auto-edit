@@ -8,6 +8,7 @@ from pydantic import field_validator
 
 logger = logging.getLogger(__name__)
 
+VALID_APP_ENVS = {"development", "staging", "production"}
 VALID_WHISPER_MODELS = {"tiny", "base", "small", "medium", "large"}
 VALID_JOB_TYPES = {"pipeline", "transcribe", "silence_removal", "scene_detect", "effects", "export"}
 VALID_MODES = {
@@ -28,6 +29,9 @@ VALID_RENDERERS = {"ffmpeg", "hyperframes", "remotion"}
 
 
 class Settings(BaseSettings):
+    # Environnement (development | staging | production)
+    APP_ENV: str = "development"
+
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://autoedit:autoedit@localhost:5432/autoedit"
     DATABASE_URL_SYNC: str = "postgresql://autoedit:autoedit@localhost:5432/autoedit"
@@ -93,6 +97,34 @@ class Settings(BaseSettings):
     ENABLE_SFX: bool = True
     ENABLE_MUSIC: bool = True
 
+    # ---------------------------------------------------------------------
+    # Email transactionnel — optionnel en dev, requis en prod si tu veux
+    # le reset password fonctionnel.
+    # ---------------------------------------------------------------------
+    EMAIL_PROVIDER: str = "console"  # console | smtp | sendgrid
+    EMAIL_FROM: str = "AutoEdit <noreply@autoedit.app>"
+    EMAIL_SMTP_HOST: Optional[str] = None
+    EMAIL_SMTP_PORT: int = 587
+    EMAIL_SMTP_USER: Optional[str] = None
+    EMAIL_SMTP_PASSWORD: Optional[str] = None
+    SENDGRID_API_KEY: Optional[str] = None
+    PUBLIC_APP_URL: str = "http://localhost"
+
+    # ---------------------------------------------------------------------
+    # Observabilite (Sentry) — optionnel
+    # ---------------------------------------------------------------------
+    SENTRY_DSN: Optional[str] = None
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.1
+
+    # ---------------------------------------------------------------------
+    # Compte ops
+    # ---------------------------------------------------------------------
+    SUPPORT_EMAIL: str = "support@autoedit.app"
+
+    @property
+    def is_production(self) -> bool:
+        return self.APP_ENV == "production"
+
     @field_validator("PIPELINE_VERSION")
     @classmethod
     def validate_pipeline_version(cls, v: str) -> str:
@@ -114,14 +146,32 @@ class Settings(BaseSettings):
             raise ValueError(f"VIDEO_RENDERER must be one of: {VALID_RENDERERS}")
         return v
 
+    @field_validator("APP_ENV")
+    @classmethod
+    def validate_app_env(cls, v: str) -> str:
+        if v not in VALID_APP_ENVS:
+            raise ValueError(f"APP_ENV must be one of: {VALID_APP_ENVS}")
+        return v
+
     @field_validator("SECRET_KEY")
     @classmethod
-    def validate_secret_key(cls, v: str) -> str:
-        if not v or v == "dev-secret-key-change-in-production":
+    def validate_secret_key(cls, v: str, info) -> str:
+        env = info.data.get("APP_ENV", "development") if info and info.data else "development"
+        is_dev_placeholder = (
+            not v
+            or v == "dev-secret-key-change-in-production"
+            or v.startswith("replace-me")
+        )
+        if is_dev_placeholder:
+            if env != "development":
+                raise ValueError(
+                    "SECRET_KEY is required for staging/production. "
+                    "Generate one with `openssl rand -hex 32` and set it in your environment."
+                )
             generated = secrets.token_urlsafe(32)
             logger.warning(
-                "SECRET_KEY not set or insecure. Generating random key for this session. "
-                "Set SECRET_KEY environment variable for production!"
+                "[dev only] SECRET_KEY not set. A random key was generated for this process. "
+                "All JWT tokens will be invalidated on restart. Set SECRET_KEY in .env."
             )
             return generated
         if len(v) < 32:

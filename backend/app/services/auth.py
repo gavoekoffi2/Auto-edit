@@ -46,3 +46,33 @@ def decode_token(token: str) -> Optional[dict]:
         return payload
     except JWTError:
         return None
+
+
+async def revoke_token(jti: str, ttl_seconds: int) -> None:
+    """Add a token jti to the Redis blacklist for `ttl_seconds`.
+
+    Le worker FastAPI verifiera la blacklist a chaque requete authentifiee.
+    Sans Redis, cette fonction echoue silencieusement (l'access token
+    expire toujours apres ACCESS_TOKEN_EXPIRE_MINUTES de toute facon).
+    """
+    if not jti or ttl_seconds <= 0:
+        return
+    try:
+        from app.services.rate_limiter import _get_redis
+        r = await _get_redis()
+        await r.setex(f"revoked_jti:{jti}", ttl_seconds, "1")
+    except Exception as e:
+        logger.warning("Could not revoke token jti=%s: %s", jti, e)
+
+
+async def is_token_revoked(jti: str) -> bool:
+    if not jti:
+        return False
+    try:
+        from app.services.rate_limiter import _get_redis
+        r = await _get_redis()
+        val = await r.get(f"revoked_jti:{jti}")
+        return val is not None
+    except Exception:
+        # Si Redis tombe, on autorise — l'access token a une duree de vie courte
+        return False

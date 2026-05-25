@@ -993,35 +993,35 @@ function Testimonials() {
   const items = [
     {
       quote:
-        "Avant AutoEdit je publiais une vidéo TikTok par semaine. Aujourd&apos;hui c&apos;est 5. Mon audience a triplé en deux mois.",
+        'Avant AutoEdit je publiais une vidéo TikTok par semaine. Aujourd’hui c’est 5. Mon audience a triplé en deux mois.',
       name: 'Aïsha K.',
       role: 'Créatrice de contenu',
       avatar: PORTRAITS.aisha,
     },
     {
       quote:
-        "Je tourne mes plats le matin, AutoEdit monte pendant que je sers le midi. Mes ventes du soir ont augmenté de 40%.",
+        'Je tourne mes plats le matin, AutoEdit monte pendant que je sers le midi. Mes ventes du soir ont augmenté de 40 %.',
       name: 'Kossi A.',
       role: 'Restaurateur',
       avatar: PORTRAITS.kossi,
     },
     {
       quote:
-        "J&apos;ai arrêté de payer 50 000 FCFA par vidéo à mon monteur. Et la qualité est meilleure.",
+        'J’ai arrêté de payer 50 000 FCFA par vidéo à mon monteur. Et la qualité est meilleure.',
       name: 'Fatima D.',
       role: 'Coach business',
       avatar: PORTRAITS.fatima,
     },
     {
       quote:
-        "Mes formations sont enfin regardées jusqu&apos;à la fin. Les sous-titres dynamiques changent tout.",
+        'Mes formations sont enfin regardées jusqu’à la fin. Les sous-titres dynamiques changent tout.',
       name: 'Yannick T.',
       role: 'Formateur en ligne',
       avatar: PORTRAITS.yannick,
     },
     {
       quote:
-        "L&apos;IA comprend mon contenu et choisit des visuels qui matchent. Mes Reels font 10x plus de vues.",
+        'L’IA comprend mon contenu et choisit des visuels qui matchent. Mes Reels font 10x plus de vues.',
       name: 'Awa M.',
       role: 'Influenceuse beauté',
       avatar: PORTRAITS.awa,
@@ -1062,10 +1062,7 @@ function Testimonials() {
                     <Star key={k} className="w-4 h-4 fill-current" />
                   ))}
                 </div>
-                <p
-                  className="text-white/85 leading-relaxed"
-                  dangerouslySetInnerHTML={{ __html: t.quote.replace(/&apos;/g, '’') }}
-                />
+                <p className="text-white/85 leading-relaxed">{t.quote}</p>
                 <div className="flex items-center gap-3 mt-auto pt-4 border-t border-white/5">
                   <img
                     src={t.avatar}
@@ -1166,15 +1163,15 @@ function Faq() {
     },
     {
       q: 'Combien de temps prend un montage ?',
-      a: "Compte environ 5 minutes pour une vidéo de 1 minute, et 10 à 15 minutes pour une vidéo de 5 minutes. Tu reçois une notification quand c&apos;est prêt.",
+      a: 'Compte environ 5 minutes pour une vidéo de 1 minute, et 10 à 15 minutes pour une vidéo de 5 minutes. Tu reçois une notification quand c’est prêt.',
     },
     {
       q: 'Quels formats vidéo sont supportés ?',
-      a: 'MP4, MOV, WebM, AVI, MKV, FLV, WMV. Taille maximale 500 Mo par fichier. L&apos;export se fait toujours en MP4 H.264 compatible TikTok / Reels / Shorts.',
+      a: 'MP4, MOV, WebM, AVI, MKV, FLV, WMV. Taille maximale 500 Mo par fichier. L’export se fait toujours en MP4 H.264 compatible TikTok / Reels / Shorts.',
     },
     {
       q: 'Mes vidéos sont-elles privées ?',
-      a: "Oui. Tes vidéos appartiennent uniquement à toi. Nous ne les utilisons jamais pour entraîner nos modèles. Tu peux les supprimer définitivement à tout moment depuis ton dashboard.",
+      a: 'Oui. Tes vidéos appartiennent uniquement à toi. Nous ne les utilisons jamais pour entraîner nos modèles. Tu peux les supprimer définitivement à tout moment depuis ton dashboard.',
     },
     {
       q: 'Puis-je payer avec Mobile Money ?',
@@ -1182,7 +1179,7 @@ function Faq() {
     },
     {
       q: 'Puis-je annuler à tout moment ?',
-      a: 'Oui. Aucun engagement. Annule en un clic depuis ton dashboard. L&apos;abonnement reste actif jusqu&apos;à la fin du mois payé.',
+      a: 'Oui. Aucun engagement. Annule en un clic depuis ton dashboard. L’abonnement reste actif jusqu’à la fin du mois payé.',
     },
   ]
   return (
@@ -1230,9 +1227,7 @@ function FaqItem(props: { q: string; a: string }) {
         className="w-full flex items-center justify-between text-left px-5 py-4 gap-4"
         aria-expanded={open}
       >
-        <span className="font-medium">
-          <span dangerouslySetInnerHTML={{ __html: props.q.replace(/&apos;/g, '’') }} />
-        </span>
+        <span className="font-medium">{props.q}</span>
         <ChevronDown
           className={`w-5 h-5 text-white/50 transition-transform ${open ? 'rotate-180' : ''}`}
         />
@@ -1247,10 +1242,9 @@ function FaqItem(props: { q: string; a: string }) {
             transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
             className="overflow-hidden"
           >
-            <div
-              className="px-5 pb-5 text-white/70 leading-relaxed text-sm"
-              dangerouslySetInnerHTML={{ __html: props.a.replace(/&apos;/g, '’') }}
-            />
+            <div className="px-5 pb-5 text-white/70 leading-relaxed text-sm">
+              {props.a}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

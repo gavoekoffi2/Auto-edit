@@ -11,6 +11,20 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Initialise Sentry des le bootstrap si configure (et pas en dev local).
+if settings.SENTRY_DSN:
+    try:
+        import sentry_sdk
+        sentry_sdk.init(
+            dsn=settings.SENTRY_DSN,
+            environment=settings.APP_ENV,
+            traces_sample_rate=settings.SENTRY_TRACES_SAMPLE_RATE,
+            send_default_pii=False,
+        )
+        logger.info("Sentry initialized (env=%s)", settings.APP_ENV)
+    except Exception as e:
+        logger.warning("Sentry init failed: %s", e)
+
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
     """Add unique request ID to each request for tracing."""
