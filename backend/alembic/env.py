@@ -8,9 +8,11 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Override URL from environment
-db_url = os.environ.get("DATABASE_URL_SYNC", config.get_main_option("sqlalchemy.url"))
-config.set_main_option("sqlalchemy.url", db_url)
+# Override URL from environment.
+# Alembic stores this in ConfigParser, where '%' triggers interpolation.
+# URL-encoded passwords (e.g. %40 for '@') must therefore be escaped as '%%'.
+db_url = os.environ.get("DATABASE_URL_SYNC") or config.get_main_option("sqlalchemy.url")
+config.set_main_option("sqlalchemy.url", db_url.replace("%", "%%"))
 
 from app.db.base import Base
 from app.models import User, Video, Job, Payment
