@@ -40,7 +40,10 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-autoedit}:${POSTGRES_PASSWORD:-autoedit}@postgres:5432/${POSTGRES_DB:-autoedit}
       - DATABASE_URL_SYNC=postgresql://${POSTGRES_USER:-autoedit}:${POSTGRES_PASSWORD:-autoedit}@postgres:5432/${POSTGRES_DB:-autoedit}
       - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=${SECRET_KEY:-}
+      # IMPORTANT: SECRET_KEY DOIT être défini dans `.env`.
+      # Sans valeur stable, le backend genere une cle aleatoire au demarrage et
+      # toutes les sessions JWT sont invalidees a chaque restart.
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required (see .env.example)}
       - CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://localhost
       - UPLOAD_DIR=/app/uploads
       - MAX_UPLOAD_SIZE_MB=500
@@ -48,6 +51,17 @@ services:
       - FEDAPAY_ENV=sandbox
       - FEDAPAY_SECRET_KEY=${FEDAPAY_SECRET_KEY:-}
       - FEDAPAY_PUBLIC_KEY=${FEDAPAY_PUBLIC_KEY:-}
+      # Pipeline V2 / B-roll IA — toutes optionnelles
+      - PIPELINE_VERSION=${PIPELINE_VERSION:-v1}
+      - IMAGE_GENERATION_PROVIDER=${IMAGE_GENERATION_PROVIDER:-openrouter}
+      - IMAGE_GENERATION_MODEL=${IMAGE_GENERATION_MODEL:-google/gemini-2.5-flash-image-preview}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - BROLL_STYLE=${BROLL_STYLE:-african_business_premium}
+      - VIDEO_RENDERER=${VIDEO_RENDERER:-ffmpeg}
+      - ENABLE_AI_BROLL=${ENABLE_AI_BROLL:-true}
+      - ENABLE_DYNAMIC_CAPTIONS=${ENABLE_DYNAMIC_CAPTIONS:-true}
+      - ENABLE_SFX=${ENABLE_SFX:-true}
+      - ENABLE_MUSIC=${ENABLE_MUSIC:-true}
     depends_on:
       postgres:
         condition: service_healthy
@@ -64,9 +78,23 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-autoedit}:${POSTGRES_PASSWORD:-autoedit}@postgres:5432/${POSTGRES_DB:-autoedit}
       - DATABASE_URL_SYNC=postgresql://${POSTGRES_USER:-autoedit}:${POSTGRES_PASSWORD:-autoedit}@postgres:5432/${POSTGRES_DB:-autoedit}
       - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=${SECRET_KEY:-}
+      # IMPORTANT: SECRET_KEY DOIT être défini dans `.env`.
+      # Sans valeur stable, le backend genere une cle aleatoire au demarrage et
+      # toutes les sessions JWT sont invalidees a chaque restart.
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required (see .env.example)}
       - UPLOAD_DIR=/app/uploads
       - WHISPER_MODEL=base
+      # Pipeline V2 / B-roll IA — toutes optionnelles
+      - PIPELINE_VERSION=${PIPELINE_VERSION:-v1}
+      - IMAGE_GENERATION_PROVIDER=${IMAGE_GENERATION_PROVIDER:-openrouter}
+      - IMAGE_GENERATION_MODEL=${IMAGE_GENERATION_MODEL:-google/gemini-2.5-flash-image-preview}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - BROLL_STYLE=${BROLL_STYLE:-african_business_premium}
+      - VIDEO_RENDERER=${VIDEO_RENDERER:-ffmpeg}
+      - ENABLE_AI_BROLL=${ENABLE_AI_BROLL:-true}
+      - ENABLE_DYNAMIC_CAPTIONS=${ENABLE_DYNAMIC_CAPTIONS:-true}
+      - ENABLE_SFX=${ENABLE_SFX:-true}
+      - ENABLE_MUSIC=${ENABLE_MUSIC:-true}
     depends_on:
       postgres:
         condition: service_healthy

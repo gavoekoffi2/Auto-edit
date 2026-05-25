@@ -1,16 +1,24 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Zap, Mic, VolumeX, Film, Sparkles, Loader2, ArrowLeft } from 'lucide-react'
+import {
+  Zap, Mic, VolumeX, Film, Sparkles, Loader2, ArrowLeft,
+  Image as ImageIcon, Music, Subtitles, Smartphone, Megaphone,
+} from 'lucide-react'
 import VideoPlayer from '../components/video/VideoPlayer'
 import Timeline from '../components/video/Timeline'
 import JobProgress from '../components/video/JobProgress'
 import { getVideo, getStreamUrl } from '../api/videos'
-import { createJob, listJobs } from '../api/jobs'
+import { createJob, listJobs, type JobOptions, type PipelineVersion } from '../api/jobs'
 import { toast } from '../components/ui/Toast'
 
-type EditMode = 'tiktok' | 'youtube' | 'podcast'
+type EditMode =
+  | 'tiktok_viral'
+  | 'business_premium_african'
+  | 'publicite_locale'
+  | 'podcast_propre'
+  | 'formation_educative'
 
-interface Video {
+interface VideoMeta {
   id: string
   title: string
   duration_s: number | null
@@ -18,21 +26,130 @@ interface Video {
   status: string
 }
 
-const MODES = [
-  { id: 'tiktok' as const, name: 'TikTok', icon: '🔥', desc: 'Vertical, fast, subtitled' },
-  { id: 'youtube' as const, name: 'YouTube', icon: '🎥', desc: 'Optimized engagement' },
-  { id: 'podcast' as const, name: 'Podcast', icon: '🎙️', desc: 'Audio cleanup' },
-] as const
+interface ModeDef {
+  id: EditMode
+  name: string
+  icon: string
+  desc: string
+  defaults: JobOptions
+}
+
+const MODES: ModeDef[] = [
+  {
+    id: 'tiktok_viral',
+    name: 'TikTok viral',
+    icon: '🔥',
+    desc: 'Vertical 9:16, captions animées, B-roll IA, CTA final',
+    defaults: {
+      remove_silence: true,
+      dynamic_captions: true,
+      ai_broll: true,
+      music: true,
+      sfx: true,
+      vertical_9_16: true,
+      final_cta: true,
+      broll_style: 'tiktok_viral',
+    },
+  },
+  {
+    id: 'business_premium_african',
+    name: 'Business premium 🇸🇳🇨🇮🇹🇬',
+    icon: '💼',
+    desc: 'Style africain moderne, B-roll premium, musique sobre',
+    defaults: {
+      remove_silence: true,
+      dynamic_captions: true,
+      ai_broll: true,
+      music: true,
+      sfx: false,
+      vertical_9_16: true,
+      final_cta: true,
+      broll_style: 'african_business_premium',
+    },
+  },
+  {
+    id: 'publicite_locale',
+    name: 'Publicité locale',
+    icon: '📣',
+    desc: 'Restaurant, boutique, service local — CTA clair',
+    defaults: {
+      remove_silence: true,
+      dynamic_captions: true,
+      ai_broll: true,
+      music: true,
+      sfx: true,
+      vertical_9_16: true,
+      final_cta: true,
+      broll_style: 'publicite_locale',
+    },
+  },
+  {
+    id: 'podcast_propre',
+    name: 'Podcast propre',
+    icon: '🎙️',
+    desc: 'Suppression silences uniquement, audio préservé',
+    defaults: {
+      remove_silence: true,
+      dynamic_captions: false,
+      ai_broll: false,
+      music: false,
+      sfx: false,
+      vertical_9_16: false,
+      final_cta: false,
+      broll_style: 'podcast_propre',
+    },
+  },
+  {
+    id: 'formation_educative',
+    name: 'Formation / éducatif',
+    icon: '🎓',
+    desc: 'Captions lisibles, B-roll discret, horizontal',
+    defaults: {
+      remove_silence: true,
+      dynamic_captions: true,
+      ai_broll: true,
+      music: false,
+      sfx: false,
+      vertical_9_16: false,
+      final_cta: false,
+      broll_style: 'formation_educative',
+    },
+  },
+]
+
+const PIPELINE_LABEL: Record<PipelineVersion, string> = {
+  v1: 'Pipeline classique',
+  v2: 'Pipeline IA V2 (B-roll africain)',
+}
+
+interface Scenes {
+  scenes: { start: number; end: number; duration: number }[]
+}
+
+function isScenes(value: unknown): value is Scenes {
+  if (!value || typeof value !== 'object') return false
+  const v = value as { scenes?: unknown }
+  return Array.isArray(v.scenes)
+}
 
 export default function Editor() {
   const { videoId } = useParams<{ videoId: string }>()
   const navigate = useNavigate()
-  const [video, setVideo] = useState<Video | null>(null)
+  const [video, setVideo] = useState<VideoMeta | null>(null)
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
-  const [selectedMode, setSelectedMode] = useState<EditMode>('youtube')
+  const [selectedMode, setSelectedMode] = useState<EditMode>('business_premium_african')
   const [processing, setProcessing] = useState(false)
   const [completedResult, setCompletedResult] = useState<Record<string, unknown> | null>(null)
   const [loadError, setLoadError] = useState('')
+  const [pipelineVersion, setPipelineVersion] = useState<PipelineVersion>('v2')
+  const [options, setOptions] = useState<JobOptions>(MODES[1].defaults)
+  const [ctaText, setCtaText] = useState('')
+  const [logoText, setLogoText] = useState('')
+
+  useEffect(() => {
+    const mode = MODES.find((m) => m.id === selectedMode)
+    if (mode) setOptions(mode.defaults)
+  }, [selectedMode])
 
   useEffect(() => {
     if (!videoId) return
@@ -46,56 +163,64 @@ export default function Editor() {
         ])
         if (cancelled) return
         setVideo(videoData)
-
-        // Check for active or completed jobs
-        const activeJob = jobs.find((j: { status: string }) => j.status === 'processing' || j.status === 'pending')
+        const activeJob = jobs.find(
+          (j: { status: string }) => j.status === 'processing' || j.status === 'pending',
+        )
         if (activeJob) {
           setActiveJobId(activeJob.id)
           setProcessing(true)
         }
         const completed = jobs.find((j: { status: string }) => j.status === 'completed')
-        if (completed?.result) {
-          setCompletedResult(completed.result)
-        }
+        if (completed?.result) setCompletedResult(completed.result)
       } catch {
-        if (!cancelled) setLoadError('Failed to load video')
+        if (!cancelled) setLoadError('Impossible de charger la vidéo')
       }
     }
-
     load()
     return () => { cancelled = true }
   }, [videoId])
 
+  const toggle = (key: keyof JobOptions) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setOptions((prev) => ({ ...prev, [key]: e.target.checked }))
+  }
+
   const handleAutoEdit = useCallback(async () => {
     if (!videoId) return
     setProcessing(true)
-
     try {
+      const payloadOptions: JobOptions = {
+        ...options,
+        cta_text: ctaText.trim() || undefined,
+        logo_text: logoText.trim() || undefined,
+      }
       const job = await createJob({
         video_id: videoId,
         job_type: 'pipeline',
         mode: selectedMode,
+        pipeline_version: pipelineVersion,
+        options: payloadOptions,
       })
       setActiveJobId(job.id)
-      toast('info', `Processing started in ${selectedMode} mode`)
+      toast('info', `Traitement lancé : ${MODES.find((m) => m.id === selectedMode)?.name}`)
     } catch (err: unknown) {
       setProcessing(false)
-      let msg = 'Failed to start processing'
+      let msg = 'Impossible de démarrer le traitement'
       if (err && typeof err === 'object' && 'response' in err) {
-        msg = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail || msg
+        msg =
+          (err as { response?: { data?: { detail?: string } } }).response?.data?.detail || msg
       }
       toast('error', msg)
     }
-  }, [videoId, selectedMode])
+  }, [videoId, selectedMode, options, ctaText, logoText, pipelineVersion])
 
-  const handleJobComplete = useCallback((result: Record<string, unknown>) => {
-    setCompletedResult(result)
-    setProcessing(false)
-    // Reload video data
-    if (videoId) {
-      getVideo(videoId).then(setVideo).catch(() => {})
-    }
-  }, [videoId])
+  const handleJobComplete = useCallback(
+    (result: Record<string, unknown>) => {
+      setCompletedResult(result)
+      setProcessing(false)
+      if (videoId) getVideo(videoId).then(setVideo).catch(() => { /* noop */ })
+    },
+    [videoId],
+  )
 
   const handleRetry = useCallback(() => {
     setActiveJobId(null)
@@ -108,7 +233,7 @@ export default function Editor() {
       <div className="max-w-7xl mx-auto px-4 py-8 text-center">
         <p className="text-red-400 mb-4">{loadError}</p>
         <button onClick={() => navigate('/dashboard')} className="btn-secondary">
-          Back to Dashboard
+          Retour au dashboard
         </button>
       </div>
     )
@@ -122,7 +247,7 @@ export default function Editor() {
     )
   }
 
-  const scenes = completedResult?.scenes as { scenes: { start: number; end: number; duration: number }[] } | undefined
+  const scenes = isScenes(completedResult?.scenes) ? completedResult!.scenes as Scenes : undefined
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -130,7 +255,7 @@ export default function Editor() {
         <button
           onClick={() => navigate('/dashboard')}
           className="text-dark-400 hover:text-white transition-colors"
-          aria-label="Back to dashboard"
+          aria-label="Retour au dashboard"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
@@ -140,25 +265,19 @@ export default function Editor() {
             {video.status}
             {' · '}
             {(video.size_bytes / (1024 * 1024)).toFixed(1)} MB
-            {video.duration_s != null && ` · ${Math.floor(video.duration_s / 60)}:${Math.floor(video.duration_s % 60).toString().padStart(2, '0')}`}
+            {video.duration_s != null && (
+              ` · ${Math.floor(video.duration_s / 60)}:${Math.floor(video.duration_s % 60).toString().padStart(2, '0')}`
+            )}
           </p>
         </div>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
-        {/* Video Preview */}
         <div className="lg:col-span-2 space-y-4">
           <VideoPlayer src={getStreamUrl(videoId!)} />
-
-          {/* Timeline */}
-          {scenes?.scenes && scenes.scenes.length > 0 && (
-            <Timeline
-              scenes={scenes.scenes}
-              totalDuration={video.duration_s || 0}
-            />
+          {scenes && scenes.scenes.length > 0 && (
+            <Timeline scenes={scenes.scenes} totalDuration={video.duration_s || 0} />
           )}
-
-          {/* Job Progress */}
           {activeJobId && processing && (
             <JobProgress
               jobId={activeJobId}
@@ -168,21 +287,43 @@ export default function Editor() {
           )}
         </div>
 
-        {/* Controls Sidebar */}
         <div className="space-y-4">
-          {/* Mode Selection */}
+          {/* Pipeline version */}
           <div className="card">
-            <h3 className="font-semibold mb-3">Editing Mode</h3>
+            <h3 className="font-semibold mb-3">Moteur</h3>
+            <div className="flex gap-2">
+              {(['v2', 'v1'] as PipelineVersion[]).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setPipelineVersion(v)}
+                  className={`flex-1 px-3 py-2 rounded-lg border text-sm transition ${
+                    pipelineVersion === v
+                      ? 'border-primary-500 bg-primary-500/10'
+                      : 'border-dark-700 hover:border-dark-500'
+                  }`}
+                >
+                  {PIPELINE_LABEL[v]}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-dark-400 mt-2">
+              V2 ajoute le B-roll IA orienté Afrique francophone, captions dynamiques et CTA.
+            </p>
+          </div>
+
+          {/* Mode */}
+          <div className="card">
+            <h3 className="font-semibold mb-3">Style de montage</h3>
             <div className="space-y-2">
               {MODES.map((mode) => (
                 <button
                   key={mode.id}
                   onClick={() => setSelectedMode(mode.id)}
-                  className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-all text-left
-                    ${selectedMode === mode.id
+                  className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-all text-left ${
+                    selectedMode === mode.id
                       ? 'border-primary-500 bg-primary-500/10'
                       : 'border-dark-700 hover:border-dark-500'
-                    }`}
+                  }`}
                 >
                   <span className="text-2xl">{mode.icon}</span>
                   <div>
@@ -194,26 +335,91 @@ export default function Editor() {
             </div>
           </div>
 
-          {/* Pipeline Steps */}
+          {/* Toggles */}
           <div className="card">
-            <h3 className="font-semibold mb-3">Processing Steps</h3>
+            <h3 className="font-semibold mb-3">Options</h3>
+            <ToggleRow
+              icon={<VolumeX className="w-4 h-4 text-primary-400" />}
+              label="Supprimer les silences"
+              checked={!!options.remove_silence}
+              onChange={toggle('remove_silence')}
+            />
+            <ToggleRow
+              icon={<Subtitles className="w-4 h-4 text-primary-400" />}
+              label="Sous-titres dynamiques"
+              checked={!!options.dynamic_captions}
+              onChange={toggle('dynamic_captions')}
+            />
+            <ToggleRow
+              icon={<ImageIcon className="w-4 h-4 text-primary-400" />}
+              label="B-roll IA (Afrique)"
+              checked={!!options.ai_broll}
+              onChange={toggle('ai_broll')}
+            />
+            <ToggleRow
+              icon={<Music className="w-4 h-4 text-primary-400" />}
+              label="Musique"
+              checked={!!options.music}
+              onChange={toggle('music')}
+            />
+            <ToggleRow
+              icon={<Sparkles className="w-4 h-4 text-primary-400" />}
+              label="Effets sonores (SFX)"
+              checked={!!options.sfx}
+              onChange={toggle('sfx')}
+            />
+            <ToggleRow
+              icon={<Smartphone className="w-4 h-4 text-primary-400" />}
+              label="Format vertical 9:16"
+              checked={!!options.vertical_9_16}
+              onChange={toggle('vertical_9_16')}
+            />
+            <ToggleRow
+              icon={<Megaphone className="w-4 h-4 text-primary-400" />}
+              label="CTA final"
+              checked={!!options.final_cta}
+              onChange={toggle('final_cta')}
+            />
+          </div>
+
+          {/* Branding */}
+          <div className="card space-y-3">
+            <h3 className="font-semibold">Branding (optionnel)</h3>
+            <div>
+              <label className="text-xs text-dark-400 block mb-1">Texte intro / logo</label>
+              <input
+                type="text"
+                maxLength={60}
+                value={logoText}
+                onChange={(e) => setLogoText(e.target.value)}
+                placeholder="Ex. Lance ton e-commerce"
+                className="w-full bg-dark-800 border border-dark-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-primary-500"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-dark-400 block mb-1">Texte du CTA final</label>
+              <input
+                type="text"
+                maxLength={120}
+                value={ctaText}
+                onChange={(e) => setCtaText(e.target.value)}
+                placeholder="Ex. Abonne-toi 🔔"
+                className="w-full bg-dark-800 border border-dark-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-primary-500"
+              />
+            </div>
+          </div>
+
+          {/* Pipeline steps preview */}
+          <div className="card">
+            <h3 className="font-semibold mb-3">Étapes du pipeline</h3>
             <div className="space-y-2 text-sm">
-              <div className="flex items-center gap-2 text-dark-300">
-                <Mic className="w-4 h-4 text-primary-400" />
-                AI Transcription (Whisper)
-              </div>
-              <div className="flex items-center gap-2 text-dark-300">
-                <VolumeX className="w-4 h-4 text-primary-400" />
-                Silence Removal (auto-editor)
-              </div>
-              <div className="flex items-center gap-2 text-dark-300">
-                <Film className="w-4 h-4 text-primary-400" />
-                Scene Detection (PySceneDetect)
-              </div>
-              <div className="flex items-center gap-2 text-dark-300">
-                <Sparkles className="w-4 h-4 text-primary-400" />
-                Effects & Subtitles (MoviePy)
-              </div>
+              <PipelineStep icon={<Mic className="w-4 h-4 text-primary-400" />} label="Transcription Whisper (mot-par-mot)" />
+              <PipelineStep icon={<VolumeX className="w-4 h-4 text-primary-400" />} label="Détection silences & filler words" />
+              <PipelineStep icon={<Film className="w-4 h-4 text-primary-400" />} label="EDL — plan de coupes" />
+              {options.ai_broll && (
+                <PipelineStep icon={<ImageIcon className="w-4 h-4 text-primary-400" />} label="B-roll IA africain (OpenRouter)" />
+              )}
+              <PipelineStep icon={<Sparkles className="w-4 h-4 text-primary-400" />} label="Captions, musique, export FFmpeg" />
             </div>
           </div>
 
@@ -226,48 +432,80 @@ export default function Editor() {
             {processing ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
-                Processing...
+                Traitement…
               </>
             ) : (
               <>
                 <Zap className="w-5 h-5" />
-                AutoEdit Now
+                Lancer AutoEdit
               </>
             )}
           </button>
 
-          {/* Transcription result */}
           {!!completedResult?.transcription && (
             <div className="card">
               <h3 className="font-semibold mb-2">Transcription</h3>
               <p className="text-sm text-dark-400 max-h-40 overflow-y-auto leading-relaxed">
-                {(completedResult.transcription as { text: string }).text}
+                {typeof (completedResult.transcription as { text?: unknown }).text === 'string'
+                  ? (completedResult.transcription as { text: string }).text
+                  : ''}
               </p>
             </div>
           )}
 
-          {/* Steps summary */}
-          {!!completedResult?.steps_completed && (
+          {Array.isArray(completedResult?.steps_completed) && (
             <div className="card">
-              <h3 className="font-semibold mb-2">Processing Summary</h3>
+              <h3 className="font-semibold mb-2">Résumé</h3>
               <div className="text-sm space-y-1">
-                {(completedResult.steps_completed as string[]).map((step) => (
+                {(completedResult!.steps_completed as string[]).map((step) => (
                   <div key={step} className="flex items-center gap-2 text-emerald-400">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                    {step.replace('_', ' ')}
+                    {step.replace(/_/g, ' ')}
                   </div>
                 ))}
-                {(completedResult.steps_failed as string[] | undefined)?.map((step) => (
-                  <div key={step} className="flex items-center gap-2 text-red-400">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
-                    {step.replace('_', ' ')} (failed)
-                  </div>
-                ))}
+                {Array.isArray(completedResult?.steps_failed) &&
+                  (completedResult!.steps_failed as string[]).map((step) => (
+                    <div key={step} className="flex items-center gap-2 text-red-400">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+                      {step.replace(/_/g, ' ')} (échec)
+                    </div>
+                  ))}
               </div>
             </div>
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+function ToggleRow(props: {
+  icon: React.ReactNode
+  label: string
+  checked: boolean
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+}) {
+  return (
+    <label className="flex items-center justify-between py-2 cursor-pointer">
+      <span className="flex items-center gap-2 text-sm text-dark-200">
+        {props.icon}
+        {props.label}
+      </span>
+      <input
+        type="checkbox"
+        checked={props.checked}
+        onChange={props.onChange}
+        className="w-4 h-4 accent-primary-500"
+      />
+    </label>
+  )
+}
+
+function PipelineStep(props: { icon: React.ReactNode; label: string }) {
+  return (
+    <div className="flex items-center gap-2 text-dark-300">
+      {props.icon}
+      {props.label}
     </div>
   )
 }

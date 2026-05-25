@@ -49,17 +49,36 @@ AutoEdit/
 
 ## Processing Pipeline
 
+Deux pipelines coexistent — opt-in via `pipeline_version` sur le job:
+
+**V1 (stable, par défaut):**
 ```
-Upload → Whisper AI Transcription → Silence Removal → Scene Detection → Effects → Subtitles → Export
+Upload → Whisper → auto-editor (silences) → PySceneDetect → MoviePy effects → Subtitles → Export
 ```
 
-### Editing Modes
+**V2 (IA Afrique francophone — voir [docs/VIDEO_PIPELINE_ARCHITECTURE.md](docs/VIDEO_PIPELINE_ARCHITECTURE.md)):**
+```
+Upload → Whisper (word-level) → Silence detect → EDL (filler words FR/EN)
+       → BrollPlanner (Afrique) → OpenRouter image gen → Ken Burns FFmpeg
+       → Overlays (intro/CTA) → FFmpeg final render (9:16 + captions + music)
+```
+
+### Editing Modes (V2)
 
 | Mode | Description |
 |------|-------------|
-| **TikTok** | Vertical crop (9:16), fast cuts, auto-subtitles, 60s max |
-| **YouTube** | Optimized engagement, silence removal, scene chapters |
-| **Podcast** | Audio cleanup, silence removal, full transcription |
+| **TikTok viral** | 9:16 + captions animées + B-roll IA + CTA |
+| **Business premium 🇸🇳🇨🇮🇹🇬** | Style africain moderne + musique sobre |
+| **Publicité locale** | Restaurant / boutique / service local + CTA clair |
+| **Podcast propre** | Suppression silences uniquement |
+| **Formation / éducatif** | Captions lisibles + B-roll discret + horizontal |
+
+Les modes V1 historiques (`tiktok`, `youtube`, `podcast`) restent supportés.
+
+### Audit & architecture
+
+- [`AUTOEDIT_AUDIT.md`](AUTOEDIT_AUDIT.md) — audit technique complet, bugs corrigés, manques.
+- [`docs/VIDEO_PIPELINE_ARCHITECTURE.md`](docs/VIDEO_PIPELINE_ARCHITECTURE.md) — pipeline V2, contrats, EDL, intégration HyperFrames / Remotion / video-use / OpenRouter.
 
 ## Quick Start
 
@@ -134,12 +153,30 @@ npm run dev
 
 ## Environment Variables
 
-See `.env.example` for all configuration options:
-- `DATABASE_URL` - PostgreSQL connection
-- `REDIS_URL` - Redis for Celery
-- `SECRET_KEY` - JWT signing key
-- `FEDAPAY_SECRET_KEY` - Payment provider
-- `WHISPER_MODEL` - Whisper model size (base, small, medium, large)
+Voir `.env.example` pour la liste complète. Essentielles :
+
+- `DATABASE_URL`, `DATABASE_URL_SYNC` — PostgreSQL
+- `REDIS_URL` — Redis pour Celery
+- `SECRET_KEY` — JWT signing key (**obligatoire en prod**, min 32 chars)
+- `FEDAPAY_SECRET_KEY`, `FEDAPAY_PUBLIC_KEY` — paiement
+- `WHISPER_MODEL` — taille du modèle (`tiny`/`base`/`small`/`medium`/`large`)
+
+Pipeline V2 (B-roll IA Afrique) :
+
+- `PIPELINE_VERSION=v1|v2` — pipeline par défaut côté worker
+- `OPENROUTER_API_KEY` — clé API OpenRouter (**jamais en clair dans le repo**)
+- `IMAGE_GENERATION_PROVIDER=openrouter` / `IMAGE_GENERATION_MODEL=google/gemini-2.5-flash-image-preview`
+- `BROLL_STYLE=african_business_premium`
+- `VIDEO_RENDERER=ffmpeg|hyperframes|remotion`
+- `ENABLE_AI_BROLL`, `ENABLE_DYNAMIC_CAPTIONS`, `ENABLE_MUSIC`, `ENABLE_SFX`
+
+## Tests & smoke check
+
+```bash
+cd backend
+python -m pytest tests/ -q              # 8 tests (EDL, broll planner, providers)
+python scripts/smoke_pipeline_v2.py     # smoke import + planner end-to-end
+```
 
 ## License
 
