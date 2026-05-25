@@ -21,6 +21,104 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+_MODE_DEFINITIONS: list[dict] = [
+    {
+        "id": "tiktok_viral",
+        "name": "TikTok viral",
+        "icon": "🔥",
+        "description": "Vertical 9:16, captions animées, B-roll IA africain, CTA final",
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
+            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
+            "broll_style": "tiktok_viral",
+        },
+    },
+    {
+        "id": "business_premium_african",
+        "name": "Business premium 🇸🇳🇨🇮🇹🇬",
+        "icon": "💼",
+        "description": "Style africain moderne, B-roll premium, musique sobre",
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
+            "music": True, "sfx": False, "vertical_9_16": True, "final_cta": True,
+            "broll_style": "african_business_premium",
+        },
+    },
+    {
+        "id": "publicite_locale",
+        "name": "Publicité locale",
+        "icon": "📣",
+        "description": "Restaurant, boutique, service local — CTA clair",
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
+            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
+            "broll_style": "publicite_locale",
+        },
+    },
+    {
+        "id": "podcast_propre",
+        "name": "Podcast propre",
+        "icon": "🎙️",
+        "description": "Suppression silences uniquement, audio préservé",
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": False, "ai_broll": False,
+            "music": False, "sfx": False, "vertical_9_16": False, "final_cta": False,
+            "broll_style": "podcast_propre",
+        },
+    },
+    {
+        "id": "formation_educative",
+        "name": "Formation / éducatif",
+        "icon": "🎓",
+        "description": "Captions lisibles, B-roll discret, horizontal",
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
+            "music": False, "sfx": False, "vertical_9_16": False, "final_cta": False,
+            "broll_style": "formation_educative",
+        },
+    },
+    {
+        "id": "tiktok",
+        "name": "TikTok (legacy)",
+        "icon": "📱",
+        "description": "Pipeline v1 — vertical 9:16, sous-titres, cuts rapides",
+        "pipeline": "v1",
+        "defaults": {},
+    },
+    {
+        "id": "youtube",
+        "name": "YouTube (legacy)",
+        "icon": "📹",
+        "description": "Pipeline v1 — suppression silences + sous-titres",
+        "pipeline": "v1",
+        "defaults": {},
+    },
+    {
+        "id": "podcast",
+        "name": "Podcast (legacy)",
+        "icon": "🎧",
+        "description": "Pipeline v1 — audio uniquement",
+        "pipeline": "v1",
+        "defaults": {},
+    },
+]
+
+
+@router.get("/modes")
+async def list_modes():
+    """Liste les modes de montage disponibles + leurs defaults d'options.
+
+    Endpoint public — le frontend l'utilise pour rendre dynamiquement le
+    selecteur de modes sans dupliquer la liste cote TS.
+    """
+    return {"modes": _MODE_DEFINITIONS}
+
+
 @router.post("", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
 async def create_job(
     data: JobCreate,

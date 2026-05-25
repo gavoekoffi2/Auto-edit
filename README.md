@@ -137,7 +137,9 @@ npm run dev
 | GET | `/api/v1/videos/{id}/stream` | Yes | Stream video |
 | DELETE | `/api/v1/videos/{id}` | Yes | Delete video |
 | POST | `/api/v1/jobs` | Yes | Create processing job |
+| GET | `/api/v1/jobs/modes` | No | Catalogue des modes (v1 + v2) + defaults |
 | GET | `/api/v1/jobs/{id}` | Yes | Get job status |
+| POST | `/api/v1/jobs/{id}/cancel` | Yes | Cancel job |
 | GET | `/api/v1/jobs/{id}/download` | Yes | Download result |
 | POST | `/api/v1/payments/checkout` | Yes | Create checkout |
 | POST | `/api/v1/payments/webhook` | No | FedaPay webhook |
