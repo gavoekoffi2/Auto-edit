@@ -29,6 +29,21 @@ export async function createJob(data: JobCreateData) {
   return res.data
 }
 
+export interface ModeDescriptor {
+  id: string
+  name: string
+  icon: string
+  description: string
+  pipeline: PipelineVersion
+  defaults: JobOptions
+}
+
+export async function listModes(): Promise<ModeDescriptor[]> {
+  const res = await client.get('/jobs/modes')
+  const modes = (res.data?.modes ?? []) as ModeDescriptor[]
+  return modes
+}
+
 export async function getJob(id: string) {
   const res = await client.get(`/jobs/${id}`)
   return res.data

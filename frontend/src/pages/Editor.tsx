@@ -8,15 +8,17 @@ import VideoPlayer from '../components/video/VideoPlayer'
 import Timeline from '../components/video/Timeline'
 import JobProgress from '../components/video/JobProgress'
 import { getVideo, getStreamUrl } from '../api/videos'
-import { createJob, listJobs, type JobOptions, type PipelineVersion } from '../api/jobs'
+import {
+  createJob,
+  listJobs,
+  listModes,
+  type JobOptions,
+  type ModeDescriptor,
+  type PipelineVersion,
+} from '../api/jobs'
 import { toast } from '../components/ui/Toast'
 
-type EditMode =
-  | 'tiktok_viral'
-  | 'business_premium_african'
-  | 'publicite_locale'
-  | 'podcast_propre'
-  | 'formation_educative'
+type EditMode = string
 
 interface VideoMeta {
   id: string
@@ -26,93 +28,18 @@ interface VideoMeta {
   status: string
 }
 
-interface ModeDef {
-  id: EditMode
-  name: string
-  icon: string
-  desc: string
-  defaults: JobOptions
-}
-
-const MODES: ModeDef[] = [
-  {
-    id: 'tiktok_viral',
-    name: 'TikTok viral',
-    icon: '🔥',
-    desc: 'Vertical 9:16, captions animées, B-roll IA, CTA final',
-    defaults: {
-      remove_silence: true,
-      dynamic_captions: true,
-      ai_broll: true,
-      music: true,
-      sfx: true,
-      vertical_9_16: true,
-      final_cta: true,
-      broll_style: 'tiktok_viral',
-    },
-  },
+// Fallback statique utilise si l'endpoint /jobs/modes est indisponible.
+const FALLBACK_MODES: ModeDescriptor[] = [
   {
     id: 'business_premium_african',
     name: 'Business premium 🇸🇳🇨🇮🇹🇬',
     icon: '💼',
-    desc: 'Style africain moderne, B-roll premium, musique sobre',
+    description: 'Style africain moderne, B-roll premium, musique sobre',
+    pipeline: 'v2',
     defaults: {
-      remove_silence: true,
-      dynamic_captions: true,
-      ai_broll: true,
-      music: true,
-      sfx: false,
-      vertical_9_16: true,
-      final_cta: true,
+      remove_silence: true, dynamic_captions: true, ai_broll: true,
+      music: true, sfx: false, vertical_9_16: true, final_cta: true,
       broll_style: 'african_business_premium',
-    },
-  },
-  {
-    id: 'publicite_locale',
-    name: 'Publicité locale',
-    icon: '📣',
-    desc: 'Restaurant, boutique, service local — CTA clair',
-    defaults: {
-      remove_silence: true,
-      dynamic_captions: true,
-      ai_broll: true,
-      music: true,
-      sfx: true,
-      vertical_9_16: true,
-      final_cta: true,
-      broll_style: 'publicite_locale',
-    },
-  },
-  {
-    id: 'podcast_propre',
-    name: 'Podcast propre',
-    icon: '🎙️',
-    desc: 'Suppression silences uniquement, audio préservé',
-    defaults: {
-      remove_silence: true,
-      dynamic_captions: false,
-      ai_broll: false,
-      music: false,
-      sfx: false,
-      vertical_9_16: false,
-      final_cta: false,
-      broll_style: 'podcast_propre',
-    },
-  },
-  {
-    id: 'formation_educative',
-    name: 'Formation / éducatif',
-    icon: '🎓',
-    desc: 'Captions lisibles, B-roll discret, horizontal',
-    defaults: {
-      remove_silence: true,
-      dynamic_captions: true,
-      ai_broll: true,
-      music: false,
-      sfx: false,
-      vertical_9_16: false,
-      final_cta: false,
-      broll_style: 'formation_educative',
     },
   },
 ]
@@ -137,19 +64,38 @@ export default function Editor() {
   const navigate = useNavigate()
   const [video, setVideo] = useState<VideoMeta | null>(null)
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
-  const [selectedMode, setSelectedMode] = useState<EditMode>('business_premium_african')
+  const [modes, setModes] = useState<ModeDescriptor[]>(FALLBACK_MODES)
+  const [selectedMode, setSelectedMode] = useState<EditMode>(FALLBACK_MODES[0].id)
   const [processing, setProcessing] = useState(false)
   const [completedResult, setCompletedResult] = useState<Record<string, unknown> | null>(null)
   const [loadError, setLoadError] = useState('')
   const [pipelineVersion, setPipelineVersion] = useState<PipelineVersion>('v2')
-  const [options, setOptions] = useState<JobOptions>(MODES[1].defaults)
+  const [options, setOptions] = useState<JobOptions>(FALLBACK_MODES[0].defaults)
   const [ctaText, setCtaText] = useState('')
   const [logoText, setLogoText] = useState('')
 
+  // Charge le catalogue de modes depuis l'API (DRY avec le backend).
   useEffect(() => {
-    const mode = MODES.find((m) => m.id === selectedMode)
-    if (mode) setOptions(mode.defaults)
-  }, [selectedMode])
+    let cancelled = false
+    listModes()
+      .then((list) => {
+        if (cancelled || list.length === 0) return
+        setModes(list)
+        // Selectionne par defaut le premier mode v2 (business premium africain)
+        const preferred = list.find((m) => m.pipeline === 'v2') ?? list[0]
+        setSelectedMode(preferred.id)
+      })
+      .catch(() => { /* on garde le fallback */ })
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    const mode = modes.find((m) => m.id === selectedMode)
+    if (mode) {
+      setOptions(mode.defaults)
+      setPipelineVersion(mode.pipeline)
+    }
+  }, [selectedMode, modes])
 
   useEffect(() => {
     if (!videoId) return
@@ -201,7 +147,7 @@ export default function Editor() {
         options: payloadOptions,
       })
       setActiveJobId(job.id)
-      toast('info', `Traitement lancé : ${MODES.find((m) => m.id === selectedMode)?.name}`)
+      toast('info', `Traitement lancé : ${modes.find((m) => m.id === selectedMode)?.name ?? selectedMode}`)
     } catch (err: unknown) {
       setProcessing(false)
       let msg = 'Impossible de démarrer le traitement'
@@ -315,7 +261,7 @@ export default function Editor() {
           <div className="card">
             <h3 className="font-semibold mb-3">Style de montage</h3>
             <div className="space-y-2">
-              {MODES.map((mode) => (
+              {modes.map((mode) => (
                 <button
                   key={mode.id}
                   onClick={() => setSelectedMode(mode.id)}
@@ -326,9 +272,18 @@ export default function Editor() {
                   }`}
                 >
                   <span className="text-2xl">{mode.icon}</span>
-                  <div>
-                    <p className="font-medium">{mode.name}</p>
-                    <p className="text-xs text-dark-400">{mode.desc}</p>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium flex items-center gap-2">
+                      <span className="truncate">{mode.name}</span>
+                      <span className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                        mode.pipeline === 'v2'
+                          ? 'bg-primary-500/20 text-primary-300'
+                          : 'bg-dark-700 text-dark-300'
+                      }`}>
+                        {mode.pipeline}
+                      </span>
+                    </p>
+                    <p className="text-xs text-dark-400">{mode.description}</p>
                   </div>
                 </button>
               ))}
