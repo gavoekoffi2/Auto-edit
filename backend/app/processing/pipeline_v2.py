@@ -308,8 +308,10 @@ def run_pipeline_v2(
             results["broll_error"] = str(e)[:500]
             results["steps_failed"].append("broll")
 
-    # 7. Overlays premium — intro/CTA + labels de section + titres de B-roll.
+    # 7. Overlays premium — intro/CTA + labels de section + titres de B-roll
+    # + vraies cartes motion-design explicatives indépendantes des B-rolls.
     overlays = _build_overlays(options=options, params=params or {}, total_duration=total_duration)
+    overlays.extend(_build_explainer_motion_overlays(total_duration=total_duration))
     overlays.extend(_build_broll_motion_overlays(cues))
     rendered_overlays = []
     if overlays:
@@ -453,6 +455,49 @@ def _build_overlays(options: dict, params: dict, total_duration: float) -> list:
                 start=max(0.0, total_duration - 3.0),
                 end=total_duration,
                 props={"title": cta_text},
+            )
+        )
+    return overlays
+
+
+def _build_explainer_motion_overlays(total_duration: float) -> list:
+    """Create motion-design explanatory cards independent from B-rolls.
+
+    Claude specifically does not want only B-roll images. These overlays explain
+    what the speaker is saying with animated/premium visual language: steps,
+    arrows, pills and mini cards. They are timed away from the lowest area so
+    they do not cover the face, B-roll card, or center captions.
+    """
+    from app.processing.types import OverlayClip
+
+    if total_duration < 10.0:
+        return []
+
+    anchors = [
+        (6.4, "1", "ENRÔLER", "Dépôts + PDV"),
+        (14.8, "2", "LOCALISER", "Google Maps"),
+        (28.5, "3", "GÉRER", "Fiches & produits"),
+        (43.2, "4", "SUIVRE", "Opérations terrain"),
+        (60.6, "5", "VALIDER", "Formation complète"),
+    ]
+    overlays: list[OverlayClip] = []
+    for i, (start, step, title, subtitle) in enumerate(anchors):
+        if start + 2.6 >= total_duration - 2.0:
+            continue
+        overlays.append(
+            OverlayClip(
+                kind=("explain_card" if i % 2 == 0 else "flow_step"),
+                start=start,
+                end=start + 2.6,
+                props={"step": step, "title": title, "subtitle": subtitle},
+            )
+        )
+        overlays.append(
+            OverlayClip(
+                kind="metric_pill",
+                start=start + 0.42,
+                end=start + 2.05,
+                props={"title": f"ÉTAPE {step}", "subtitle": subtitle},
             )
         )
     return overlays

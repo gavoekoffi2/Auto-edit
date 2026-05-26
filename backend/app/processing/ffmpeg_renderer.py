@@ -272,20 +272,25 @@ class FFmpegRenderer:
             music_input_index = 1 + len(broll_cues)
             cmd += ["-i", options.music_path]
 
-        sfx_indices: list[tuple[int, float]] = []
+        sfx_indices: list[tuple[int, float, int]] = []
         sfx_times = [t for t in (options.sfx_timestamps or []) if t >= 0]
         # Limit SFX count so long videos do not create huge filtergraphs.
-        for t in sfx_times[:18]:
-            sfx_indices.append((1 + len(broll_cues) + (1 if music_input_index is not None else 0) + len(sfx_indices), t))
-            # Short impact/pop generated locally. More audible than the previous
-            # very low sine, but still short enough not to cover speech.
+        for sfx_variant, t in enumerate(sfx_times[:18]):
+            sfx_indices.append((1 + len(broll_cues) + (1 if music_input_index is not None else 0) + len(sfx_indices), t, sfx_variant))
+            # Rotate several short SFX textures so the edit does not sound like
+            # the same shutter pasted everywhere: crisp camera shutter, soft
+            # snap, warm impact, and bright digital click.
+            sfx_sources = (
+                ("0.24", "anoisesrc=color=white:amplitude=0.95:sample_rate=44100:duration=0.24"),
+                ("0.18", "anoisesrc=color=pink:amplitude=0.82:sample_rate=44100:duration=0.18"),
+                ("0.28", "anoisesrc=color=brown:amplitude=0.70:sample_rate=44100:duration=0.28"),
+                ("0.14", "anoisesrc=color=white:amplitude=0.58:sample_rate=44100:duration=0.14"),
+            )
+            sfx_duration, sfx_source = sfx_sources[sfx_variant % len(sfx_sources)]
             cmd += [
                 "-f", "lavfi",
-                "-t", "0.24",
-                # Camera shutter / photo-capture style cue: a short bright
-                # percussive noise burst, intentionally more audible than the
-                # earlier subtle tick so Claude can hear the capture effect.
-                "-i", "anoisesrc=color=white:amplitude=0.95:sample_rate=44100:duration=0.24",
+                "-t", sfx_duration,
+                "-i", sfx_source,
             ]
 
         flash_indices: list[tuple[int, float]] = []
@@ -397,18 +402,72 @@ class FFmpegRenderer:
         light_times = [t for t in (options.flash_timestamps or options.sfx_timestamps or []) if t >= 0][:18]
         for light_i, timestamp in enumerate(light_times, start=1):
             out_label = f"vl{light_i}"
-            filter_parts.append(
-                f"[{current}]"
-                f"drawbox=x=0:y={int(height * 0.16)}:w={width}:h=26:"
-                f"color=white@0.42:t=fill:enable='between(t,{timestamp:.3f},{timestamp + 0.12:.3f})',"
-                f"drawbox=x=0:y={int(height * 0.22)}:w={width}:h=10:"
-                f"color=cyan@0.28:t=fill:enable='between(t,{timestamp + 0.02:.3f},{timestamp + 0.20:.3f})',"
-                f"drawbox=x={int(width * 0.08)}:y=0:w=18:h={height}:"
-                f"color=white@0.30:t=fill:enable='between(t,{timestamp:.3f},{timestamp + 0.10:.3f})',"
-                f"drawbox=x={int(width * 0.82)}:y=0:w=42:h={height}:"
-                f"color=yellow@0.18:t=fill:enable='between(t,{timestamp + 0.04:.3f},{timestamp + 0.24:.3f})'"
-                f"[{out_label}]"
-            )
+            style = (light_i - 1) % 4
+            if style == 0:
+                light_filter = (
+                    f"drawbox=x=0:y={int(height * 0.16)}:w={width}:h=26:"
+                    f"color=white@0.42:t=fill:enable='between(t,{timestamp:.3f},{timestamp + 0.12:.3f})',"
+                    f"drawbox=x=0:y={int(height * 0.22)}:w={width}:h=10:"
+                    f"color=cyan@0.28:t=fill:enable='between(t,{timestamp + 0.02:.3f},{timestamp + 0.20:.3f})'"
+                )
+            elif style == 1:
+                light_filter = (
+                    f"drawbox=x={int(width * 0.08)}:y=0:w=20:h={height}:"
+                    f"color=white@0.34:t=fill:enable='between(t,{timestamp:.3f},{timestamp + 0.11:.3f})',"
+                    f"drawbox=x={int(width * 0.72)}:y=0:w=80:h={height}:"
+                    f"color=yellow@0.20:t=fill:enable='between(t,{timestamp + 0.04:.3f},{timestamp + 0.25:.3f})'"
+                )
+            elif style == 2:
+                light_filter = (
+                    f"drawbox=x=0:y={int(height * 0.45)}:w={width}:h=70:"
+                    f"color=white@0.25:t=fill:enable='between(t,{timestamp:.3f},{timestamp + 0.16:.3f})',"
+                    f"drawbox=x=0:y={int(height * 0.50)}:w={width}:h=16:"
+                    f"color=magenta@0.22:t=fill:enable='between(t,{timestamp + 0.02:.3f},{timestamp + 0.22:.3f})'"
+                )
+            else:
+                light_filter = (
+                    f"drawbox=x={int(width * 0.18)}:y={int(height * 0.08)}:w={int(width * 0.64)}:h=34:"
+                    f"color=cyan@0.26:t=fill:enable='between(t,{timestamp:.3f},{timestamp + 0.18:.3f})',"
+                    f"drawbox=x={int(width * 0.45)}:y=0:w=24:h={height}:"
+                    f"color=white@0.25:t=fill:enable='between(t,{timestamp + 0.04:.3f},{timestamp + 0.16:.3f})'"
+                )
+            filter_parts.append(f"[{current}]{light_filter}[{out_label}]")
+            current = out_label
+
+        for motion_i, ov in enumerate([o for o in overlays if o.kind in {"explain_card", "flow_step", "metric_pill"}], start=1):
+            out_label = f"vmd{motion_i}"
+            start = max(0.0, float(ov.start))
+            end = max(start + 0.2, float(ov.end))
+            if ov.kind == "metric_pill":
+                x = int(width * 0.62)
+                y = int(height * 0.30)
+                w = int(width * 0.30)
+                h = int(height * 0.060)
+                shape_filter = (
+                    f"drawbox=x={x}:y={y}:w={w}:h={h}:color=black@0.58:t=fill:enable='between(t,{start:.3f},{end:.3f})',"
+                    f"drawbox=x={x}:y={y}:w=12:h={h}:color=cyan@0.90:t=fill:enable='between(t,{start:.3f},{end:.3f})'"
+                )
+            elif ov.kind == "flow_step":
+                x = int(width * 0.055)
+                y = int(height * 0.105)
+                w = int(width * 0.48)
+                h = int(height * 0.105)
+                shape_filter = (
+                    f"drawbox=x='{x}-36*exp(-12*(t-{start:.3f}))':y={y}:w={w}:h={h}:color=black@0.62:t=fill:enable='between(t,{start:.3f},{end:.3f})',"
+                    f"drawbox=x={x}:y={y}:w={w}:h=8:color=yellow@0.92:t=fill:enable='between(t,{start:.3f},{end:.3f})',"
+                    f"drawbox=x={x + w - 78}:y={y + 48}:w=112:h=18:color=cyan@0.78:t=fill:enable='between(t,{start + 0.18:.3f},{end:.3f})'"
+                )
+            else:
+                x = int(width * 0.08)
+                y = int(height * 0.095)
+                w = int(width * 0.56)
+                h = int(height * 0.115)
+                shape_filter = (
+                    f"drawbox=x='{x}+28*exp(-10*(t-{start:.3f}))':y={y}:w={w}:h={h}:color=black@0.66:t=fill:enable='between(t,{start:.3f},{end:.3f})',"
+                    f"drawbox=x={x}:y={y}:w=16:h={h}:color=cyan@0.90:t=fill:enable='between(t,{start:.3f},{end:.3f})',"
+                    f"drawbox=x={x + 34}:y={y + h - 18}:w={w - 68}:h=7:color=white@0.34:t=fill:enable='between(t,{start + 0.22:.3f},{end:.3f})'"
+                )
+            filter_parts.append(f"[{current}]{shape_filter}[{out_label}]")
             current = out_label
 
         subtitle_filters: list[str] = []
@@ -443,11 +502,12 @@ class FFmpegRenderer:
                 "aloop=loop=-1:size=2e9[music]"
             )
             audio_inputs.append("[music]")
-        for sfx_i, (input_idx, timestamp) in enumerate(sfx_indices, start=1):
+        for sfx_i, (input_idx, timestamp, variant) in enumerate(sfx_indices, start=1):
             delay_ms = int(max(0.0, timestamp) * 1000)
             label = f"sfx{sfx_i}"
+            variant_volume = options.sfx_volume * (1.0 if variant % 4 == 0 else 0.86 if variant % 4 == 1 else 0.72 if variant % 4 == 2 else 0.64)
             filter_parts.append(
-                f"[{input_idx}:a]volume={options.sfx_volume},"
+                f"[{input_idx}:a]volume={variant_volume:.3f},"
                 f"afade=t=in:st=0:d=0.015,afade=t=out:st=0.12:d=0.06,"
                 f"adelay={delay_ms}|{delay_ms}[{label}]"
             )
@@ -494,6 +554,8 @@ class FFmpegRenderer:
             "Style: CTA,Arial,76,&H00FFFFFF,&H000000FF,&H00000000,&H66000000,1,0,0,0,100,100,0,0,1,5,2,2,85,85,300,1",
             "Style: Keyword,Arial,88,&H002CF7FF,&H000000FF,&H00000000,&H00000000,1,0,0,0,105,105,0,0,1,5,2,8,70,70,260,1",
             "Style: Script,Arial,70,&H002CF7FF,&H000000FF,&H00FFFFFF,&H00000000,0,1,0,0,100,100,0,0,1,2,1,8,70,70,370,1",
+            "Style: Explain,Arial,54,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,3,2,7,95,95,255,1",
+            "Style: Pill,Arial,38,&H002CF7FF,&H000000FF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,2,1,9,80,80,580,1",
             "",
             "[Events]",
             "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -517,6 +579,21 @@ class FFmpegRenderer:
             elif ov.kind == "script":
                 style = "Script"
                 tag = "{\\fad(120,150)}"
+            elif ov.kind in ("explain_card", "flow_step"):
+                style = "Explain"
+                step = str(ov.props.get("step") or "").strip()
+                subtitle = str(ov.props.get("subtitle") or "").strip()
+                if step:
+                    title = f"{step}. {title}"
+                if subtitle:
+                    title = f"{title}\\N{subtitle}"
+                tag = "{\\fad(90,140)\\fscx108\\fscy108}"
+            elif ov.kind == "metric_pill":
+                style = "Pill"
+                subtitle = str(ov.props.get("subtitle") or "").strip()
+                if subtitle:
+                    title = f"{title}  •  {subtitle}"
+                tag = "{\\fad(80,110)\\fscx104\\fscy104}"
             text = _escape_ass_text(title)
             # ASS scale/fade tags: visible motion without drawtext dependency.
             lines.append(

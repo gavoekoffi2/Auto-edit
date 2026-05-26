@@ -59,6 +59,16 @@ class PremiumCaptionService:
                 "&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,6,3,5,70,70,"
                 f"{cfg.margin_v},1"
             ),
+            (
+                f"Style: PremiumGlow,{cfg.font_name},{cfg.base_font_size + 4},&H00FFFFFF,&H000000FF,"
+                "&H002CF7FF,&H00000000,1,0,0,0,100,100,0,0,1,5,4,5,70,70,"
+                f"{cfg.margin_v},1"
+            ),
+            (
+                f"Style: PremiumSolid,{cfg.font_name},{cfg.base_font_size - 4},&H00FFFFFF,&H000000FF,"
+                "&H00000000,&H88000000,1,0,0,0,102,102,0,0,3,5,1,5,70,70,"
+                f"{cfg.margin_v},1"
+            ),
             "",
             "[Events]",
             "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -74,9 +84,10 @@ class PremiumCaptionService:
                     end = max(start + 0.10, chunk[active_i + 1].start)
                 else:
                     end = c_end
-                text = self._format_chunk(chunk, active_i, chunk_i)
+                style = ("Premium", "PremiumGlow", "PremiumSolid")[chunk_i % 3]
+                text = self._format_chunk(chunk, active_i, chunk_i, style)
                 lines.append(
-                    f"Dialogue: 10,{_ass_time(start)},{_ass_time(end)},Premium,,0,0,0,,{{\\fad(45,45)}}{text}"
+                    f"Dialogue: 10,{_ass_time(start)},{_ass_time(end)},{style},,0,0,0,,{{\\fad(45,45)}}{text}"
                 )
 
         with open(out_path, "w", encoding="utf-8") as f:
@@ -110,7 +121,7 @@ class PremiumCaptionService:
             chunks.append(current)
         return chunks
 
-    def _format_chunk(self, chunk: list[Word], active_index: int, chunk_index: int) -> str:
+    def _format_chunk(self, chunk: list[Word], active_index: int, chunk_index: int, style: str = "Premium") -> str:
         cfg = self.config
         active_color = cfg.active_colors[chunk_index % len(cfg.active_colors)]
         parts: list[str] = []
@@ -119,7 +130,7 @@ class PremiumCaptionService:
             if i == active_index:
                 # Pop/highlight active word. Border remains black for readability.
                 parts.append(
-                    f"{{\\c{active_color}\\fs{cfg.active_font_size}\\fscx108\\fscy108}}{text}{{\\rPremium}}"
+                    f"{{\\c{active_color}\\fs{cfg.active_font_size}\\fscx108\\fscy108}}{text}{{\\r{style}}}"
                 )
             else:
                 parts.append(text)
