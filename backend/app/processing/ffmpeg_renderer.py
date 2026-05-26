@@ -38,7 +38,8 @@ class RenderOptions:
     music_volume: float = 0.25
     burn_captions_srt: str | None = None
     sfx_timestamps: list[float] | None = None
-    sfx_volume: float = 0.22
+    sfx_volume: float = 0.55
+    flash_timestamps: list[float] | None = None
 
 
 @dataclass
@@ -263,14 +264,22 @@ class FFmpegRenderer:
         sfx_times = [t for t in (options.sfx_timestamps or []) if t >= 0]
         # Limit SFX count so long videos do not create huge filtergraphs.
         for t in sfx_times[:18]:
-            input_idx = len(cmd)  # placeholder, overwritten below is not reliable for inputs
-            del input_idx
             sfx_indices.append((1 + len(broll_cues) + (1 if music_input_index is not None else 0) + len(sfx_indices), t))
-            # Short high-low double tone: light "pop/whoosh" without external assets.
+            # Short impact/pop generated locally. More audible than the previous
+            # very low sine, but still short enough not to cover speech.
             cmd += [
                 "-f", "lavfi",
-                "-t", "0.18",
-                "-i", "sine=frequency=920:sample_rate=44100:duration=0.18",
+                "-t", "0.22",
+                "-i", "sine=frequency=1450:sample_rate=44100:duration=0.22",
+            ]
+
+        flash_indices: list[tuple[int, float]] = []
+        for t in [x for x in (options.flash_timestamps or options.sfx_timestamps or []) if x >= 0][:18]:
+            flash_indices.append((1 + len(broll_cues) + (1 if music_input_index is not None else 0) + len(sfx_indices) + len(flash_indices), t))
+            cmd += [
+                "-f", "lavfi",
+                "-t", "0.20",
+                "-i", f"color=c=white@0.42:s={width}x{height}:r={options.fps}:d=0.20",
             ]
 
         filter_parts: list[str] = []
@@ -290,7 +299,7 @@ class FFmpegRenderer:
             filter_parts.append(
                 f"[{idx}:v]scale={width}:{height}:force_original_aspect_ratio=increase,"
                 f"crop={width}:{height},format=rgba,"
-                f"fade=t=in:st=0:d=0.20:alpha=1,"
+                f"fade=t=in:st=0:d=0.18:alpha=1,"
                 f"fade=t=out:st={max(0.0, dur - 0.25):.3f}:d=0.25:alpha=1,"
                 f"setpts=PTS-STARTPTS+{cue.start:.3f}/TB[br{idx}]"
             )
@@ -298,6 +307,19 @@ class FFmpegRenderer:
             filter_parts.append(
                 f"[{current}][br{idx}]overlay=0:0:"
                 f"enable='between(t,{cue.start:.3f},{cue.end:.3f})':"
+                f"eof_action=pass[{out_label}]"
+            )
+            current = out_label
+
+        for flash_i, (input_idx, timestamp) in enumerate(flash_indices, start=1):
+            filter_parts.append(
+                f"[{input_idx}:v]format=rgba,fade=t=out:st=0:d=0.20:alpha=1,"
+                f"setpts=PTS-STARTPTS+{timestamp:.3f}/TB[fl{flash_i}]"
+            )
+            out_label = f"vf{flash_i}"
+            filter_parts.append(
+                f"[{current}][fl{flash_i}]overlay=0:0:"
+                f"enable='between(t,{timestamp:.3f},{timestamp + 0.22:.3f})':"
                 f"eof_action=pass[{out_label}]"
             )
             current = out_label
@@ -375,9 +397,11 @@ class FFmpegRenderer:
             "",
             "[V4+ Styles]",
             "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-            "Style: Intro,Arial,58,&H00FFFFFF,&H000000FF,&H00000000,&H99000000,1,0,0,0,100,100,0,0,3,2,0,8,70,70,250,1",
-            "Style: Lower,Arial,44,&H00FFFFFF,&H000000FF,&H00000000,&H99000000,1,0,0,0,100,100,0,0,3,2,0,7,70,70,150,1",
-            "Style: CTA,Arial,62,&H00FFFFFF,&H000000FF,&H00000000,&HAA000000,1,0,0,0,100,100,0,0,3,2,0,2,85,85,320,1",
+            "Style: Intro,Arial,78,&H00FFFFFF,&H000000FF,&H00000000,&H66000000,1,0,0,0,100,100,0,0,1,5,2,8,70,70,210,1",
+            "Style: Lower,Arial,58,&H00FFFFFF,&H000000FF,&H00000000,&H66000000,1,0,0,0,100,100,0,0,1,5,2,7,70,70,160,1",
+            "Style: CTA,Arial,76,&H00FFFFFF,&H000000FF,&H00000000,&H66000000,1,0,0,0,100,100,0,0,1,5,2,2,85,85,300,1",
+            "Style: Keyword,Arial,88,&H002CF7FF,&H000000FF,&H00000000,&H00000000,1,0,0,0,105,105,0,0,1,5,2,8,70,70,260,1",
+            "Style: Script,Arial,70,&H002CF7FF,&H000000FF,&H00FFFFFF,&H00000000,0,1,0,0,100,100,0,0,1,2,1,8,70,70,370,1",
             "",
             "[Events]",
             "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -388,14 +412,23 @@ class FFmpegRenderer:
             if not title:
                 continue
             style = "Lower"
+            tag = "{\\fad(120,120)\\fscx102\\fscy102}"
             if ov.kind == "intro_card":
                 style = "Intro"
+                tag = "{\\fad(160,160)\\fscx112\\fscy112}"
             elif ov.kind == "cta":
                 style = "CTA"
+                tag = "{\\fad(160,160)\\fscx110\\fscy110}"
+            elif ov.kind in ("keyword", "broll_title", "impact"):
+                style = "Keyword"
+                tag = "{\\fad(80,120)\\fscx118\\fscy118}"
+            elif ov.kind == "script":
+                style = "Script"
+                tag = "{\\fad(120,150)}"
             text = _escape_ass_text(title)
-            # ASS fade tag: visible motion without drawtext dependency.
+            # ASS scale/fade tags: visible motion without drawtext dependency.
             lines.append(
-                f"Dialogue: 2,{_ass_time(ov.start)},{_ass_time(ov.end)},{style},,0,0,0,,{{\\fad(180,180)}}{text}"
+                f"Dialogue: 3,{_ass_time(ov.start)},{_ass_time(ov.end)},{style},,0,0,0,,{tag}{text}"
             )
             written += 1
         if not written:

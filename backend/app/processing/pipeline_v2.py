@@ -297,8 +297,9 @@ def run_pipeline_v2(
             results["broll_error"] = str(e)[:500]
             results["steps_failed"].append("broll")
 
-    # 7. Overlays (intro/CTA) — best-effort, dérive du mode
+    # 7. Overlays premium — intro/CTA + labels de section + titres de B-roll.
     overlays = _build_overlays(options=options, params=params or {}, total_duration=total_duration)
+    overlays.extend(_build_broll_motion_overlays(cues))
     rendered_overlays = []
     if overlays:
         try:
@@ -345,6 +346,7 @@ def run_pipeline_v2(
                 aspect_ratio=aspect_ratio,
                 burn_captions_srt=caption_path,
                 sfx_timestamps=sfx_timestamps,
+                flash_timestamps=[float(c.segment_start) for c in cues if c.clip_path],
             ),
         )
         results["steps_completed"].append("export")
@@ -443,3 +445,74 @@ def _build_overlays(options: dict, params: dict, total_duration: float) -> list:
             )
         )
     return overlays
+
+
+def _build_broll_motion_overlays(cues: list) -> list:
+    """Ajoute des titres très visibles synchronisés aux B-rolls.
+
+    La référence Captions.ai montre souvent un gros mot-clé en haut ou au
+    centre au moment des changements visuels. Ces overlays rendent les B-rolls
+    immédiatement perceptibles, même sans Remotion.
+    """
+    from app.processing.types import OverlayClip
+
+    overlays: list[OverlayClip] = []
+    seen = 0
+    for cue in cues or []:
+        if not getattr(cue, "clip_path", None):
+            continue
+        title = _keyword_from_broll_prompt(getattr(cue, "prompt", ""))
+        start = float(getattr(cue, "segment_start", 0.0))
+        overlays.append(
+            OverlayClip(
+                kind="broll_title",
+                start=start + 0.10,
+                end=min(float(getattr(cue, "segment_end", start + 2.0)), start + 1.65),
+                props={"title": title},
+            )
+        )
+        # Petit mot script/cyan en deuxième niveau comme dans la ref.
+        script_word = _script_word_for_title(title)
+        if script_word:
+            overlays.append(
+                OverlayClip(
+                    kind="script",
+                    start=start + 0.35,
+                    end=min(float(getattr(cue, "segment_end", start + 2.0)), start + 2.15),
+                    props={"title": script_word},
+                )
+            )
+        seen += 1
+        if seen >= 8:
+            break
+    return overlays
+
+
+def _keyword_from_broll_prompt(prompt: str) -> str:
+    p = (prompt or "").lower()
+    rules = [
+        (("coach", "class", "formation", "teacher", "trainer"), "FORMATION"),
+        (("customer", "service", "client", "support"), "CLIENTS"),
+        (("creator", "smartphone", "tiktok", "facebook", "whatsapp"), "CONTENU"),
+        (("financial", "money", "budget", "banking"), "ARGENT"),
+        (("team", "startup", "coworking", "professionals"), "ÉQUIPE"),
+        (("entrepreneur", "business", "office", "laptop"), "DÉCISION"),
+        (("door", "opportunity"), "OPPORTUNITÉ"),
+    ]
+    for keys, title in rules:
+        if any(k in p for k in keys):
+            return title
+    return "ACTION"
+
+
+def _script_word_for_title(title: str) -> str:
+    return {
+        "FORMATION": "apprendre",
+        "CLIENTS": "grandir",
+        "CONTENU": "créer",
+        "ARGENT": "évoluer",
+        "ÉQUIPE": "ensemble",
+        "DÉCISION": "décision",
+        "OPPORTUNITÉ": "possibilité",
+        "ACTION": "maintenant",
+    }.get(title, "")
