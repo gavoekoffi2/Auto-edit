@@ -375,17 +375,35 @@ def _build_overlays(options: dict, params: dict, total_duration: float) -> list:
     opts = options or {}
     p = params or {}
 
-    # Intro card
+    # Intro card — si aucun titre n'est fourni, on met quand même une carte
+    # légère pour rendre le montage visible dès le début (style Captions/Reels).
     intro_title = p.get("intro_title") or opts.get("logo_text")
+    if not intro_title and opts.get("dynamic_captions", True):
+        intro_title = "AutoEdit Premium"
     if intro_title:
         overlays.append(
             OverlayClip(
                 kind="intro_card",
                 start=0.0,
-                end=2.0,
+                end=min(2.0, max(0.8, total_duration)),
                 props={"title": intro_title},
             )
         )
+
+    # Petits labels de section pour éviter un rendu trop plat quand Remotion
+    # n'est pas encore branché. Ils sont brûlés par FFmpeg dans le pass final.
+    if opts.get("dynamic_captions", True) and total_duration >= 25.0:
+        labels = ["POINT CLÉ", "FORMATION", "ACTION"]
+        for i, start in enumerate([18.0, 36.0, 54.0]):
+            if start + 2.2 < total_duration - 3.0:
+                overlays.append(
+                    OverlayClip(
+                        kind="lower_third",
+                        start=start,
+                        end=start + 2.2,
+                        props={"title": labels[i % len(labels)]},
+                    )
+                )
 
     # CTA final
     if opts.get("final_cta") and total_duration > 4.0:

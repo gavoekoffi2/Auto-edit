@@ -39,6 +39,15 @@ class RenderOptions:
     burn_captions_srt: str | None = None
 
 
+@dataclass
+class _TimelineBroll:
+    """B-roll cue mapped from source-video time to rendered-output time."""
+
+    start: float
+    end: float
+    clip_path: str
+
+
 _RES = {
     "9:16": (1080, 1920),
     "16:9": (1920, 1080),
@@ -79,15 +88,13 @@ class FFmpegRenderer:
             self._extract_segment(edl.source_path, cut, seg_path, options)
             segment_paths.append(seg_path)
 
-        # 2. Remplace certains segments par B-roll si cue couvre entièrement le segment
-        if broll_cues:
-            segment_paths = self._inject_broll(
-                segment_paths=segment_paths,
-                kept_cuts=kept,
-                broll_cues=list(broll_cues),
-                out_dir=segments_dir,
-                options=options,
-            )
+        # 2. Prépare les B-rolls pour le pass final.
+        # Ancienne stratégie: remplacer un segment uniquement si le cue couvrait
+        # exactement tout le cut. En pratique l'EDL contient souvent un seul cut
+        # long, donc les B-rolls internes n'apparaissaient jamais. On mappe
+        # maintenant chaque cue dans la timeline de sortie et on l'overlay en
+        # plein écran pendant sa fenêtre.
+        mapped_broll = self._map_broll_to_output_timeline(list(broll_cues or []), kept)
 
         # 3. Concat
         concat_list = os.path.join(out_dir, "concat.txt")
@@ -102,9 +109,15 @@ class FFmpegRenderer:
             "-c", "copy", concat_out,
         ])
 
-        # 4. Pass final: aspect/res, captions, music
+        # 4. Pass final: aspect/res, motion zoom, B-roll timeline, captions, overlays, music
         final_out = os.path.join(out_dir, "final_output.mp4")
-        self._final_pass(concat_out, final_out, options)
+        self._final_pass(
+            concat_out,
+            final_out,
+            options,
+            broll_cues=mapped_broll,
+            overlays=list(overlays or []),
+        )
 
         # cleanup segments
         try:
@@ -192,46 +205,255 @@ class FFmpegRenderer:
             self._run(cmd_no_audio)
 
     # ------------------------------------------------------------------
-    def _final_pass(self, in_path: str, out_path: str, options: RenderOptions) -> None:
+    def _map_broll_to_output_timeline(
+        self,
+        broll_cues: list[BrollCue],
+        kept_cuts: list[Cut],
+    ) -> list[_TimelineBroll]:
+        """Map B-roll source timestamps to the post-EDL output timeline."""
+        mapped: list[_TimelineBroll] = []
+        if not broll_cues or not kept_cuts:
+            return mapped
+
+        output_cursor = 0.0
+        for cut in kept_cuts:
+            for cue in broll_cues:
+                if not cue.clip_path or not os.path.exists(cue.clip_path):
+                    continue
+                if cue.segment_end <= cut.source_start or cue.segment_start >= cut.source_end:
+                    continue
+                src_start = max(cue.segment_start, cut.source_start)
+                src_end = min(cue.segment_end, cut.source_end)
+                if src_end <= src_start:
+                    continue
+                mapped.append(
+                    _TimelineBroll(
+                        start=output_cursor + (src_start - cut.source_start),
+                        end=output_cursor + (src_end - cut.source_start),
+                        clip_path=cue.clip_path,
+                    )
+                )
+            output_cursor += cut.duration
+        return mapped
+
+    def _final_pass(
+        self,
+        in_path: str,
+        out_path: str,
+        options: RenderOptions,
+        broll_cues: list[_TimelineBroll] | None = None,
+        overlays: list[OverlayClip] | None = None,
+    ) -> None:
         width, height = _RES.get(options.aspect_ratio, _RES["9:16"])
+        broll_cues = broll_cues or []
+        overlays = overlays or []
 
-        vf = (
-            f"scale={width}:{height}:force_original_aspect_ratio=increase,"
-            f"crop={width}:{height}"
-        )
-        if options.burn_captions_srt and os.path.exists(options.burn_captions_srt):
-            srt = options.burn_captions_srt.replace(":", r"\:").replace("'", r"\'")
-            vf += f",subtitles='{srt}'"
+        cmd = [self.ffmpeg_bin, "-y", "-hide_banner", "-loglevel", "error", "-i", in_path]
+        for cue in broll_cues:
+            cmd += ["-i", cue.clip_path]
 
-        cmd = [
-            self.ffmpeg_bin, "-y", "-hide_banner", "-loglevel", "error",
-            "-i", in_path,
-        ]
+        music_input_index: int | None = None
         if options.music_path and os.path.exists(options.music_path):
-            cmd += [
-                "-i", options.music_path,
-                "-filter_complex",
-                f"[0:v]{vf}[vout];"
-                f"[1:a]volume={options.music_volume},aloop=loop=-1:size=2e9[mloop];"
-                "[0:a][mloop]amix=inputs=2:duration=first:dropout_transition=2[aout]",
-                "-map", "[vout]", "-map", "[aout]",
-            ]
+            music_input_index = 1 + len(broll_cues)
+            cmd += ["-i", options.music_path]
+
+        filter_parts: list[str] = []
+        base_vf = (
+            f"scale={width * 1.08:.0f}:{height * 1.08:.0f}:force_original_aspect_ratio=increase,"
+            f"crop={width}:{height}:"
+            f"x='(in_w-out_w)/2+22*sin(t*1.15)':"
+            f"y='(in_h-out_h)/2+18*cos(t*0.90)',"
+            "eq=contrast=1.07:saturation=1.13:brightness=0.015,"
+            "vignette=PI/7"
+        )
+        filter_parts.append(f"[0:v]{base_vf},format=yuv420p[v0]")
+        current = "v0"
+
+        for idx, cue in enumerate(broll_cues, start=1):
+            dur = max(0.4, cue.end - cue.start)
+            filter_parts.append(
+                f"[{idx}:v]scale={width}:{height}:force_original_aspect_ratio=increase,"
+                f"crop={width}:{height},format=rgba,"
+                f"fade=t=in:st=0:d=0.20:alpha=1,"
+                f"fade=t=out:st={max(0.0, dur - 0.25):.3f}:d=0.25:alpha=1,"
+                f"setpts=PTS-STARTPTS+{cue.start:.3f}/TB[br{idx}]"
+            )
+            out_label = f"vb{idx}"
+            filter_parts.append(
+                f"[{current}][br{idx}]overlay=0:0:"
+                f"enable='between(t,{cue.start:.3f},{cue.end:.3f})':"
+                f"eof_action=pass[{out_label}]"
+            )
+            current = out_label
+
+        subtitle_filters: list[str] = []
+        if options.burn_captions_srt and os.path.exists(options.burn_captions_srt):
+            srt = _escape_filter_path(options.burn_captions_srt)
+            style = (
+                "FontName=Arial,FontSize=18,Bold=1,"
+                "PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
+                "BackColour=&H99000000,BorderStyle=3,Outline=2,Shadow=1,"
+                "Alignment=2,MarginV=150"
+            )
+            subtitle_filters.append(f"subtitles='{srt}':force_style='{style}'")
+
+        overlay_ass = self._write_overlay_ass(overlays, out_path + ".overlays.ass", width, height)
+        if overlay_ass:
+            subtitle_filters.append(f"subtitles='{_escape_filter_path(overlay_ass)}'")
+
+        if subtitle_filters:
+            filter_parts.append(f"[{current}]{','.join(subtitle_filters)}[vout]")
         else:
-            cmd += ["-vf", vf, "-c:a", "aac", "-b:a", options.audio_bitrate]
+            filter_parts.append(f"[{current}]null[vout]")
+
+        if music_input_index is not None:
+            filter_parts.append(
+                f"[{music_input_index}:a]volume={options.music_volume},"
+                "aloop=loop=-1:size=2e9[mloop]"
+            )
+            filter_parts.append("[0:a][mloop]amix=inputs=2:duration=first:dropout_transition=2[aout]")
+            cmd += ["-filter_complex", ";".join(filter_parts), "-map", "[vout]", "-map", "[aout]"]
+        else:
+            cmd += ["-filter_complex", ";".join(filter_parts), "-map", "[vout]", "-map", "0:a:0?"]
 
         cmd += [
             "-c:v", "libx264", "-preset", options.preset, "-crf", str(options.crf),
-            "-pix_fmt", "yuv420p",
-            "-r", str(options.fps),
-            "-movflags", "+faststart",
-            out_path,
+            "-c:a", "aac", "-b:a", options.audio_bitrate,
+            "-pix_fmt", "yuv420p", "-r", str(options.fps),
+            "-movflags", "+faststart", out_path,
         ]
         self._run(cmd)
+
+    def _write_overlay_ass(
+        self,
+        overlays: list[OverlayClip],
+        path: str,
+        width: int,
+        height: int,
+    ) -> str | None:
+        if not overlays:
+            return None
+        lines = [
+            "[Script Info]",
+            "ScriptType: v4.00+",
+            f"PlayResX: {width}",
+            f"PlayResY: {height}",
+            "WrapStyle: 0",
+            "ScaledBorderAndShadow: yes",
+            "",
+            "[V4+ Styles]",
+            "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+            "Style: Intro,Arial,58,&H00FFFFFF,&H000000FF,&H00000000,&H99000000,1,0,0,0,100,100,0,0,3,2,0,8,70,70,250,1",
+            "Style: Lower,Arial,44,&H00FFFFFF,&H000000FF,&H00000000,&H99000000,1,0,0,0,100,100,0,0,3,2,0,7,70,70,150,1",
+            "Style: CTA,Arial,62,&H00FFFFFF,&H000000FF,&H00000000,&HAA000000,1,0,0,0,100,100,0,0,3,2,0,2,85,85,320,1",
+            "",
+            "[Events]",
+            "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+        ]
+        written = 0
+        for ov in overlays:
+            title = str(ov.props.get("title") or ov.props.get("text") or "").strip()
+            if not title:
+                continue
+            style = "Lower"
+            if ov.kind == "intro_card":
+                style = "Intro"
+            elif ov.kind == "cta":
+                style = "CTA"
+            text = _escape_ass_text(title)
+            # ASS fade tag: visible motion without drawtext dependency.
+            lines.append(
+                f"Dialogue: 2,{_ass_time(ov.start)},{_ass_time(ov.end)},{style},,0,0,0,,{{\\fad(180,180)}}{text}"
+            )
+            written += 1
+        if not written:
+            return None
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        return path
+
+    def _build_motion_overlay_filters(
+        self,
+        overlays: list[OverlayClip],
+        width: int,
+        height: int,
+    ) -> str:
+        """Generate timed drawbox/drawtext filters for intro cards and CTAs."""
+        parts: list[str] = []
+        for ov in overlays:
+            title = _escape_drawtext(str(ov.props.get("title") or ov.props.get("text") or ""))
+            if not title:
+                continue
+            enable = f"between(t,{ov.start:.3f},{ov.end:.3f})"
+            if ov.kind == "intro_card":
+                y = int(height * 0.16)
+                box_h = int(height * 0.13)
+                fs = int(height * 0.038)
+                parts.append(
+                    f",drawbox=x={int(width*0.06)}:y={y}:w={int(width*0.88)}:h={box_h}:"
+                    f"color=black@0.58:t=fill:enable='{enable}'"
+                )
+                parts.append(
+                    f",drawtext=text='{title}':fontcolor=white:fontsize={fs}:"
+                    f"x=(w-text_w)/2:y={y + int(box_h*0.30)}:enable='{enable}'"
+                )
+            elif ov.kind == "cta":
+                y = int(height * 0.72)
+                box_h = int(height * 0.12)
+                fs = int(height * 0.040)
+                parts.append(
+                    f",drawbox=x={int(width*0.08)}:y={y}:w={int(width*0.84)}:h={box_h}:"
+                    f"color=black@0.62:t=fill:enable='{enable}'"
+                )
+                parts.append(
+                    f",drawtext=text='{title}':fontcolor=white:fontsize={fs}:"
+                    f"x=(w-text_w)/2:y={y + int(box_h*0.28)}:enable='{enable}'"
+                )
+            else:
+                fs = int(height * 0.032)
+                parts.append(
+                    f",drawtext=text='{title}':fontcolor=white:fontsize={fs}:"
+                    f"x={int(width*0.06)}:y={int(height*0.08)}:"
+                    f"box=1:boxcolor=black@0.48:boxborderw=18:enable='{enable}'"
+                )
+        return "".join(parts)
 
     # ------------------------------------------------------------------
     def _run(self, cmd: list[str], timeout: int = 1800) -> None:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         if proc.returncode != 0:
             raise RuntimeError(
-                f"ffmpeg failed (rc={proc.returncode}): {proc.stderr[:300] or proc.stdout[:300]}"
+                f"ffmpeg failed (rc={proc.returncode}): {proc.stderr[:600] or proc.stdout[:600]}"
             )
+
+
+def _escape_filter_path(path: str) -> str:
+    return path.replace("\\", "\\\\").replace(":", r"\:").replace("'", r"\'")
+
+
+def _ass_time(seconds: float) -> str:
+    seconds = max(0.0, float(seconds))
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    cs = int(round((seconds - int(seconds)) * 100))
+    if cs >= 100:
+        s += 1
+        cs = 0
+    return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
+
+
+def _escape_ass_text(text: str) -> str:
+    return text.replace("{", "").replace("}", "").replace("\n", r"\N")
+
+
+def _escape_drawtext(text: str) -> str:
+    if not text:
+        return ""
+    return (
+        text.replace("\\", "\\\\")
+        .replace(":", r"\:")
+        .replace("'", r"\'")
+        .replace(",", r"\,")
+        .replace("%", r"\%")
+    )
