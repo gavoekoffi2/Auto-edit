@@ -84,7 +84,7 @@ V2_MODE_PRESETS: dict[str, dict] = {
         "dynamic_captions": True,
         "ai_broll": True,
         "music": True,
-        "sfx": False,
+        "sfx": True,
         "vertical_9_16": True,
         "final_cta": True,
         "broll_style": "african_business_premium",
@@ -194,8 +194,20 @@ def run_pipeline_v2(
             "segments_count": len(transcript.segments),
             "words_count": len(transcript.words),
             "srt_path": os.path.join(output_dir, "subtitles.srt"),
+            "premium_ass_path": None,
             "transcript_path": os.path.join(output_dir, "transcript.json"),
         }
+        # Captions premium mot-par-mot: écriture dès la transcription pour que
+        # le rendu final ne tombe pas sur le SRT basique à fond noir.
+        try:
+            from app.processing.premium_caption_service import PremiumCaptionService
+            premium_ass = PremiumCaptionService().write_ass(
+                transcript,
+                os.path.join(output_dir, "premium_captions.ass"),
+            )
+            results["transcription"]["premium_ass_path"] = premium_ass
+        except Exception as cap_err:
+            logger.warning("[pipeline_v2] premium captions failed: %s", cap_err)
         results["steps_completed"].append("transcription")
         progress(20, "Transcription terminée")
     except Exception as e:
@@ -313,6 +325,17 @@ def run_pipeline_v2(
         progress(88, "Rendu final FFmpeg…")
         from app.processing.ffmpeg_renderer import FFmpegRenderer, RenderOptions
         renderer = FFmpegRenderer()
+        caption_path = None
+        if options.get("dynamic_captions", True):
+            caption_path = (results.get("transcription") or {}).get("premium_ass_path")
+            if not caption_path:
+                caption_path = os.path.join(output_dir, "subtitles.srt")
+
+        sfx_timestamps = []
+        if options.get("sfx", False):
+            sfx_timestamps.extend([float(c.segment_start) for c in cues if c.clip_path])
+            sfx_timestamps.extend([float(o.start) for o in rendered_overlays])
+
         renderer.render(
             edl=edl,
             out_dir=output_dir,
@@ -320,9 +343,8 @@ def run_pipeline_v2(
             overlays=rendered_overlays,
             options=RenderOptions(
                 aspect_ratio=aspect_ratio,
-                burn_captions_srt=os.path.join(output_dir, "subtitles.srt")
-                if options.get("dynamic_captions", True)
-                else None,
+                burn_captions_srt=caption_path,
+                sfx_timestamps=sfx_timestamps,
             ),
         )
         results["steps_completed"].append("export")

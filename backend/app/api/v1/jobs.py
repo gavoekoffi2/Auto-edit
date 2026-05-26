@@ -42,7 +42,7 @@ _MODE_DEFINITIONS: list[dict] = [
         "pipeline": "v2",
         "defaults": {
             "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
-            "music": True, "sfx": False, "vertical_9_16": True, "final_cta": True,
+            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
             "broll_style": "african_business_premium",
         },
     },

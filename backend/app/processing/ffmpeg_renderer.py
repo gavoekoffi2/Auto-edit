@@ -37,6 +37,8 @@ class RenderOptions:
     music_path: str | None = None
     music_volume: float = 0.25
     burn_captions_srt: str | None = None
+    sfx_timestamps: list[float] | None = None
+    sfx_volume: float = 0.22
 
 
 @dataclass
@@ -257,6 +259,20 @@ class FFmpegRenderer:
             music_input_index = 1 + len(broll_cues)
             cmd += ["-i", options.music_path]
 
+        sfx_indices: list[tuple[int, float]] = []
+        sfx_times = [t for t in (options.sfx_timestamps or []) if t >= 0]
+        # Limit SFX count so long videos do not create huge filtergraphs.
+        for t in sfx_times[:18]:
+            input_idx = len(cmd)  # placeholder, overwritten below is not reliable for inputs
+            del input_idx
+            sfx_indices.append((1 + len(broll_cues) + (1 if music_input_index is not None else 0) + len(sfx_indices), t))
+            # Short high-low double tone: light "pop/whoosh" without external assets.
+            cmd += [
+                "-f", "lavfi",
+                "-t", "0.18",
+                "-i", "sine=frequency=920:sample_rate=44100:duration=0.18",
+            ]
+
         filter_parts: list[str] = []
         base_vf = (
             f"scale={width * 1.08:.0f}:{height * 1.08:.0f}:force_original_aspect_ratio=increase,"
@@ -306,12 +322,28 @@ class FFmpegRenderer:
         else:
             filter_parts.append(f"[{current}]null[vout]")
 
+        audio_inputs = ["[0:a]"]
         if music_input_index is not None:
             filter_parts.append(
                 f"[{music_input_index}:a]volume={options.music_volume},"
-                "aloop=loop=-1:size=2e9[mloop]"
+                "aloop=loop=-1:size=2e9[music]"
             )
-            filter_parts.append("[0:a][mloop]amix=inputs=2:duration=first:dropout_transition=2[aout]")
+            audio_inputs.append("[music]")
+        for sfx_i, (input_idx, timestamp) in enumerate(sfx_indices, start=1):
+            delay_ms = int(max(0.0, timestamp) * 1000)
+            label = f"sfx{sfx_i}"
+            filter_parts.append(
+                f"[{input_idx}:a]volume={options.sfx_volume},"
+                f"afade=t=in:st=0:d=0.015,afade=t=out:st=0.12:d=0.06,"
+                f"adelay={delay_ms}|{delay_ms}[{label}]"
+            )
+            audio_inputs.append(f"[{label}]")
+
+        if len(audio_inputs) > 1:
+            filter_parts.append(
+                "".join(audio_inputs)
+                + f"amix=inputs={len(audio_inputs)}:duration=first:dropout_transition=0[aout]"
+            )
             cmd += ["-filter_complex", ";".join(filter_parts), "-map", "[vout]", "-map", "[aout]"]
         else:
             cmd += ["-filter_complex", ";".join(filter_parts), "-map", "[vout]", "-map", "0:a:0?"]
