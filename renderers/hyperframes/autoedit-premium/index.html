@@ -1,0 +1,118 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AutoEdit Premium HyperFrames Template</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #08090d;
+        font-family: Inter, Arial, sans-serif;
+      }
+      #root {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: radial-gradient(circle at 40% 18%, rgba(0, 229, 255, 0.20), transparent 26%),
+          linear-gradient(180deg, #08090d 0%, #111827 48%, #050505 100%);
+      }
+      .clip {
+        position: absolute;
+        box-sizing: border-box;
+      }
+      .safe-caption {
+        left: 76px;
+        right: 76px;
+        top: 760px;
+        text-align: center;
+        color: white;
+        font-weight: 950;
+        font-size: 98px;
+        line-height: 0.95;
+        letter-spacing: -3px;
+        text-transform: uppercase;
+        text-shadow: 0 7px 0 #000, 0 0 24px rgba(0, 0, 0, 0.92);
+      }
+      .active-word {
+        color: #2cf7ff;
+        filter: drop-shadow(0 0 22px rgba(44, 247, 255, 0.75));
+      }
+      .broll-card {
+        left: 118px;
+        top: 1210px;
+        width: 844px;
+        height: 575px;
+        border: 8px solid white;
+        border-radius: 36px;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.18), rgba(44, 247, 255, 0.12));
+        box-shadow: 0 32px 90px rgba(0, 0, 0, 0.72), 0 0 46px rgba(44, 247, 255, 0.28);
+      }
+      .broll-card::after {
+        content: "MOTION INSERT";
+        position: absolute;
+        left: 28px;
+        bottom: 22px;
+        color: white;
+        font-weight: 900;
+        font-size: 34px;
+        letter-spacing: 2px;
+        text-shadow: 0 4px 12px #000;
+      }
+      .impact-word {
+        left: 68px;
+        top: 118px;
+        padding: 18px 28px;
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.58);
+        color: #ffe500;
+        font-size: 76px;
+        font-weight: 950;
+        letter-spacing: -2px;
+        text-shadow: 0 0 20px rgba(255, 229, 0, 0.55);
+      }
+      .light-leak {
+        inset: 0;
+        background: linear-gradient(100deg, transparent 0%, rgba(255, 255, 255, 0.0) 32%, rgba(255, 255, 255, 0.85) 48%, rgba(44, 247, 255, 0.35) 56%, transparent 72%);
+        mix-blend-mode: screen;
+      }
+      .shutter-frame {
+        inset: 42px;
+        border: 24px solid rgba(255, 255, 255, 0.92);
+        border-radius: 42px;
+        box-shadow: inset 0 0 70px rgba(255, 255, 255, 0.4), 0 0 100px rgba(255, 255, 255, 0.34);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="autoedit-premium" data-start="0" data-width="1080" data-height="1920" data-duration="6">
+      <div id="impact" class="clip impact-word" data-start="0" data-duration="6" data-track-index="1">FORMATION</div>
+      <div id="caption" class="clip safe-caption" data-start="0" data-duration="6" data-track-index="2">
+        SOUS-TITRE <span class="active-word">DYNAMIQUE</span>
+      </div>
+      <div id="card" class="clip broll-card" data-start="0" data-duration="6" data-track-index="3"></div>
+      <div id="light" class="clip light-leak" data-start="0" data-duration="6" data-track-index="4"></div>
+      <div id="shutter" class="clip shutter-frame" data-start="0" data-duration="6" data-track-index="5"></div>
+
+      <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo('#impact', { opacity: 0, scale: 0.65, y: -70 }, { opacity: 1, scale: 1, y: 0, duration: 0.28, ease: 'back.out(2.2)' }, 0);
+        tl.fromTo('#caption', { opacity: 0, scale: 0.72, y: 40 }, { opacity: 1, scale: 1, y: 0, duration: 0.24, ease: 'back.out(2.4)' }, 0.08);
+        tl.fromTo('#card', { opacity: 0, scale: 0.78, y: 180, rotate: -3 }, { opacity: 1, scale: 1, y: 0, rotate: 0, duration: 0.42, ease: 'elastic.out(1, 0.62)' }, 0.18);
+        tl.fromTo('#light', { opacity: 0, x: -760 }, { opacity: 1, x: 760, duration: 0.32, ease: 'power3.out' }, 0.16);
+        tl.to('#light', { opacity: 0, duration: 0.16, overwrite: 'auto' }, 0.50);
+        tl.fromTo('#shutter', { opacity: 0, scale: 1.08 }, { opacity: 1, scale: 1, duration: 0.06, ease: 'power4.out' }, 0.18);
+        tl.to('#shutter', { opacity: 0, scale: 1.16, duration: 0.16, ease: 'power2.out' }, 0.24);
+        tl.to('#card', { y: -10, duration: 3.2, ease: 'sine.inOut' }, 0.72);
+        window.__timelines = window.__timelines || {};
+        window.__timelines['autoedit-premium'] = tl;
+      </script>
+    </div>
+  </body>
+</html>

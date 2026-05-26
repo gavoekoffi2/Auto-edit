@@ -49,7 +49,7 @@ class _TimelineBroll:
     start: float
     end: float
     clip_path: str
-    layout: str = "bottom_card"  # bottom_card | fullscreen
+    layout: str = "bottom_slide"  # bottom_slide | bottom_pop | fullscreen
     index: int = 0
 
 
@@ -234,8 +234,11 @@ class FFmpegRenderer:
                 index = len(mapped) + 1
                 # Claude's reference prefers a mix: most B-rolls should support
                 # the speaker without covering the face/captions, but some key
-                # transitions can take over full-screen for energy.
-                layout = "fullscreen" if index % 3 == 0 else "bottom_card"
+                # transitions can take over full-screen for energy. Cycle three
+                # appearance styles in every video:
+                # 1) bottom slide-in photo card, 2) bottom pop/snap card,
+                # 3) full-screen cinematic takeover.
+                layout = ("bottom_slide", "bottom_pop", "fullscreen")[(index - 1) % 3]
                 mapped.append(
                     _TimelineBroll(
                         start=output_cursor + (src_start - cut.source_start),
@@ -336,6 +339,11 @@ class FFmpegRenderer:
                 card_h = int(height * 0.30)
                 card_x = int((width - card_w) / 2)
                 card_y = int(height * 0.625)
+                if cue.layout == "bottom_pop":
+                    card_w = int(width * 0.66)
+                    card_h = int(height * 0.27)
+                    card_x = int((width - card_w) / 2)
+                    card_y = int(height * 0.655)
                 filter_parts.append(
                     f"[{idx}:v]scale={card_w}:{card_h}:force_original_aspect_ratio=increase,"
                     f"crop={card_w}:{card_h},format=rgba,"
@@ -343,10 +351,16 @@ class FFmpegRenderer:
                     f"fade=t=out:st={max(0.0, dur - 0.18):.3f}:d=0.18:alpha=1,"
                     f"setpts=PTS-STARTPTS+{cue.start:.3f}/TB[br{idx}]"
                 )
+                if cue.layout == "bottom_pop":
+                    x_expr = f"{card_x}+9*sin((t-{cue.start:.3f})*22)*exp(-7*(t-{cue.start:.3f}))"
+                    y_expr = f"{card_y}-34*exp(-12*(t-{cue.start:.3f}))+8*sin((t-{cue.start:.3f})*7)"
+                else:
+                    x_expr = f"{card_x}+22*(1-exp(-18*(t-{cue.start:.3f})))"
+                    y_expr = f"{card_y}+10*sin((t-{cue.start:.3f})*4)"
                 filter_parts.append(
                     f"[{current}][br{idx}]overlay="
-                    f"x='{card_x}+22*(1-exp(-18*(t-{cue.start:.3f})))':"
-                    f"y='{card_y}+10*sin((t-{cue.start:.3f})*4)':"
+                    f"x='{x_expr}':"
+                    f"y='{y_expr}':"
                     f"enable='between(t,{cue.start:.3f},{cue.end:.3f})':"
                     f"eof_action=pass[{out_label}]"
                 )
@@ -374,6 +388,26 @@ class FFmpegRenderer:
                 f"[{current}][fl{flash_i}]overlay=0:0:"
                 f"enable='between(t,{timestamp:.3f},{timestamp + 0.22:.3f})':"
                 f"eof_action=pass[{out_label}]"
+            )
+            current = out_label
+
+        # Light-leak / lens-flare overlays synchronized with camera-shutter SFX.
+        # This recreates the reference-video feeling: flash + light streaks +
+        # sound happen together, without hiding the speaker or captions.
+        light_times = [t for t in (options.flash_timestamps or options.sfx_timestamps or []) if t >= 0][:18]
+        for light_i, timestamp in enumerate(light_times, start=1):
+            out_label = f"vl{light_i}"
+            filter_parts.append(
+                f"[{current}]"
+                f"drawbox=x=0:y={int(height * 0.16)}:w={width}:h=26:"
+                f"color=white@0.42:t=fill:enable='between(t,{timestamp:.3f},{timestamp + 0.12:.3f})',"
+                f"drawbox=x=0:y={int(height * 0.22)}:w={width}:h=10:"
+                f"color=cyan@0.28:t=fill:enable='between(t,{timestamp + 0.02:.3f},{timestamp + 0.20:.3f})',"
+                f"drawbox=x={int(width * 0.08)}:y=0:w=18:h={height}:"
+                f"color=white@0.30:t=fill:enable='between(t,{timestamp:.3f},{timestamp + 0.10:.3f})',"
+                f"drawbox=x={int(width * 0.82)}:y=0:w=42:h={height}:"
+                f"color=yellow@0.18:t=fill:enable='between(t,{timestamp + 0.04:.3f},{timestamp + 0.24:.3f})'"
+                f"[{out_label}]"
             )
             current = out_label
 
