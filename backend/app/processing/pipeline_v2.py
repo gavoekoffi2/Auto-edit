@@ -153,6 +153,17 @@ def run_pipeline_v2(
             if v is not None:
                 options[k] = v
 
+    # For premium viral/business renders, shutter SFX and flash cues are part
+    # of the visible value proposition. Some older API calls persisted
+    # `sfx=false`, which made the video look acceptable but silent/basic. Keep a
+    # separate premium flag so the final renderer still gets capture/photo cues
+    # unless the user explicitly passes `disable_premium_sfx=true`.
+    premium_motion_mode = (mode or "") in {"business_premium_african", "tiktok_viral", "publicite_locale"}
+    if premium_motion_mode and not options.get("disable_premium_sfx"):
+        options["sfx"] = True
+        options["shutter_effects"] = True
+        options["speaker_first_broll"] = True
+
     # Env feature flags = veto global
     if not settings.ENABLE_AI_BROLL:
         options["ai_broll"] = False
@@ -333,7 +344,7 @@ def run_pipeline_v2(
                 caption_path = os.path.join(output_dir, "subtitles.srt")
 
         sfx_timestamps = []
-        if options.get("sfx", False):
+        if options.get("sfx", False) or options.get("shutter_effects", False):
             sfx_timestamps.extend([float(c.segment_start) for c in cues if c.clip_path])
             sfx_timestamps.extend([float(o.start) for o in rendered_overlays])
 

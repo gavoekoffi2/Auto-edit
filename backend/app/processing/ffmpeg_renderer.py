@@ -38,7 +38,7 @@ class RenderOptions:
     music_volume: float = 0.25
     burn_captions_srt: str | None = None
     sfx_timestamps: list[float] | None = None
-    sfx_volume: float = 0.55
+    sfx_volume: float = 0.95
     flash_timestamps: list[float] | None = None
 
 
@@ -49,6 +49,8 @@ class _TimelineBroll:
     start: float
     end: float
     clip_path: str
+    layout: str = "bottom_card"  # bottom_card | fullscreen
+    index: int = 0
 
 
 _RES = {
@@ -229,11 +231,18 @@ class FFmpegRenderer:
                 src_end = min(cue.segment_end, cut.source_end)
                 if src_end <= src_start:
                     continue
+                index = len(mapped) + 1
+                # Claude's reference prefers a mix: most B-rolls should support
+                # the speaker without covering the face/captions, but some key
+                # transitions can take over full-screen for energy.
+                layout = "fullscreen" if index % 3 == 0 else "bottom_card"
                 mapped.append(
                     _TimelineBroll(
                         start=output_cursor + (src_start - cut.source_start),
                         end=output_cursor + (src_end - cut.source_start),
                         clip_path=cue.clip_path,
+                        layout=layout,
+                        index=index,
                     )
                 )
             output_cursor += cut.duration
@@ -269,8 +278,11 @@ class FFmpegRenderer:
             # very low sine, but still short enough not to cover speech.
             cmd += [
                 "-f", "lavfi",
-                "-t", "0.16",
-                "-i", "anoisesrc=color=white:amplitude=0.72:sample_rate=44100:duration=0.16",
+                "-t", "0.24",
+                # Camera shutter / photo-capture style cue: a short bright
+                # percussive noise burst, intentionally more audible than the
+                # earlier subtle tick so Claude can hear the capture effect.
+                "-i", "anoisesrc=color=white:amplitude=0.95:sample_rate=44100:duration=0.24",
             ]
 
         flash_indices: list[tuple[int, float]] = []
@@ -296,27 +308,60 @@ class FFmpegRenderer:
 
         for idx, cue in enumerate(broll_cues, start=1):
             dur = max(0.4, cue.end - cue.start)
-            # Speaker-first rule: B-roll is an explanatory floating card, not a
-            # permanent full-screen takeover. The person remains visible, while
-            # the illustration appears like a motion-design insert.
-            card_w = int(width * 0.72)
-            card_h = int(height * 0.46)
-            card_x = int((width - card_w) / 2)
-            card_y = int(height * 0.055)
-            filter_parts.append(
-                f"[{idx}:v]scale={card_w}:{card_h}:force_original_aspect_ratio=increase,"
-                f"crop={card_w}:{card_h},format=rgba,"
-                f"fade=t=in:st=0:d=0.12:alpha=1,"
-                f"fade=t=out:st={max(0.0, dur - 0.20):.3f}:d=0.20:alpha=1,"
-                f"setpts=PTS-STARTPTS+{cue.start:.3f}/TB[br{idx}]"
-            )
-            # A quick dark plate behind the card gives a premium insert feel.
             out_label = f"vb{idx}"
-            filter_parts.append(
-                f"[{current}][br{idx}]overlay={card_x}:{card_y}:"
-                f"enable='between(t,{cue.start:.3f},{cue.end:.3f})':"
-                f"eof_action=pass[{out_label}]"
-            )
+            if cue.layout == "fullscreen":
+                # Full-screen B-roll is reserved for every third cue: short,
+                # energetic transition like the reference video, while voice
+                # stays audible. Captions remain burned later above it.
+                filter_parts.append(
+                    f"[{idx}:v]scale={width * 1.08:.0f}:{height * 1.08:.0f}:force_original_aspect_ratio=increase,"
+                    f"crop={width}:{height}:"
+                    f"x='(in_w-out_w)/2+20*sin(t*2.2)':y='(in_h-out_h)/2+14*cos(t*1.8)',"
+                    "eq=contrast=1.08:saturation=1.12,format=rgba,"
+                    f"fade=t=in:st=0:d=0.10:alpha=1,"
+                    f"fade=t=out:st={max(0.0, dur - 0.18):.3f}:d=0.18:alpha=1,"
+                    f"setpts=PTS-STARTPTS+{cue.start:.3f}/TB[br{idx}]"
+                )
+                filter_parts.append(
+                    f"[{current}][br{idx}]overlay=0:0:"
+                    f"enable='between(t,{cue.start:.3f},{cue.end:.3f})':"
+                    f"eof_action=pass[{out_label}]"
+                )
+            else:
+                # Speaker-first bottom card: placed low to avoid the presenter's
+                # face and to leave the center caption safe-zone free. This is
+                # the Remotion/HyperFrames-style motion insert implemented in
+                # FFmpeg until the React renderer is fully active.
+                card_w = int(width * 0.78)
+                card_h = int(height * 0.30)
+                card_x = int((width - card_w) / 2)
+                card_y = int(height * 0.625)
+                filter_parts.append(
+                    f"[{idx}:v]scale={card_w}:{card_h}:force_original_aspect_ratio=increase,"
+                    f"crop={card_w}:{card_h},format=rgba,"
+                    f"fade=t=in:st=0:d=0.10:alpha=1,"
+                    f"fade=t=out:st={max(0.0, dur - 0.18):.3f}:d=0.18:alpha=1,"
+                    f"setpts=PTS-STARTPTS+{cue.start:.3f}/TB[br{idx}]"
+                )
+                filter_parts.append(
+                    f"[{current}][br{idx}]overlay="
+                    f"x='{card_x}+22*(1-exp(-18*(t-{cue.start:.3f})))':"
+                    f"y='{card_y}+10*sin((t-{cue.start:.3f})*4)':"
+                    f"enable='between(t,{cue.start:.3f},{cue.end:.3f})':"
+                    f"eof_action=pass[{out_label}]"
+                )
+                current = out_label
+                # Premium photo frame/border around the bottom card, including a
+                # quick thick white shutter frame at cue start.
+                framed = f"vbf{idx}"
+                filter_parts.append(
+                    f"[{current}]drawbox=x={card_x - 8}:y={card_y - 8}:w={card_w + 16}:h={card_h + 16}:"
+                    f"color=white@0.92:t=6:enable='between(t,{cue.start:.3f},{cue.end:.3f})',"
+                    f"drawbox=x={card_x - 18}:y={card_y - 18}:w={card_w + 36}:h={card_h + 36}:"
+                    f"color=white@0.98:t=18:enable='between(t,{cue.start:.3f},{cue.start + 0.12:.3f})'[{framed}]"
+                )
+                current = framed
+                continue
             current = out_label
 
         for flash_i, (input_idx, timestamp) in enumerate(flash_indices, start=1):
