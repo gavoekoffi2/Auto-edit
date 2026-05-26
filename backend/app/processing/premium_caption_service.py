@@ -20,13 +20,15 @@ from app.processing.types import Transcript, Word
 class PremiumCaptionConfig:
     width: int = 1080
     height: int = 1920
-    max_words_per_line: int = 4
-    max_chunk_duration: float = 2.2
-    min_chunk_duration: float = 0.45
-    margin_v: int = 360
+    max_words_per_line: int = 3
+    max_chunk_duration: float = 1.55
+    min_chunk_duration: float = 0.38
+    # Alignment=5 below places captions in the safe middle area so TikTok/Reels
+    # UI does not hide them at the bottom.
+    margin_v: int = 0
     font_name: str = "Arial"
-    base_font_size: int = 82
-    active_font_size: int = 96
+    base_font_size: int = 90
+    active_font_size: int = 108
     active_colors: tuple[str, ...] = ("&H002CF7FF", "&H0000E5FF", "&H006DFF7A")  # cyan, yellow, green
 
 
@@ -54,7 +56,7 @@ class PremiumCaptionService:
             "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
             (
                 f"Style: Premium,{cfg.font_name},{cfg.base_font_size},&H00FFFFFF,&H000000FF,"
-                "&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,5,2,2,70,70,"
+                "&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,6,3,5,70,70,"
                 f"{cfg.margin_v},1"
             ),
             "",

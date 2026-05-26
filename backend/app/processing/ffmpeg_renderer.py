@@ -269,8 +269,8 @@ class FFmpegRenderer:
             # very low sine, but still short enough not to cover speech.
             cmd += [
                 "-f", "lavfi",
-                "-t", "0.22",
-                "-i", "sine=frequency=1450:sample_rate=44100:duration=0.22",
+                "-t", "0.16",
+                "-i", "anoisesrc=color=white:amplitude=0.72:sample_rate=44100:duration=0.16",
             ]
 
         flash_indices: list[tuple[int, float]] = []
@@ -284,28 +284,36 @@ class FFmpegRenderer:
 
         filter_parts: list[str] = []
         base_vf = (
-            f"scale={width * 1.08:.0f}:{height * 1.08:.0f}:force_original_aspect_ratio=increase,"
+            f"scale={width * 1.13:.0f}:{height * 1.13:.0f}:force_original_aspect_ratio=increase,"
             f"crop={width}:{height}:"
-            f"x='(in_w-out_w)/2+22*sin(t*1.15)':"
-            f"y='(in_h-out_h)/2+18*cos(t*0.90)',"
-            "eq=contrast=1.07:saturation=1.13:brightness=0.015,"
-            "vignette=PI/7"
+            f"x='(in_w-out_w)/2+34*sin(t*1.35)':"
+            f"y='(in_h-out_h)/2+24*cos(t*1.10)',"
+            "eq=contrast=1.10:saturation=1.18:brightness=0.02,"
+            "vignette=PI/6"
         )
         filter_parts.append(f"[0:v]{base_vf},format=yuv420p[v0]")
         current = "v0"
 
         for idx, cue in enumerate(broll_cues, start=1):
             dur = max(0.4, cue.end - cue.start)
+            # Speaker-first rule: B-roll is an explanatory floating card, not a
+            # permanent full-screen takeover. The person remains visible, while
+            # the illustration appears like a motion-design insert.
+            card_w = int(width * 0.72)
+            card_h = int(height * 0.46)
+            card_x = int((width - card_w) / 2)
+            card_y = int(height * 0.055)
             filter_parts.append(
-                f"[{idx}:v]scale={width}:{height}:force_original_aspect_ratio=increase,"
-                f"crop={width}:{height},format=rgba,"
-                f"fade=t=in:st=0:d=0.18:alpha=1,"
-                f"fade=t=out:st={max(0.0, dur - 0.25):.3f}:d=0.25:alpha=1,"
+                f"[{idx}:v]scale={card_w}:{card_h}:force_original_aspect_ratio=increase,"
+                f"crop={card_w}:{card_h},format=rgba,"
+                f"fade=t=in:st=0:d=0.12:alpha=1,"
+                f"fade=t=out:st={max(0.0, dur - 0.20):.3f}:d=0.20:alpha=1,"
                 f"setpts=PTS-STARTPTS+{cue.start:.3f}/TB[br{idx}]"
             )
+            # A quick dark plate behind the card gives a premium insert feel.
             out_label = f"vb{idx}"
             filter_parts.append(
-                f"[{current}][br{idx}]overlay=0:0:"
+                f"[{current}][br{idx}]overlay={card_x}:{card_y}:"
                 f"enable='between(t,{cue.start:.3f},{cue.end:.3f})':"
                 f"eof_action=pass[{out_label}]"
             )
@@ -327,13 +335,18 @@ class FFmpegRenderer:
         subtitle_filters: list[str] = []
         if options.burn_captions_srt and os.path.exists(options.burn_captions_srt):
             srt = _escape_filter_path(options.burn_captions_srt)
-            style = (
-                "FontName=Arial,FontSize=18,Bold=1,"
-                "PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
-                "BackColour=&H99000000,BorderStyle=3,Outline=2,Shadow=1,"
-                "Alignment=2,MarginV=150"
-            )
-            subtitle_filters.append(f"subtitles='{srt}':force_style='{style}'")
+            if options.burn_captions_srt.lower().endswith(".ass"):
+                # ASS already contains premium styles/positioning. Do not
+                # override it with a generic SRT force_style.
+                subtitle_filters.append(f"subtitles='{srt}'")
+            else:
+                style = (
+                    "FontName=Arial,FontSize=18,Bold=1,"
+                    "PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
+                    "BackColour=&H99000000,BorderStyle=3,Outline=2,Shadow=1,"
+                    "Alignment=2,MarginV=150"
+                )
+                subtitle_filters.append(f"subtitles='{srt}':force_style='{style}'")
 
         overlay_ass = self._write_overlay_ass(overlays, out_path + ".overlays.ass", width, height)
         if overlay_ass:
