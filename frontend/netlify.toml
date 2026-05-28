@@ -1,0 +1,13 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  # Public URL of the AutoEdit backend API (FastAPI behind your VPS HTTPS host).
+  VITE_API_URL = "https://srv1305401.hstgr.cloud/api"
+
+# SPA fallback: every route serves index.html so client-side routing works.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
