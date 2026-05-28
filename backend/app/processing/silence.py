@@ -1,7 +1,6 @@
 """Silence removal module using auto-editor."""
 import os
 import re
-import signal
 import subprocess
 import logging
 

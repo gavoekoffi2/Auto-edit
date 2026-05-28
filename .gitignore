@@ -19,6 +19,8 @@ uploads/
 node_modules/
 frontend/dist/
 frontend/build/
+remotion/out/
+remotion/.remotion/
 .DS_Store
 *.log
 .idea/

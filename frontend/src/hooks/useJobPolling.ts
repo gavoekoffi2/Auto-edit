@@ -9,16 +9,16 @@ interface Job {
   error_message: string | null
 }
 
+const TERMINAL_STATUSES = ['completed', 'failed', 'cancelled']
+
 export function useJobPolling(jobId: string | null, intervalMs = 2000) {
   const [job, setJob] = useState<Job | null>(null)
   const [isPolling, setIsPolling] = useState(false)
 
   const poll = useCallback(async () => {
-    if (!jobId) return
+    if (!jobId) return null
     try {
-      const data = await getJob(jobId)
-      setJob(data)
-      return data
+      return await getJob(jobId)
     } catch {
       return null
     }
@@ -27,29 +27,34 @@ export function useJobPolling(jobId: string | null, intervalMs = 2000) {
   useEffect(() => {
     if (!jobId) return
 
-    setIsPolling(true)
-    let interval: ReturnType<typeof setInterval>
+    let interval: ReturnType<typeof setInterval> | undefined
+    let stopped = false
 
-    const startPolling = async () => {
-      const data = await poll()
-      if (data?.status === 'completed' || data?.status === 'failed') {
-        setIsPolling(false)
-        return
-      }
-
-      interval = setInterval(async () => {
-        const result = await poll()
-        if (result?.status === 'completed' || result?.status === 'failed') {
-          clearInterval(interval)
-          setIsPolling(false)
-        }
-      }, intervalMs)
-    }
-
-    startPolling()
-    return () => {
+    const stop = () => {
+      stopped = true
       if (interval) clearInterval(interval)
+      setIsPolling(false)
     }
+
+    setIsPolling(true)
+
+    const tick = async () => {
+      const data = await poll()
+      if (stopped) return
+      if (data) {
+        setJob(data)
+        if (TERMINAL_STATUSES.includes(data.status)) {
+          stop()
+        }
+      }
+    }
+
+    // Kick off immediately, then on an interval. The interval is assigned
+    // synchronously so unmount cleanup always clears it (no async race).
+    interval = setInterval(tick, intervalMs)
+    void tick()
+
+    return stop
   }, [jobId, intervalMs, poll])
 
   return { job, isPolling }

@@ -19,30 +19,51 @@ client.interceptors.request.use((config) => {
   return config
 })
 
-// Handle 401 responses with token refresh
+// Shared in-flight refresh promise so concurrent 401s trigger only ONE refresh
+// request. Without this, N simultaneous failed requests would fire N refreshes,
+// racing each other and potentially invalidating the rotated refresh token.
+let refreshPromise: Promise<string | null> | null = null
+
+function performRefresh(): Promise<string | null> {
+  if (!refreshPromise) {
+    const refreshToken = localStorage.getItem('refresh_token')
+    if (!refreshToken) return Promise.resolve(null)
+    refreshPromise = axios
+      .post(`${API_URL}/v1/auth/refresh`, { refresh_token: refreshToken })
+      .then((res) => {
+        if (res.data?.access_token && res.data?.refresh_token) {
+          localStorage.setItem('access_token', res.data.access_token)
+          localStorage.setItem('refresh_token', res.data.refresh_token)
+          return res.data.access_token as string
+        }
+        return null
+      })
+      .catch(() => null)
+      .finally(() => {
+        // Allow a fresh refresh attempt once this one settles.
+        refreshPromise = null
+      })
+  }
+  return refreshPromise
+}
+
+// Handle 401 responses with a single, de-duplicated token refresh.
 client.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      const refreshToken = localStorage.getItem('refresh_token')
-      if (refreshToken) {
-        originalRequest._retry = true
-        try {
-          const res = await axios.post(`${API_URL}/v1/auth/refresh`, {
-            refresh_token: refreshToken,
-          })
-          if (res.data?.access_token && res.data?.refresh_token) {
-            localStorage.setItem('access_token', res.data.access_token)
-            localStorage.setItem('refresh_token', res.data.refresh_token)
-            originalRequest.headers.Authorization = `Bearer ${res.data.access_token}`
-            return client(originalRequest)
-          }
-        } catch {
-          localStorage.removeItem('access_token')
-          localStorage.removeItem('refresh_token')
-          window.location.href = '/login'
-        }
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+      originalRequest._retry = true
+      const newToken = await performRefresh()
+      if (newToken) {
+        originalRequest.headers.Authorization = `Bearer ${newToken}`
+        return client(originalRequest)
+      }
+      // Refresh failed → clear session and redirect to login.
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('refresh_token')
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login'
       }
     }
     return Promise.reject(error)

@@ -34,6 +34,7 @@ AutoEdit/
 - auto-editor (silence removal)
 - PySceneDetect (scene detection)
 - MoviePy (video effects & compositing)
+- Remotion (React-based motion design: animated intros, captions, end-screens)
 
 **Frontend:**
 - React 18 + TypeScript
@@ -50,16 +51,32 @@ AutoEdit/
 ## Processing Pipeline
 
 ```
-Upload → Whisper AI Transcription → Silence Removal → Scene Detection → Effects → Subtitles → Export
+Upload → Whisper AI Transcription → Silence Removal → Scene Detection →
+Effects → Subtitles → Motion Design (Remotion) → Export
 ```
 
 ### Editing Modes
 
 | Mode | Description |
 |------|-------------|
-| **TikTok** | Vertical crop (9:16), fast cuts, auto-subtitles, 60s max |
-| **YouTube** | Optimized engagement, silence removal, scene chapters |
+| **TikTok** | Vertical crop (9:16), fast cuts, animated centered captions, branded intro/outro, 60s max |
+| **YouTube** | Optimized engagement, silence removal, scene chapters, animated captions + intro/outro |
 | **Podcast** | Audio cleanup, silence removal, full transcription |
+
+### Motion Design (Remotion)
+
+Animated motion graphics are added by the `remotion/` project, driven from the
+Celery worker (`backend/app/processing/motion.py`):
+
+- **Animated intro** — branded opener with word-by-word title reveal
+- **Animated captions** — word-by-word transcript overlay (transparent ProRes,
+  composited with ffmpeg) that auto-matches the source aspect ratio
+- **End-screen / outro** — animated call-to-action (Subscribe / Follow)
+- **Lower-thirds** — name/role banners
+
+Users toggle motion design and pick a brand color / intro title per render in
+the editor. The step degrades gracefully: if Node/Remotion is unavailable the
+job still completes without motion graphics.
 
 ## Quick Start
 

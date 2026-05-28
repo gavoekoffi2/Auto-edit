@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Zap, Mic, VolumeX, Film, Sparkles, Loader2, ArrowLeft } from 'lucide-react'
+import { Zap, Mic, VolumeX, Film, Sparkles, Loader2, ArrowLeft, Wand2 } from 'lucide-react'
 import VideoPlayer from '../components/video/VideoPlayer'
 import Timeline from '../components/video/Timeline'
 import JobProgress from '../components/video/JobProgress'
@@ -30,6 +30,9 @@ export default function Editor() {
   const [video, setVideo] = useState<Video | null>(null)
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
   const [selectedMode, setSelectedMode] = useState<EditMode>('youtube')
+  const [motionEnabled, setMotionEnabled] = useState(true)
+  const [brandColor, setBrandColor] = useState('#6366f1')
+  const [introTitle, setIntroTitle] = useState('')
   const [processing, setProcessing] = useState(false)
   const [completedResult, setCompletedResult] = useState<Record<string, unknown> | null>(null)
   const [loadError, setLoadError] = useState('')
@@ -71,10 +74,25 @@ export default function Editor() {
     setProcessing(true)
 
     try {
+      // Motion-design overrides. When disabled, switch off all motion elements;
+      // when enabled, pass brand color and a custom intro title (merged over the
+      // mode preset by the backend pipeline).
+      const params: Record<string, unknown> = {
+        motion: motionEnabled
+          ? {
+              primary_color: brandColor,
+              ...(introTitle.trim()
+                ? { intro: { title: introTitle.trim() } }
+                : {}),
+            }
+          : { animated_captions: false, intro: false, outro: false },
+      }
+
       const job = await createJob({
         video_id: videoId,
         job_type: 'pipeline',
         mode: selectedMode,
+        params,
       })
       setActiveJobId(job.id)
       toast('info', `Processing started in ${selectedMode} mode`)
@@ -86,7 +104,7 @@ export default function Editor() {
       }
       toast('error', msg)
     }
-  }, [videoId, selectedMode])
+  }, [videoId, selectedMode, motionEnabled, brandColor, introTitle])
 
   const handleJobComplete = useCallback((result: Record<string, unknown>) => {
     setCompletedResult(result)
@@ -194,6 +212,59 @@ export default function Editor() {
             </div>
           </div>
 
+          {/* Motion Design */}
+          {selectedMode !== 'podcast' && (
+            <div className="card">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <Wand2 className="w-4 h-4 text-accent-400" />
+                  Motion Design
+                </h3>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={motionEnabled}
+                  aria-label="Toggle motion design"
+                  onClick={() => setMotionEnabled((v) => !v)}
+                  className={`relative w-11 h-6 rounded-full transition-colors ${
+                    motionEnabled ? 'bg-primary-600' : 'bg-dark-700'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
+                      motionEnabled ? 'translate-x-5' : ''
+                    }`}
+                  />
+                </button>
+              </div>
+              <p className="text-xs text-dark-400 mb-3">
+                Animated intro, word-by-word captions & end-screen (Remotion).
+              </p>
+              {motionEnabled && (
+                <div className="space-y-3">
+                  <label className="flex items-center justify-between text-sm">
+                    <span className="text-dark-300">Brand color</span>
+                    <input
+                      type="color"
+                      value={brandColor}
+                      onChange={(e) => setBrandColor(e.target.value)}
+                      aria-label="Brand color"
+                      className="w-8 h-8 rounded bg-transparent border border-dark-600 cursor-pointer"
+                    />
+                  </label>
+                  <input
+                    type="text"
+                    value={introTitle}
+                    onChange={(e) => setIntroTitle(e.target.value)}
+                    placeholder="Intro title (optional)"
+                    maxLength={40}
+                    className="w-full bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Pipeline Steps */}
           <div className="card">
             <h3 className="font-semibold mb-3">Processing Steps</h3>
@@ -214,6 +285,12 @@ export default function Editor() {
                 <Sparkles className="w-4 h-4 text-primary-400" />
                 Effects & Subtitles (MoviePy)
               </div>
+              {selectedMode !== 'podcast' && motionEnabled && (
+                <div className="flex items-center gap-2 text-dark-300">
+                  <Wand2 className="w-4 h-4 text-accent-400" />
+                  Motion Design (Remotion)
+                </div>
+              )}
             </div>
           </div>
 

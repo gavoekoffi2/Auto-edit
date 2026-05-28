@@ -23,7 +23,18 @@ MODE_PRESETS = {
             "fade_out": 0.3,
             "speed": 1.05,
         },
-        "subtitles": True,
+        # Motion design: animated captions are the signature TikTok look, plus a
+        # short branded intro/outro. Animated captions replace burned-in subs.
+        "subtitles": False,
+        "motion": {
+            "animated_captions": True,
+            "caption_position": "center",
+            "font_scale": 1.15,
+            "intro": {"title": "AutoEdit", "subtitle": ""},
+            "outro": {"title": "Follow for more", "call_to_action": "Follow"},
+            "intro_seconds": 2.0,
+            "outro_seconds": 2.5,
+        },
         "max_duration": 60,
     },
     "youtube": {
@@ -34,7 +45,14 @@ MODE_PRESETS = {
             "fade_in": 0.5,
             "fade_out": 0.5,
         },
-        "subtitles": True,
+        "subtitles": False,
+        "motion": {
+            "animated_captions": True,
+            "caption_position": "bottom",
+            "font_scale": 1.0,
+            "intro": {"title": "AutoEdit", "subtitle": ""},
+            "outro": {"title": "Thanks for watching", "call_to_action": "Subscribe"},
+        },
         "max_duration": None,
     },
     "podcast": {
@@ -43,6 +61,7 @@ MODE_PRESETS = {
         "scene_detection": False,
         "effects": {},
         "subtitles": True,
+        "motion": {},
         "max_duration": None,
     },
 }
@@ -81,12 +100,24 @@ def run_pipeline(
     if os.path.getsize(video_path) == 0:
         raise ValueError("Input video file is empty")
 
-    # Merge mode preset with custom params
+    # Merge mode preset with custom params. The "motion" and "effects" dicts are
+    # merged shallowly so the frontend can override a single knob (e.g. brand
+    # color) without discarding the rest of the preset.
     config = {}
     if mode and mode in MODE_PRESETS:
         config = MODE_PRESETS[mode].copy()
     if params:
-        config.update(params)
+        for key, value in params.items():
+            if (
+                key in ("motion", "effects")
+                and isinstance(value, dict)
+                and isinstance(config.get(key), dict)
+            ):
+                merged = config[key].copy()
+                merged.update(value)
+                config[key] = merged
+            else:
+                config[key] = value
 
     # Default: enable all steps
     if not config:
@@ -196,10 +227,10 @@ def run_pipeline(
             results["effects_error"] = str(e)
             results["steps_failed"].append("effects")
 
-    # Step 5: Add Subtitles (85-95%)
+    # Step 5: Add Subtitles (85-90%)
     srt_path = results.get("transcription", {}).get("srt_path")
     if config.get("subtitles") and srt_path and os.path.exists(srt_path):
-        update_progress(88, "Adding subtitles...")
+        update_progress(87, "Adding subtitles...")
         try:
             sub_result = add_subtitles(
                 current_video,
@@ -215,11 +246,48 @@ def run_pipeline(
                 results["steps_completed"].append("subtitles")
             else:
                 results["steps_failed"].append("subtitles")
-            update_progress(95, "Subtitles added")
+            update_progress(90, "Subtitles added")
         except Exception as e:
             logger.error(f"Subtitles failed: {e}", exc_info=True)
             results["subtitles_error"] = str(e)
             results["steps_failed"].append("subtitles")
+
+    # Step 6: Motion Design via Remotion (90-99%)
+    motion_config = config.get("motion") or {}
+    if motion_config and any(
+        motion_config.get(k) for k in ("intro", "outro", "animated_captions")
+    ):
+        update_progress(92, "Adding motion design...")
+        try:
+            from app.processing.motion import add_motion_graphics
+
+            motion_result = add_motion_graphics(
+                current_video,
+                output_dir,
+                motion_config=motion_config,
+                transcription=results.get("transcription"),
+            )
+            new_video = motion_result.get("output_path")
+            if (
+                new_video
+                and new_video != current_video
+                and os.path.exists(new_video)
+                and os.path.getsize(new_video) > 0
+            ):
+                intermediate_files.append(current_video if current_video != video_path else None)
+                current_video = new_video
+                results["motion"] = motion_result
+                results["steps_completed"].append("motion_design")
+            elif motion_result.get("skipped"):
+                logger.warning("Motion design skipped: %s", motion_result["skipped"])
+                results["motion"] = motion_result
+            else:
+                results["steps_failed"].append("motion_design")
+            update_progress(99, "Motion design complete")
+        except Exception as e:
+            logger.error(f"Motion design failed: {e}", exc_info=True)
+            results["motion_error"] = str(e)
+            results["steps_failed"].append("motion_design")
 
     # Final: Copy result to standard output name
     final_output = os.path.join(output_dir, "final_output.mp4")

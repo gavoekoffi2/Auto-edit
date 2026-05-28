@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
-import { getJob, downloadJobResult } from '../../api/jobs'
-import { Loader2, CheckCircle, XCircle, Download, RefreshCw } from 'lucide-react'
+import { getJob, downloadJobResult, cancelJob } from '../../api/jobs'
+import { Loader2, CheckCircle, XCircle, Download, RefreshCw, Ban } from 'lucide-react'
 import { toast } from '../ui/Toast'
 
 interface Props {
@@ -17,6 +17,7 @@ export default function JobProgress({ jobId, onComplete, onRetry }: Props) {
     error_message: string | null
   } | null>(null)
   const [downloading, setDownloading] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>
@@ -37,6 +38,8 @@ export default function JobProgress({ jobId, onComplete, onRetry }: Props) {
         } else if (data.status === 'failed') {
           clearInterval(interval)
           toast('error', data.error_message || 'Processing failed')
+        } else if (data.status === 'cancelled') {
+          clearInterval(interval)
         }
       } catch {
         errorCount++
@@ -54,6 +57,19 @@ export default function JobProgress({ jobId, onComplete, onRetry }: Props) {
       clearInterval(interval)
     }
   }, [jobId, onComplete])
+
+  const handleCancel = useCallback(async () => {
+    setCancelling(true)
+    try {
+      await cancelJob(jobId)
+      setJob((prev) => (prev ? { ...prev, status: 'cancelled' } : prev))
+      toast('info', 'Job cancelled')
+    } catch {
+      toast('error', 'Could not cancel job')
+    } finally {
+      setCancelling(false)
+    }
+  }, [jobId])
 
   const handleDownload = useCallback(async () => {
     setDownloading(true)
@@ -74,6 +90,7 @@ export default function JobProgress({ jobId, onComplete, onRetry }: Props) {
     processing: { icon: Loader2, color: 'text-primary-400', label: 'Processing...' },
     completed: { icon: CheckCircle, color: 'text-emerald-400', label: 'Complete!' },
     failed: { icon: XCircle, color: 'text-red-400', label: 'Failed' },
+    cancelled: { icon: Ban, color: 'text-dark-400', label: 'Cancelled' },
   }
 
   const config = statusConfig[job.status as keyof typeof statusConfig] || statusConfig.pending
@@ -94,12 +111,22 @@ export default function JobProgress({ jobId, onComplete, onRetry }: Props) {
 
       {/* Progress bar */}
       {isAnimating && (
-        <div className="w-full bg-dark-700 rounded-full h-2 mb-3">
-          <div
-            className="bg-primary-500 h-2 rounded-full transition-all duration-500"
-            style={{ width: `${job.progress}%` }}
-          />
-        </div>
+        <>
+          <div className="w-full bg-dark-700 rounded-full h-2 mb-3">
+            <div
+              className="bg-primary-500 h-2 rounded-full transition-all duration-500"
+              style={{ width: `${job.progress}%` }}
+            />
+          </div>
+          <button
+            onClick={handleCancel}
+            disabled={cancelling}
+            className="text-sm text-dark-400 hover:text-red-400 transition-colors inline-flex items-center gap-1.5 disabled:opacity-50"
+          >
+            {cancelling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ban className="w-3.5 h-3.5" />}
+            {cancelling ? 'Cancelling...' : 'Cancel'}
+          </button>
+        </>
       )}
 
       {job.status === 'failed' && (

@@ -1,7 +1,10 @@
 import { useState } from 'react'
-import { Check, Zap } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Check, Zap, Loader2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import Footer from '../components/layout/Footer'
+import { createCheckout } from '../api/payments'
+import { useAuthStore } from '../store/authStore'
+import { toast } from '../components/ui/Toast'
 
 const plans = [
   {
@@ -58,6 +61,44 @@ const plans = [
 
 export default function Pricing() {
   const [currency, setCurrency] = useState<'XOF' | 'USD'>('XOF')
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null)
+  const navigate = useNavigate()
+  const accessToken = useAuthStore((s) => s.accessToken)
+
+  const handleSelectPlan = async (planId: string) => {
+    // Free plan → just sign up.
+    if (planId === 'free') {
+      navigate('/signup')
+      return
+    }
+    // Enterprise → sales contact.
+    if (planId === 'enterprise') {
+      window.location.href = 'mailto:sales@autoedit.app?subject=Enterprise%20plan'
+      return
+    }
+    // Paid plan: require auth, then start a real checkout.
+    if (!accessToken) {
+      navigate('/signup?next=/pricing')
+      return
+    }
+    setLoadingPlan(planId)
+    try {
+      const { checkout_url } = await createCheckout(planId, currency)
+      if (checkout_url) {
+        window.location.href = checkout_url
+      } else {
+        toast('error', 'Could not start checkout. Please try again.')
+      }
+    } catch (err: unknown) {
+      let msg = 'Checkout failed. Please try again.'
+      if (err && typeof err === 'object' && 'response' in err) {
+        msg = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail || msg
+      }
+      toast('error', msg)
+    } finally {
+      setLoadingPlan(null)
+    }
+  }
 
   return (
     <div>
@@ -132,15 +173,19 @@ export default function Pricing() {
                 ))}
               </ul>
 
-              <Link
-                to={plan.id === 'free' ? '/signup' : '/signup'}
-                className={`block text-center py-3 rounded-lg font-semibold transition-all ${
-                  plan.popular
-                    ? 'btn-primary'
-                    : 'btn-secondary'
+              <button
+                onClick={() => handleSelectPlan(plan.id)}
+                disabled={loadingPlan === plan.id}
+                className={`block w-full text-center py-3 rounded-lg font-semibold transition-all disabled:opacity-60 ${
+                  plan.popular ? 'btn-primary' : 'btn-secondary'
                 }`}
               >
-                {plan.id === 'free' ? (
+                {loadingPlan === plan.id ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Redirecting...
+                  </span>
+                ) : plan.id === 'free' ? (
                   plan.cta
                 ) : (
                   <span className="flex items-center justify-center gap-2">
@@ -148,7 +193,7 @@ export default function Pricing() {
                     {plan.cta}
                   </span>
                 )}
-              </Link>
+              </button>
             </div>
           ))}
         </div>
