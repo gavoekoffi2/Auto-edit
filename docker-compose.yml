@@ -8,8 +8,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-autoedit}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-autoedit}"]
       interval: 5s
@@ -20,8 +18,6 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
-    ports:
-      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -31,9 +27,7 @@ services:
   backend:
     build: ./backend
     restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
-      - ./backend:/app
       - uploads_data:/app/uploads
     ports:
       - "8000:8000"
@@ -62,7 +56,6 @@ services:
     restart: unless-stopped
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
     volumes:
-      - ./backend:/app
       - uploads_data:/app/uploads
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-autoedit}:${POSTGRES_PASSWORD:-autoedit}@postgres:5432/${POSTGRES_DB:-autoedit}
@@ -71,7 +64,6 @@ services:
       - SECRET_KEY=${SECRET_KEY:-}
       - UPLOAD_DIR=/app/uploads
       - WHISPER_MODEL=${WHISPER_MODEL:-base}
-      # Motion design (Remotion) — baked into the worker image at /opt/remotion.
       - REMOTION_DIR=/opt/remotion
       - REMOTION_CONCURRENCY=${REMOTION_CONCURRENCY:-2}
     depends_on:

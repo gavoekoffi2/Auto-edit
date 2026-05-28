@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime, timezone
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -96,9 +97,13 @@ async def refresh_token(data: TokenRefresh, db: AsyncSession = Depends(get_db)):
         )
 
     user_id = payload.get("sub")
+    try:
+        user_uuid = UUID(user_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 
     # Verify user still exists and is active
-    result = await db.execute(select(User).where(User.id == user_id))
+    result = await db.execute(select(User).where(User.id == user_uuid))
     user = result.scalar_one_or_none()
     if not user or not user.is_active:
         raise HTTPException(
@@ -177,7 +182,12 @@ async def confirm_password_reset(
         )
 
     user_id = payload.get("sub")
-    result = await db.execute(select(User).where(User.id == user_id))
+    try:
+        user_uuid = UUID(user_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset token")
+
+    result = await db.execute(select(User).where(User.id == user_uuid))
     user = result.scalar_one_or_none()
 
     if not user or not user.is_active:

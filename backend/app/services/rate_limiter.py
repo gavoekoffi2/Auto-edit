@@ -1,4 +1,4 @@
-"""Async Redis-based rate limiter."""
+"""Async Redis-based rate limiter with atomic increment."""
 import logging
 from fastapi import HTTPException, status
 from redis.asyncio import from_url as redis_from_url
@@ -7,8 +7,18 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Reusable async Redis connection
 _redis_client = None
+
+# Atomic Lua script: increment and set TTL only on first key creation.
+# Returns [current_count, ttl].
+_LUA_INCR = """
+local current = redis.call('INCR', KEYS[1])
+if current == 1 then
+    redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+local ttl = redis.call('TTL', KEYS[1])
+return {current, ttl}
+"""
 
 
 async def _get_redis():
@@ -26,21 +36,15 @@ async def check_rate_limit(
         r = await _get_redis()
         redis_key = f"rate_limit:{key}"
 
-        current = await r.get(redis_key)
-        if current is not None and int(current) >= max_attempts:
-            ttl = await r.ttl(redis_key)
+        count, ttl = await r.eval(_LUA_INCR, 1, redis_key, window_seconds)
+
+        if int(count) > max_attempts:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=f"Too many attempts. Try again in {ttl} seconds.",
+                detail=f"Too many attempts. Try again in {max(1, int(ttl))} seconds.",
             )
-
-        pipe = r.pipeline()
-        pipe.incr(redis_key)
-        pipe.expire(redis_key, window_seconds)
-        await pipe.execute()
 
     except HTTPException:
         raise
     except Exception as e:
-        # If Redis is down, allow the request (fail open)
-        logger.warning(f"Rate limiter error (allowing request): {e}")
+        logger.warning("Rate limiter error (allowing request): %s", e)

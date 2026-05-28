@@ -1,7 +1,7 @@
 from pydantic import BaseModel, field_validator
 from uuid import UUID
 from datetime import datetime
-from typing import Optional, Literal
+from typing import Optional
 
 from app.config import VALID_JOB_TYPES, VALID_MODES
 

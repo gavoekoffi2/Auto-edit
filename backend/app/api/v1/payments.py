@@ -74,9 +74,8 @@ async def checkout(
 async def payment_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     """Handle FedaPay webhook callbacks with signature verification."""
     raw_body = await request.body()
-    body = await request.json()
 
-    # Verify webhook signature if secret key is configured
+    # Verify webhook signature BEFORE parsing JSON.
     if settings.FEDAPAY_SECRET_KEY:
         signature = request.headers.get("X-Fedapay-Signature", "")
         expected = hmac.HMAC(
@@ -86,8 +85,15 @@ async def payment_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         ).hexdigest()
 
         if not hmac.compare_digest(signature, expected):
-            logger.warning(f"Invalid webhook signature from {request.client.host if request.client else 'unknown'}")
+            client_host = request.client.host if request.client else "unknown"
+            logger.warning("Invalid webhook signature from %s", client_host)
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid signature")
+
+    import json as _json
+    try:
+        body = _json.loads(raw_body)
+    except (ValueError, _json.JSONDecodeError):
+        return {"status": "ignored"}
 
     entity = body.get("entity", {})
     tx_id = str(entity.get("id", ""))
@@ -96,15 +102,17 @@ async def payment_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     if not tx_id:
         return {"status": "ignored"}
 
+    # Row-level lock prevents duplicate processing under concurrent webhooks.
     result = await db.execute(
-        select(Payment).where(Payment.fedapay_tx_id == tx_id)
+        select(Payment)
+        .where(Payment.fedapay_tx_id == tx_id)
+        .with_for_update(skip_locked=True)
     )
     payment = result.scalar_one_or_none()
     if not payment:
-        logger.warning(f"Webhook for unknown transaction: {tx_id}")
+        logger.warning("Webhook for unknown transaction: %s", tx_id)
         return {"status": "not_found"}
 
-    # Prevent duplicate processing
     if payment.status == "completed":
         return {"status": "already_processed"}
 
@@ -112,21 +120,22 @@ async def payment_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         if tx_status == "approved":
             payment.status = "completed"
 
-            # Upgrade user plan
             user_result = await db.execute(
                 select(User).where(User.id == payment.user_id)
             )
             user = user_result.scalar_one_or_none()
             if user:
                 user.plan = payment.plan
-                logger.info(f"User {user.id} upgraded to {payment.plan} via payment {payment.id}")
+                logger.info("User %s upgraded to %s via payment %s", user.id, payment.plan, payment.id)
 
         elif tx_status in ("declined", "cancelled"):
             payment.status = "failed"
-            logger.info(f"Payment {payment.id} failed: {tx_status}")
+            logger.info("Payment %s failed: %s", payment.id, tx_status)
+
+        await db.flush()
 
     except Exception as e:
-        logger.error(f"Webhook processing error for tx {tx_id}: {e}")
+        logger.error("Webhook processing error for tx %s: %s", tx_id, e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Webhook processing failed",

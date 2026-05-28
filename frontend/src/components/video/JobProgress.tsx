@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { getJob, downloadJobResult, cancelJob } from '../../api/jobs'
 import { Loader2, CheckCircle, XCircle, Download, RefreshCw, Ban } from 'lucide-react'
 import { toast } from '../ui/Toast'
@@ -10,6 +10,8 @@ interface Props {
 }
 
 export default function JobProgress({ jobId, onComplete, onRetry }: Props) {
+  const onCompleteRef = useRef(onComplete)
+  onCompleteRef.current = onComplete
   const [job, setJob] = useState<{
     status: string
     progress: number
@@ -33,7 +35,7 @@ export default function JobProgress({ jobId, onComplete, onRetry }: Props) {
 
         if (data.status === 'completed') {
           clearInterval(interval)
-          onComplete?.(data.result || {})
+          onCompleteRef.current?.(data.result || {})
           toast('success', 'Video processing complete!')
         } else if (data.status === 'failed') {
           clearInterval(interval)
@@ -56,7 +58,7 @@ export default function JobProgress({ jobId, onComplete, onRetry }: Props) {
       cancelled = true
       clearInterval(interval)
     }
-  }, [jobId, onComplete])
+  }, [jobId])
 
   const handleCancel = useCallback(async () => {
     setCancelling(true)

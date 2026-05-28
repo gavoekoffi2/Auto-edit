@@ -1,0 +1,22 @@
+# Development overrides — NOT for production.
+# Active by default when running `docker compose up` locally.
+# For production, use: docker compose -f docker-compose.yml up
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  backend:
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend:/app
+      - uploads_data:/app/uploads
+
+  worker:
+    volumes:
+      - ./backend:/app
+      - uploads_data:/app/uploads

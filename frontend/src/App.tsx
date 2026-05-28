@@ -34,12 +34,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 export default function App() {
   const token = useAuthStore((s) => s.accessToken)
   const setUser = useAuthStore((s) => s.setUser)
+  const logout = useAuthStore((s) => s.logout)
 
   useEffect(() => {
     if (token) {
-      getMe().then(setUser).catch(() => {})
+      getMe().then(setUser).catch(() => {
+        logout()
+      })
     }
-  }, [token, setUser])
+  }, [token, setUser, logout])
 
   return (
     <ErrorBoundary>

@@ -64,7 +64,8 @@ async def health_check():
             await conn.execute(text("SELECT 1"))
         health["database"] = "connected"
     except Exception as e:
-        health["database"] = f"error: {str(e)}"
+        logger.warning("Health check: database unavailable: %s", e)
+        health["database"] = "unavailable"
         health["status"] = "degraded"
 
     # Check Redis
@@ -74,7 +75,8 @@ async def health_check():
         await r.ping()
         health["redis"] = "connected"
     except Exception as e:
-        health["redis"] = f"error: {str(e)}"
+        logger.warning("Health check: redis unavailable: %s", e)
+        health["redis"] = "unavailable"
         health["status"] = "degraded"
 
     return health

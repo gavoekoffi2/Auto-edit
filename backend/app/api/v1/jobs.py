@@ -71,7 +71,7 @@ async def create_job(
     # Trigger async processing
     from app.workers.tasks import process_video_task
 
-    process_video_task.delay(str(job.id))
+    process_video_task.apply_async(args=[str(job.id)], task_id=str(job.id))
 
     logger.info(f"Job created: {job.id} type={data.job_type} mode={data.mode} by user {current_user.id}")
     return job

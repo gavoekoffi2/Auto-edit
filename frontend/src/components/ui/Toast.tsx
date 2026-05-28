@@ -51,7 +51,7 @@ export default function ToastContainer() {
   if (toasts.length === 0) return null
 
   return (
-    <div className="fixed top-20 right-4 z-50 space-y-2 max-w-sm">
+    <div role="status" aria-live="polite" className="fixed top-20 right-4 z-50 space-y-2 max-w-sm">
       {toasts.map((t) => {
         const Icon = icons[t.type]
         return (
@@ -61,7 +61,7 @@ export default function ToastContainer() {
           >
             <Icon className="w-5 h-5 flex-shrink-0" />
             <p className="text-sm flex-1">{t.message}</p>
-            <button onClick={() => dismiss(t.id)} className="opacity-60 hover:opacity-100">
+            <button onClick={() => dismiss(t.id)} aria-label="Dismiss" className="opacity-60 hover:opacity-100">
               <X className="w-4 h-4" />
             </button>
           </div>

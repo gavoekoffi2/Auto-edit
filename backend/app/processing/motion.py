@@ -57,10 +57,11 @@ def motion_available() -> bool:
     if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
         logger.warning("Motion design unavailable: ffmpeg/ffprobe not found")
         return False
-    if _remotion_dir() is None:
+    rdir = _remotion_dir()
+    if rdir is None:
         logger.warning("Motion design unavailable: remotion project not found")
         return False
-    if not os.path.isdir(os.path.join(_remotion_dir(), "node_modules")):
+    if not os.path.isdir(os.path.join(rdir, "node_modules")):
         logger.warning(
             "Motion design unavailable: run 'npm install' in the remotion project"
         )

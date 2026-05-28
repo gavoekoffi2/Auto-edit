@@ -2,7 +2,6 @@ import os
 import logging
 from uuid import UUID
 from datetime import datetime, timezone
-from dateutil.relativedelta import relativedelta
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, status
 from fastapi.responses import FileResponse

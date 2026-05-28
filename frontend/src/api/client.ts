@@ -59,9 +59,9 @@ client.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${newToken}`
         return client(originalRequest)
       }
-      // Refresh failed → clear session and redirect to login.
-      localStorage.removeItem('access_token')
-      localStorage.removeItem('refresh_token')
+      // Refresh failed → sync Zustand store + localStorage, then redirect.
+      const { useAuthStore } = await import('../store/authStore')
+      useAuthStore.getState().logout()
       if (window.location.pathname !== '/login') {
         window.location.href = '/login'
       }
