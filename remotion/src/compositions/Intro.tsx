@@ -8,6 +8,7 @@ import {
 } from "remotion";
 import { Particles } from "../components/Particles";
 import { IntroProps } from "../theme";
+import { getFontFamily } from "../fonts";
 
 /**
  * Professional animated intro with:
@@ -19,15 +20,6 @@ import { IntroProps } from "../theme";
  * - Subtitle with motion blur slide-in
  * - Fade-in from black / fade-out to seamless transition
  */
-
-const FONT_MAP: Record<string, string> = {
-  Inter: "Inter, 'Helvetica Neue', Arial, sans-serif",
-  Montserrat: "Montserrat, 'Helvetica Neue', Arial, sans-serif",
-  Poppins: "Poppins, sans-serif",
-  Oswald: "Oswald, sans-serif",
-  "Bebas Neue": "'Bebas Neue', Impact, sans-serif",
-  Bangers: "Bangers, cursive, sans-serif",
-};
 
 /** Intensity multiplier for animation parameters. */
 const intensityMap = { subtle: 0.5, normal: 1, intense: 1.6 } as const;
@@ -148,7 +140,7 @@ export const Intro: React.FC<IntroProps> = ({
   const { fps, durationInFrames, width, height } = useVideoConfig();
 
   const intensity = intensityMap[animationIntensity];
-  const fontStack = FONT_MAP[fontFamily] || FONT_MAP.Inter;
+  const fontStack = getFontFamily(fontFamily);
 
   // --- Fade in from black ---
   const fadeIn = interpolate(frame, [0, 12], [0, 1], {

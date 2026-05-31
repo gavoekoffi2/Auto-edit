@@ -141,8 +141,15 @@ def _render_composition(
         cmd.append(f"--concurrency={concurrency}")
 
     if alpha:
-        # Transparent overlay → ProRes 4444 preserves the alpha channel.
-        cmd += ["--codec=prores", "--prores-profile=4444", "--image-format=png"]
+        # Transparent overlay → ProRes 4444 + yuva444p10le preserves the alpha
+        # channel. WITHOUT --pixel-format=yuva444p10le the render is opaque and
+        # the overlay would paint a solid black frame over the whole video.
+        cmd += [
+            "--codec=prores",
+            "--prores-profile=4444",
+            "--image-format=png",
+            "--pixel-format=yuva444p10le",
+        ]
     else:
         cmd += ["--codec=h264"]
 

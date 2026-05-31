@@ -9,6 +9,7 @@ import {
 import { Particles } from "../components/Particles";
 import { GlowText } from "../components/GlowText";
 import { OutroProps } from "../theme";
+import { getFontFamily } from "../fonts";
 
 /**
  * Professional end screen with:
@@ -19,15 +20,6 @@ import { OutroProps } from "../theme";
  * - Social handle slides in with spring
  * - Floating decorative elements
  */
-
-const FONT_MAP: Record<string, string> = {
-  Inter: "Inter, 'Helvetica Neue', Arial, sans-serif",
-  Montserrat: "Montserrat, 'Helvetica Neue', Arial, sans-serif",
-  Poppins: "Poppins, sans-serif",
-  Oswald: "Oswald, sans-serif",
-  "Bebas Neue": "'Bebas Neue', Impact, sans-serif",
-  Bangers: "Bangers, cursive, sans-serif",
-};
 
 const intensityMap = { subtle: 0.5, normal: 1, intense: 1.6 } as const;
 
@@ -88,7 +80,7 @@ export const Outro: React.FC<OutroProps> = ({
   const { fps, durationInFrames, width, height } = useVideoConfig();
 
   const intensity = intensityMap[animationIntensity];
-  const fontStack = FONT_MAP[fontFamily] || FONT_MAP.Inter;
+  const fontStack = getFontFamily(fontFamily);
   const titleSize = Math.round(width * 0.055);
 
   // --- Animated gradient background ---

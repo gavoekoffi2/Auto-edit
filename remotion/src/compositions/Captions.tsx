@@ -13,6 +13,7 @@ import {
   CaptionSegment,
   CaptionStyle,
 } from "../theme";
+import { getFontFamily } from "../fonts";
 
 /**
  * Transparent animated-caption overlay supporting multiple caption styles:
@@ -23,15 +24,6 @@ import {
  * - boxed: each word in its own colored box that scales in
  * - typewriter: characters appear left-to-right with blinking cursor
  */
-
-const FONT_MAP: Record<string, string> = {
-  Inter: "Inter, 'Helvetica Neue', Arial, sans-serif",
-  Montserrat: "Montserrat, 'Helvetica Neue', Arial, sans-serif",
-  Poppins: "Poppins, sans-serif",
-  Oswald: "Oswald, sans-serif",
-  "Bebas Neue": "'Bebas Neue', Impact, sans-serif",
-  Bangers: "Bangers, cursive, sans-serif",
-};
 
 const intensityMap = { subtle: 0.5, normal: 1, intense: 1.6 } as const;
 
@@ -204,7 +196,6 @@ const KaraokeCaptionLine: React.FC<{
                 transform: `scale(${wordScale})`,
                 textShadow,
                 opacity: wordOpacity,
-                transition: "color 0.05s",
                 willChange: "transform",
               }}
             >
@@ -511,7 +502,7 @@ const TypewriterCaptionLine: React.FC<{
   fontSize: number;
   fontStack: string;
   intensity: number;
-}> = ({ segment, brand, position, fontSize, fontStack, intensity }) => {
+}> = ({ segment, brand, position, fontSize, intensity }) => {
   const frame = useCurrentFrame();
   const { durationInFrames } = useVideoConfig();
 
@@ -561,7 +552,7 @@ const TypewriterCaptionLine: React.FC<{
         style={{
           maxWidth: "86%",
           textAlign: "center",
-          fontFamily: `'Courier New', ${fontStack}`,
+          fontFamily: `'Courier New', ui-monospace, monospace`,
           fontWeight: 700,
           fontSize,
           lineHeight: 1.3,
@@ -634,7 +625,7 @@ export const Captions: React.FC<CaptionsProps> = ({
   const { fps, width } = useVideoConfig();
   const fontSize = Math.round(width * 0.045 * fontScale);
   const brand = { primaryColor, accentColor, textColor };
-  const fontStack = FONT_MAP[fontFamily] || FONT_MAP.Inter;
+  const fontStack = getFontFamily(fontFamily);
   const intensity = intensityMap[animationIntensity];
 
   return (
