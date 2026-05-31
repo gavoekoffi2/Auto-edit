@@ -19,6 +19,7 @@ uploads/
 node_modules/
 frontend/dist/
 frontend/build/
+.netlify/
 frontend/.netlify/
 .DS_Store
 *.log
