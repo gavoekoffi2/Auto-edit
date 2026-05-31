@@ -19,6 +19,7 @@ uploads/
 node_modules/
 frontend/dist/
 frontend/build/
+frontend/.netlify/
 .DS_Store
 *.log
 .idea/
