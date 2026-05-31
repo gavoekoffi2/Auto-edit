@@ -1,0 +1,20 @@
+services:
+  backend:
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.autoedit-api.rule: "Host(`srv1305401.hstgr.cloud`) && PathPrefix(`/api`)"
+      traefik.http.routers.autoedit-api.entrypoints: "websecure"
+      traefik.http.routers.autoedit-api.tls: "true"
+      traefik.http.routers.autoedit-api.tls.certresolver: "letsencrypt"
+      traefik.http.routers.autoedit-api.priority: "500"
+      traefik.http.services.autoedit-api.loadbalancer.server.port: "8000"
+
+  # Netlify sert le frontend public. En mode VPS+Traefik, on évite de lancer
+  # les reverse-proxies/frontend internes pour ne pas entrer en conflit avec
+  # le Traefik global déjà présent sur le VPS.
+  frontend:
+    profiles: ["local-frontend"]
+  nginx:
+    profiles: ["local-frontend"]
+  caddy:
+    profiles: ["caddy-https"]

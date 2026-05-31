@@ -25,7 +25,10 @@ RUN groupadd --system --gid 1000 app \
     && useradd --system --uid 1000 --gid app --create-home --home-dir /home/app app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Force CPU-only PyTorch before installing openai-whisper. Without this,
+# recent torch wheels pull multi-GB CUDA dependencies and can fill small VPS disks.
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.7.1 \
+    && pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
