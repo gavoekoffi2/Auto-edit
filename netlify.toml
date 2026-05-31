@@ -1,0 +1,11 @@
+[build]
+  command = "cd frontend && npm ci && npm run build"
+  publish = "frontend/dist"
+
+[build.environment]
+  VITE_API_URL = "https://autoedit.srv1305401.hstgr.cloud/api"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
