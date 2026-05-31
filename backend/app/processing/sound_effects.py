@@ -221,8 +221,8 @@ def add_sound_effects(
             - ``intensity``: "subtle", "normal", or "intense"
             - ``types``: list of SFX type names to use (subset of VALID_SFX_TYPES)
         scenes: Optional scene-detection result dict (from ``detect_scenes``).
-            Expected to have a ``scene_list`` key with list of
-            ``{start_time, end_time}`` dicts.
+            Expected to have a ``scenes`` key with list of
+            ``{start, end, duration}`` dicts.
         subtitles_srt: Optional path to an SRT file — used to align tick/pop
             sounds with subtitle appearances.
 
@@ -282,7 +282,7 @@ def add_sound_effects(
         max_transitions = {"subtle": 3, "normal": 8, "intense": 999}
         limit = max_transitions.get(intensity, 8)
         for i, scene in enumerate(scene_list[:limit]):
-            ts = scene.get("start_time")
+            ts = scene.get("start")
             if ts is not None and ts > 0.5:
                 entries.append({
                     "path": sfx_files[transition_sfx],

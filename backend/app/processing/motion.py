@@ -278,6 +278,7 @@ def add_motion_graphics(
     output_dir: str,
     motion_config: dict,
     transcription: Optional[dict] = None,
+    scenes: Optional[dict] = None,
 ) -> dict:
     """
     Add motion graphics to a video.
@@ -420,17 +421,16 @@ def add_motion_graphics(
             result["concat_error"] = str(e)
 
     # 5) Transition wipes between scenes ---------------------------------- #
-    if motion_config.get("transitions") and transcription:
-        scenes = transcription.get("scenes") or []
-        if scenes:
-            try:
-                current = _insert_transition_wipes(
-                    current, scenes, dims, brand, motion_config, work, fps
-                )
-                result["elements"].append("transition_wipes")
-            except Exception as e:
-                logger.warning("Transition wipes failed: %s", e)
-                result["transitions_error"] = str(e)
+    scene_list = (scenes or {}).get("scenes", []) if isinstance(scenes, dict) else (scenes or [])
+    if motion_config.get("transitions") and scene_list:
+        try:
+            current = _insert_transition_wipes(
+                current, scene_list, dims, brand, motion_config, work, fps
+            )
+            result["elements"].append("transition_wipes")
+        except Exception as e:
+            logger.warning("Transition wipes failed: %s", e)
+            result["transitions_error"] = str(e)
 
     result["output_path"] = current
     return result
@@ -480,7 +480,7 @@ def _insert_transition_wipes(
     # Overlay the wipe at each scene boundary using ffmpeg.
     current = video_path
     for idx, scene in enumerate(scenes[1:], start=1):
-        ts = float(scene.get("start_time", 0))
+        ts = float(scene.get("start", 0))
         if ts <= 0:
             continue
         overlay_start = max(0, ts - wipe_dur / 2)

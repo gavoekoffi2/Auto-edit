@@ -334,6 +334,7 @@ def run_pipeline(
                 output_dir,
                 motion_config=motion_config,
                 transcription=results.get("transcription"),
+                scenes=results.get("scenes"),
             )
             new_video = motion_result.get("output_path")
             if (
