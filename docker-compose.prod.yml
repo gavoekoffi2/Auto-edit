@@ -44,6 +44,12 @@ services:
       - uploads_data:/app/uploads
     environment:
       APP_ENV: production
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app inspect ping --destination celery@$$HOSTNAME | grep -q pong"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
 
   frontend:
     ports: !reset []
