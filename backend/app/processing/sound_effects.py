@@ -276,7 +276,7 @@ def add_sound_effects(
         })
 
     # --- Scene transitions: whoosh / swoosh ---
-    scene_list = (scenes or {}).get("scene_list", [])
+    scene_list = (scenes or {}).get("scenes", [])
     transition_sfx = "whoosh" if "whoosh" in sfx_files else ("swoosh" if "swoosh" in sfx_files else None)
     if transition_sfx and scene_list:
         max_transitions = {"subtle": 3, "normal": 8, "intense": 999}

@@ -6,7 +6,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # Supported fonts that users can select from
-SUPPORTED_FONTS = {"Arial", "Montserrat", "Poppins", "Oswald", "Bebas Neue", "Bangers"}
+SUPPORTED_FONTS = {"Arial", "Inter", "Montserrat", "Poppins", "Oswald", "Bebas Neue", "Bangers"}
 
 # Subtitle style presets: each preset supplies a full set of sensible defaults.
 SUBTITLE_PRESETS = {
@@ -404,7 +404,7 @@ def add_subtitles(
         if txt_clips:
             final = CompositeVideoClip([clip] + txt_clips)
             try:
-                final.write_videofile(output_path, codec="libx264", audio_codec="aac", logger=None)
+                final.write_videofile(output_path, codec="libx264", audio_codec="aac", bitrate="8000k", logger=None)
             finally:
                 final.close()
         else:
