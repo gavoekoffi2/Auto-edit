@@ -5,7 +5,7 @@ services:
       - web
     labels:
       traefik.enable: "true"
-      traefik.http.routers.autoedit-api.rule: "Host(`srv1305401.hstgr.cloud`) && PathPrefix(`/api`)"
+      traefik.http.routers.autoedit-api.rule: "Host(`autoedit.srv1305401.hstgr.cloud`) && PathPrefix(`/api`)"
       traefik.http.routers.autoedit-api.entrypoints: "websecure"
       traefik.http.routers.autoedit-api.tls: "true"
       traefik.http.routers.autoedit-api.tls.certresolver: "letsencrypt"
@@ -18,12 +18,12 @@ services:
     build:
       context: ./frontend
       args:
-        VITE_API_URL: https://srv1305401.hstgr.cloud/api
+        VITE_API_URL: https://autoedit.srv1305401.hstgr.cloud/api
     networks:
       - web
     labels:
       traefik.enable: "true"
-      traefik.http.routers.autoedit-frontend.rule: "Host(`srv1305401.hstgr.cloud`)"
+      traefik.http.routers.autoedit-frontend.rule: "Host(`autoedit.srv1305401.hstgr.cloud`)"
       traefik.http.routers.autoedit-frontend.entrypoints: "websecure"
       traefik.http.routers.autoedit-frontend.tls: "true"
       traefik.http.routers.autoedit-frontend.tls.certresolver: "letsencrypt"
