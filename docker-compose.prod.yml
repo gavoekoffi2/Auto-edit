@@ -33,14 +33,18 @@ services:
       --forwarded-allow-ips=*
       --log-level info
       --workers 2
-    volumes: !reset []         # pas de bind-mount en prod
+    # IMPORTANT: backend ET worker doivent partager le même volume d'uploads.
+    # Sans ce mount, l'API sauvegarde la vidéo dans la couche privée du container
+    # backend, puis Celery ne la retrouve pas dans /app/uploads.
+    volumes: !override
+      - uploads_data:/app/uploads
     ports: !reset []           # nginx parle au backend en interne
     environment:
       APP_ENV: production
 
   worker:
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-4} --prefetch-multiplier=1
-    volumes:
+    volumes: !override
       - uploads_data:/app/uploads
     environment:
       APP_ENV: production
@@ -52,6 +56,7 @@ services:
       start_period: 40s
 
   frontend:
+    profiles: ["local-frontend"]
     ports: !reset []
 
   # Nginx reste disponible en reverse-proxy interne/dev, mais en production

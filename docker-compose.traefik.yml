@@ -12,9 +12,10 @@ services:
       traefik.http.routers.autoedit-api.priority: "30000"
       traefik.http.services.autoedit-api.loadbalancer.server.port: "8000"
 
-  # Frontend public servi directement par le VPS. Le routeur frontend a une
-  # priorité plus basse que l'API pour laisser /api au backend.
+  # Frontend public servi par Netlify en production. Ce service ne doit être
+  # lancé sur le VPS que manuellement avec --profile local-frontend.
   frontend:
+    profiles: ["local-frontend"]
     build:
       context: ./frontend
       args:
