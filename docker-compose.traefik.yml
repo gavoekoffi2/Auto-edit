@@ -27,7 +27,7 @@ services:
       traefik.http.routers.autoedit-frontend.entrypoints: "websecure"
       traefik.http.routers.autoedit-frontend.tls: "true"
       traefik.http.routers.autoedit-frontend.tls.certresolver: "letsencrypt"
-      traefik.http.routers.autoedit-frontend.priority: "100"
+      traefik.http.routers.autoedit-frontend.priority: "10000"
       traefik.http.services.autoedit-frontend.loadbalancer.server.port: "80"
   nginx:
     profiles: ["local-frontend"]
