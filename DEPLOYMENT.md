@@ -87,20 +87,31 @@ git checkout claude/sleepy-brown-Rtjt7
 cp .env.example .env
 nano .env   # remplir TOUS les secrets
 
-# 3. Lancer le compose prod
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# 3. Lancer le script de déploiement prod (Docker + Caddy HTTPS automatique)
+BACKEND_DOMAIN=srv1305401.hstgr.cloud TLS_EMAIL=admin@example.com ./deploy.sh
 
 # 4. Vérifier que tout démarre
-docker compose ps
-docker compose logs -f backend worker | head -50
-curl -f http://localhost/api/health
+curl -f https://srv1305401.hstgr.cloud/api/health
 ```
 
 Le `/api/health` doit retourner `{"status":"healthy","database":"connected","redis":"connected"}`.
 
 ---
 
-## 5. Configurer le webhook FedaPay
+## 5. Netlify frontend
+
+Dans Netlify → Site settings → Environment variables :
+
+```env
+VITE_API_URL=https://srv1305401.hstgr.cloud/api
+```
+
+⚠️ Il faut inclure `/api`, car le frontend ajoute ensuite `/v1` automatiquement.
+Après modification : **Trigger deploy / Redeploy site**. Ajoute aussi l'URL Netlify dans `CORS_ORIGINS` côté VPS.
+
+---
+
+## 6. Configurer le webhook FedaPay
 
 Dans le dashboard FedaPay, ajouter un webhook qui pointe vers :
 

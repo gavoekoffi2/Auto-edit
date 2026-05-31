@@ -48,7 +48,29 @@ services:
   frontend:
     ports: !reset []
 
+  # Nginx reste disponible en reverse-proxy interne/dev, mais en production
+  # Caddy prend les ports publics 80/443 pour générer/renouveler HTTPS
+  # automatiquement avec Let's Encrypt.
   nginx:
+    ports: !reset []
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      BACKEND_DOMAIN: ${BACKEND_DOMAIN:-localhost}
+      TLS_EMAIL: ${TLS_EMAIL:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
