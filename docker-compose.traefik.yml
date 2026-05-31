@@ -9,7 +9,7 @@ services:
       traefik.http.routers.autoedit-api.entrypoints: "websecure"
       traefik.http.routers.autoedit-api.tls: "true"
       traefik.http.routers.autoedit-api.tls.certresolver: "letsencrypt"
-      traefik.http.routers.autoedit-api.priority: "500"
+      traefik.http.routers.autoedit-api.priority: "30000"
       traefik.http.services.autoedit-api.loadbalancer.server.port: "8000"
 
   # Frontend public servi directement par le VPS. Le routeur frontend a une
