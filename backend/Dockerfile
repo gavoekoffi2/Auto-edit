@@ -28,8 +28,13 @@ RUN groupadd --system --gid 1000 app \
 COPY requirements.txt .
 # Force CPU-only PyTorch before installing openai-whisper. Without this,
 # recent torch wheels pull multi-GB CUDA dependencies and can fill small VPS disks.
+# openai-whisper declares a Triton dependency that is only useful for GPU kernels;
+# install it with --no-deps after all CPU/runtime deps to keep VPS images small.
 RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.7.1 \
-    && pip install --no-cache-dir -r requirements.txt
+    && grep -v '^openai-whisper==' requirements.txt > /tmp/requirements-no-whisper.txt \
+    && pip install --no-cache-dir -r /tmp/requirements-no-whisper.txt \
+    && pip install --no-cache-dir --no-deps openai-whisper==20250625 \
+    && rm -f /tmp/requirements-no-whisper.txt
 
 COPY . .
 
