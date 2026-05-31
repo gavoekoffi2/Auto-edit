@@ -28,8 +28,12 @@ _VIDEO_SIGNATURES: dict[str, list[bytes]] = {
 def _looks_like_video(head: bytes) -> bool:
     if not head or len(head) < 12:
         return False
-    # MP4/MOV/3GP: bytes 4-8 sont "ftyp"
+    # MP4/MOV/M4V/3GP/MTS: bytes 4-8 sont souvent "ftyp".
+    # Certains fichiers mobiles/fragmentés peuvent démarrer par moov/mdat/free/skip.
     if head[4:8] in (b"ftyp", b"moov", b"mdat", b"free", b"skip"):
+        return True
+    # MPEG transport streams (.mts/.m2ts): sync byte 0x47 toutes les 188 bytes
+    if head[0:1] == b"\x47" or (len(head) > 4 and head[4:5] == b"\x47"):
         return True
     # Matroska / WebM
     if head[:4] == b"\x1a\x45\xdf\xa3":

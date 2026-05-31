@@ -1,19 +1,42 @@
 import client from './client'
 
-const MAX_FILE_SIZE_MB = 500
+export const MAX_FILE_SIZE_MB = 500
+export const ALLOWED_VIDEO_EXTENSIONS = ['mp4', 'mov', 'm4v', 'avi', 'mkv', 'webm', 'flv', 'wmv', '3gp', '3g2', 'mts', 'm2ts']
+export const ALLOWED_VIDEO_MIME_TYPES = [
+  'video/mp4',
+  'video/quicktime',
+  'video/x-m4v',
+  'video/x-msvideo',
+  'video/x-matroska',
+  'video/webm',
+  'video/x-flv',
+  'video/x-ms-wmv',
+  'video/3gpp',
+  'video/3gpp2',
+  'video/mp2t',
+]
 
-export async function uploadVideo(file: File, onProgress?: (percent: number) => void) {
-  // Client-side file size validation
+function isAllowedVideo(file: File) {
+  const extension = file.name.split('.').pop()?.toLowerCase()
+  return (
+    (file.type && ALLOWED_VIDEO_MIME_TYPES.includes(file.type)) ||
+    (extension ? ALLOWED_VIDEO_EXTENSIONS.includes(extension) : false)
+  )
+}
+
+export function validateVideoFile(file: File) {
   const maxBytes = MAX_FILE_SIZE_MB * 1024 * 1024
   if (file.size > maxBytes) {
-    throw new Error(`File too large. Maximum size: ${MAX_FILE_SIZE_MB}MB`)
+    throw new Error(`Fichier trop lourd. Maximum: ${MAX_FILE_SIZE_MB}MB.`)
   }
 
-  // Validate file type
-  const allowed = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska', 'video/webm']
-  if (!allowed.includes(file.type) && !file.name.match(/\.(mp4|mov|avi|mkv|webm)$/i)) {
-    throw new Error('Invalid file type. Supported: MP4, MOV, AVI, MKV, WebM')
+  if (!isAllowedVideo(file)) {
+    throw new Error(`Format vidéo non supporté. Formats acceptés: ${ALLOWED_VIDEO_EXTENSIONS.map((ext) => ext.toUpperCase()).join(', ')}.`)
   }
+}
+
+export async function uploadVideo(file: File, onProgress?: (percent: number) => void) {
+  validateVideoFile(file)
 
   const formData = new FormData()
   formData.append('file', file)

@@ -22,7 +22,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv"}
+ALLOWED_EXTENSIONS = {
+    ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm", ".flv", ".wmv",
+    ".3gp", ".3g2", ".mts", ".m2ts",
+}
 
 
 @router.post("/upload", response_model=VideoResponse, status_code=status.HTTP_201_CREATED)

@@ -1,10 +1,13 @@
 import { useCallback, useState } from 'react'
-import { useDropzone } from 'react-dropzone'
+import { useDropzone, type FileRejection } from 'react-dropzone'
 import { Upload, Film, Loader2 } from 'lucide-react'
-import { uploadVideo } from '../../api/videos'
+import {
+  ALLOWED_VIDEO_EXTENSIONS,
+  MAX_FILE_SIZE_MB,
+  uploadVideo,
+  validateVideoFile,
+} from '../../api/videos'
 import { toast } from '../ui/Toast'
-
-const MAX_FILE_SIZE_MB = 500
 
 interface Props {
   onUploadComplete: (video: { id: string; title: string }) => void
@@ -18,16 +21,10 @@ export default function UploadZone({ onUploadComplete }: Props) {
     const file = acceptedFiles[0]
     if (!file) return
 
-    // Client-side size validation
-    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
-      toast('error', `File too large. Maximum size: ${MAX_FILE_SIZE_MB}MB`)
-      return
-    }
-
-    setUploading(true)
-    setProgress(0)
-
     try {
+      validateVideoFile(file)
+      setUploading(true)
+      setProgress(0)
       const video = await uploadVideo(file, setProgress)
       toast('success', 'Video uploaded successfully!')
       onUploadComplete(video)
@@ -46,10 +43,29 @@ export default function UploadZone({ onUploadComplete }: Props) {
     }
   }, [onUploadComplete])
 
+  const onDropRejected = useCallback((rejections: FileRejection[]) => {
+    const rejection = rejections[0]
+    const fileName = rejection?.file?.name ? ` “${rejection.file.name}”` : ''
+    const codes = rejection?.errors?.map((err) => err.code) ?? []
+
+    if (codes.includes('file-too-large')) {
+      toast('error', `Vidéo${fileName} trop lourde. Maximum: ${MAX_FILE_SIZE_MB}MB.`)
+      return
+    }
+
+    if (codes.includes('file-invalid-type')) {
+      toast('error', `Format${fileName} non supporté. Utilise: ${ALLOWED_VIDEO_EXTENSIONS.map((ext) => ext.toUpperCase()).join(', ')}.`)
+      return
+    }
+
+    toast('error', rejection?.errors?.[0]?.message || 'Impossible de sélectionner cette vidéo.')
+  }, [])
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
+    onDropRejected,
     accept: {
-      'video/*': ['.mp4', '.mov', '.avi', '.mkv', '.webm'],
+      'video/*': ALLOWED_VIDEO_EXTENSIONS.map((ext) => `.${ext}`),
     },
     maxFiles: 1,
     maxSize: MAX_FILE_SIZE_MB * 1024 * 1024,
@@ -88,7 +104,7 @@ export default function UploadZone({ onUploadComplete }: Props) {
               {isDragActive ? 'Drop your video here' : 'Drag & drop your video'}
             </p>
             <p className="text-dark-500 mt-1">
-              or click to browse (MP4, MOV, AVI, MKV, WebM - max {MAX_FILE_SIZE_MB}MB)
+              or click to browse ({ALLOWED_VIDEO_EXTENSIONS.map((ext) => ext.toUpperCase()).join(', ')} - max {MAX_FILE_SIZE_MB}MB)
             </p>
           </div>
         </div>

@@ -18,6 +18,11 @@ def test_detects_avi():
     assert _looks_like_video(head) is True
 
 
+def test_detects_mpeg_transport_stream():
+    head = b"\x47" + b"\x00" * 31
+    assert _looks_like_video(head) is True
+
+
 def test_rejects_plain_text():
     assert _looks_like_video(b"Hello world this is plain text and not a video") is False
 
