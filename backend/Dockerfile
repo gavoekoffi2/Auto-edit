@@ -33,6 +33,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.7.1 \
     && grep -v '^openai-whisper==' requirements.txt > /tmp/requirements-no-whisper.txt \
     && pip install --no-cache-dir -r /tmp/requirements-no-whisper.txt \
+    && pip install --no-cache-dir tiktoken numba more-itertools \
     && pip install --no-cache-dir --no-deps openai-whisper==20250625 \
     && rm -f /tmp/requirements-no-whisper.txt
 
