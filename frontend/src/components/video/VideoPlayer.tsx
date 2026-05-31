@@ -7,7 +7,6 @@ interface Props {
 
 export default function VideoPlayer({ src }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const blobUrlRef = useRef<string>('')
   const [playing, setPlaying] = useState(false)
   const [muted, setMuted] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -34,7 +33,6 @@ export default function VideoPlayer({ src }: Props) {
         const blob = await res.blob()
         if (!cancelled) {
           const url = URL.createObjectURL(blob)
-          blobUrlRef.current = url
           setBlobUrl(url)
         }
       } catch (err) {
@@ -50,10 +48,11 @@ export default function VideoPlayer({ src }: Props) {
     return () => {
       cancelled = true
       controller.abort()
-      if (blobUrlRef.current) {
-        URL.revokeObjectURL(blobUrlRef.current)
-        blobUrlRef.current = ''
-      }
+      // Revoke the blob URL on cleanup using the current state value
+      setBlobUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev)
+        return ''
+      })
     }
   }, [src])
 
@@ -62,7 +61,9 @@ export default function VideoPlayer({ src }: Props) {
     if (playing) {
       videoRef.current.pause()
     } else {
-      videoRef.current.play()
+      videoRef.current.play().catch(() => {
+        // Autoplay may be blocked by browser policy
+      })
     }
     setPlaying(!playing)
   }

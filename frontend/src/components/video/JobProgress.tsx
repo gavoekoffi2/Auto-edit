@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { getJob, downloadJobResult, cancelJob } from '../../api/jobs'
-import { Loader2, CheckCircle, XCircle, Download, RefreshCw, Ban } from 'lucide-react'
+import { Loader2, CheckCircle, XCircle, Download, RefreshCw, Ban, Volume2, Type, Sparkles, Mic, Film } from 'lucide-react'
 import { toast } from '../ui/Toast'
 
 interface Props {
@@ -8,6 +8,15 @@ interface Props {
   onComplete?: (result: Record<string, unknown>) => void
   onRetry?: () => void
 }
+
+const PIPELINE_STEPS = [
+  { key: 'transcription', label: 'AI Transcription', icon: Mic },
+  { key: 'silence_removal', label: 'Silence Removal', icon: Volume2 },
+  { key: 'scene_detection', label: 'Scene Detection', icon: Film },
+  { key: 'effects', label: 'Effects & Subtitles', icon: Sparkles },
+  { key: 'sound_effects', label: 'Sound Effects', icon: Volume2 },
+  { key: 'subtitle_styling', label: 'Subtitle Styling', icon: Type },
+]
 
 export default function JobProgress({ jobId, onComplete, onRetry }: Props) {
   const onCompleteRef = useRef(onComplete)
@@ -17,6 +26,7 @@ export default function JobProgress({ jobId, onComplete, onRetry }: Props) {
     progress: number
     result: Record<string, unknown> | null
     error_message: string | null
+    params?: Record<string, unknown>
   } | null>(null)
   const [downloading, setDownloading] = useState(false)
   const [cancelling, setCancelling] = useState(false)
@@ -99,6 +109,21 @@ export default function JobProgress({ jobId, onComplete, onRetry }: Props) {
   const Icon = config.icon
   const isAnimating = job.status === 'processing' || job.status === 'pending'
 
+  // Determine which steps are active based on job params
+  const sfxEnabled = (job.params?.sfx as { enabled?: boolean })?.enabled !== false
+  const subtitleStyle = job.params?.subtitle_style as { preset?: string } | undefined
+  const activeSteps = PIPELINE_STEPS.filter((step) => {
+    if (step.key === 'sound_effects') return sfxEnabled
+    if (step.key === 'subtitle_styling') return !!subtitleStyle
+    return true
+  })
+
+  // Estimate which step is currently running based on progress
+  const currentStepIndex = Math.min(
+    Math.floor((job.progress / 100) * activeSteps.length),
+    activeSteps.length - 1
+  )
+
   return (
     <div className="card">
       <div className="flex items-center gap-3 mb-4">
@@ -110,6 +135,41 @@ export default function JobProgress({ jobId, onComplete, onRetry }: Props) {
           )}
         </div>
       </div>
+
+      {/* Processing steps breakdown */}
+      {isAnimating && (
+        <div className="space-y-1.5 mb-4">
+          {activeSteps.map((step, i) => {
+            const StepIcon = step.icon
+            const isDone = i < currentStepIndex
+            const isCurrent = i === currentStepIndex && job.status === 'processing'
+            return (
+              <div
+                key={step.key}
+                className={`flex items-center gap-2 text-xs ${
+                  isDone
+                    ? 'text-emerald-400'
+                    : isCurrent
+                    ? 'text-primary-400'
+                    : 'text-dark-500'
+                }`}
+              >
+                {isDone ? (
+                  <CheckCircle className="w-3.5 h-3.5" />
+                ) : isCurrent ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <StepIcon className="w-3.5 h-3.5" />
+                )}
+                <span>{step.label}</span>
+                {step.key === 'subtitle_styling' && subtitleStyle?.preset && (
+                  <span className="text-dark-500">({subtitleStyle.preset})</span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* Progress bar */}
       {isAnimating && (

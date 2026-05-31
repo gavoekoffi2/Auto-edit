@@ -318,15 +318,25 @@ def add_motion_graphics(
         if segments:
             try:
                 overlay = os.path.join(work, "captions.mov")
+                caption_props = {
+                    **dims, **brand,
+                    "segments": segments,
+                    "position": motion_config.get("caption_position", "bottom"),
+                    "fontScale": float(motion_config.get("font_scale", 1.0)),
+                    "durationInFrames": max(1, round(meta["duration"] * fps)),
+                }
+                # Pass through caption-style, font-family, and animation
+                # intensity so the Remotion compositions can render the right
+                # look.
+                if motion_config.get("caption_style"):
+                    caption_props["captionStyle"] = motion_config["caption_style"]
+                if motion_config.get("font_family"):
+                    caption_props["fontFamily"] = motion_config["font_family"]
+                if motion_config.get("animation_intensity"):
+                    caption_props["animationIntensity"] = motion_config["animation_intensity"]
+
                 _render_composition(
-                    "Captions", overlay,
-                    {
-                        **dims, **brand,
-                        "segments": segments,
-                        "position": motion_config.get("caption_position", "bottom"),
-                        "fontScale": float(motion_config.get("font_scale", 1.0)),
-                        "durationInFrames": max(1, round(meta["duration"] * fps)),
-                    },
+                    "Captions", overlay, caption_props,
                     work, alpha=True,
                 )
                 captioned = os.path.join(work, "captioned.mp4")
@@ -402,5 +412,87 @@ def add_motion_graphics(
             logger.warning("Motion concat failed, keeping inner video: %s", e)
             result["concat_error"] = str(e)
 
+    # 5) Transition wipes between scenes ---------------------------------- #
+    if motion_config.get("transitions") and transcription:
+        scenes = transcription.get("scenes") or []
+        if scenes:
+            try:
+                current = _insert_transition_wipes(
+                    current, scenes, dims, brand, motion_config, work, fps
+                )
+                result["elements"].append("transition_wipes")
+            except Exception as e:
+                logger.warning("Transition wipes failed: %s", e)
+                result["transitions_error"] = str(e)
+
     result["output_path"] = current
     return result
+
+
+# --------------------------------------------------------------------------- #
+# Transition wipes helper
+# --------------------------------------------------------------------------- #
+def _insert_transition_wipes(
+    video_path: str,
+    scenes: list[dict],
+    dims: dict,
+    brand: dict,
+    motion_config: dict,
+    work_dir: str,
+    fps: int,
+) -> str:
+    """
+    Render TransitionWipe compositions for each scene boundary and splice
+    them into the video using ffmpeg.
+
+    Each scene dict is expected to have at least a ``start_time`` (float,
+    seconds) key.  The wipe is rendered as a short transparent overlay that
+    is composited at each boundary.
+    """
+    if len(scenes) < 2:
+        return video_path
+
+    wipe_dur = float(motion_config.get("transition_duration", 0.5))
+    wipe_frames = max(1, round(wipe_dur * fps))
+    wipe_dir = os.path.join(work_dir, "wipes")
+    os.makedirs(wipe_dir, exist_ok=True)
+
+    wipe_path = os.path.join(wipe_dir, "wipe.mov")
+    wipe_props = {
+        **dims,
+        **brand,
+        "durationInFrames": wipe_frames,
+    }
+    if motion_config.get("caption_style"):
+        wipe_props["captionStyle"] = motion_config["caption_style"]
+    if motion_config.get("animation_intensity"):
+        wipe_props["animationIntensity"] = motion_config["animation_intensity"]
+
+    _render_composition("TransitionWipe", wipe_path, wipe_props, wipe_dir, alpha=True)
+
+    # Overlay the wipe at each scene boundary using ffmpeg.
+    current = video_path
+    for idx, scene in enumerate(scenes[1:], start=1):
+        ts = float(scene.get("start_time", 0))
+        if ts <= 0:
+            continue
+        overlay_start = max(0, ts - wipe_dur / 2)
+        out = os.path.join(wipe_dir, f"wipe_applied_{idx}.mp4")
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", current,
+            "-i", wipe_path,
+            "-filter_complex",
+            (
+                f"[1:v]setpts=PTS+{overlay_start}/TB[wv];"
+                f"[0:v][wv]overlay=0:0:enable='between(t,{overlay_start},{overlay_start + wipe_dur})':format=auto[v]"
+            ),
+            "-map", "[v]", "-map", "0:a?",
+            "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+            "-c:a", "aac", "-b:a", "192k",
+            out,
+        ]
+        _run_ffmpeg(cmd)
+        current = out
+
+    return current

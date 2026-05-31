@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Zap, Mic, VolumeX, Film, Sparkles, Loader2, ArrowLeft, Wand2 } from 'lucide-react'
+import { Zap, Mic, VolumeX, Film, Sparkles, Loader2, ArrowLeft, Wand2, Type, Volume2, Palette } from 'lucide-react'
 import VideoPlayer from '../components/video/VideoPlayer'
 import Timeline from '../components/video/Timeline'
 import JobProgress from '../components/video/JobProgress'
@@ -24,6 +24,29 @@ const MODES = [
   { id: 'podcast' as const, name: 'Podcast', icon: '🎙️', desc: 'Audio cleanup' },
 ] as const
 
+const SUBTITLE_PRESETS = [
+  { id: 'karaoke', name: 'Karaoke', desc: 'TikTok viral style, word-by-word highlighting' },
+  { id: 'classic', name: 'Classic', desc: 'Clean white text with outline' },
+  { id: 'modern', name: 'Modern', desc: 'Semi-transparent background box' },
+  { id: 'bold', name: 'Bold', desc: 'Large uppercase impact text' },
+  { id: 'minimal', name: 'Minimal', desc: 'Small subtle text' },
+  { id: 'neon', name: 'Neon', desc: 'Glowing colored text' },
+] as const
+
+const FONT_OPTIONS = ['Inter', 'Montserrat', 'Poppins', 'Oswald', 'Bebas Neue', 'Bangers'] as const
+
+const INTENSITY_OPTIONS = [
+  { id: 'subtle', label: 'Subtle' },
+  { id: 'normal', label: 'Normal' },
+  { id: 'intense', label: 'Intense' },
+] as const
+
+const POSITION_OPTIONS = [
+  { id: 'bottom', label: 'Bottom' },
+  { id: 'center', label: 'Center' },
+  { id: 'top', label: 'Top' },
+] as const
+
 export default function Editor() {
   const { videoId } = useParams<{ videoId: string }>()
   const navigate = useNavigate()
@@ -36,6 +59,17 @@ export default function Editor() {
   const [processing, setProcessing] = useState(false)
   const [completedResult, setCompletedResult] = useState<Record<string, unknown> | null>(null)
   const [loadError, setLoadError] = useState('')
+
+  // New state variables
+  const [captionStyle, setCaptionStyle] = useState('karaoke')
+  const [fontFamily, setFontFamily] = useState('Inter')
+  const [fontSize, setFontSize] = useState(36)
+  const [subtitleColor, setSubtitleColor] = useState('#ffffff')
+  const [subtitlePosition, setSubtitlePosition] = useState('bottom')
+  const [subtitlePreset, setSubtitlePreset] = useState('karaoke')
+  const [sfxEnabled, setSfxEnabled] = useState(true)
+  const [sfxIntensity, setSfxIntensity] = useState('normal')
+  const [animationIntensity, setAnimationIntensity] = useState('normal')
 
   useEffect(() => {
     if (!videoId) return
@@ -74,18 +108,29 @@ export default function Editor() {
     setProcessing(true)
 
     try {
-      // Motion-design overrides. When disabled, switch off all motion elements;
-      // when enabled, pass brand color and a custom intro title (merged over the
-      // mode preset by the backend pipeline).
       const params: Record<string, unknown> = {
         motion: motionEnabled
           ? {
               primary_color: brandColor,
+              caption_style: captionStyle,
+              font_family: fontFamily,
+              animation_intensity: animationIntensity,
               ...(introTitle.trim()
                 ? { intro: { title: introTitle.trim() } }
                 : {}),
             }
           : { animated_captions: false, intro: false, outro: false },
+        subtitle_style: {
+          preset: subtitlePreset,
+          font: fontFamily,
+          fontSize: fontSize,
+          color: subtitleColor,
+          position: subtitlePosition,
+        },
+        sfx: {
+          enabled: sfxEnabled,
+          intensity: sfxIntensity,
+        },
       }
 
       const job = await createJob({
@@ -104,7 +149,7 @@ export default function Editor() {
       }
       toast('error', msg)
     }
-  }, [videoId, selectedMode, motionEnabled, brandColor, introTitle])
+  }, [videoId, selectedMode, motionEnabled, brandColor, introTitle, captionStyle, fontFamily, fontSize, subtitleColor, subtitlePosition, subtitlePreset, sfxEnabled, sfxIntensity, animationIntensity])
 
   const handleJobComplete = useCallback((result: Record<string, unknown>) => {
     setCompletedResult(result)
@@ -187,7 +232,7 @@ export default function Editor() {
         </div>
 
         {/* Controls Sidebar */}
-        <div className="space-y-4">
+        <div className="max-h-[calc(100vh-8rem)] overflow-y-auto space-y-4 pr-1">
           {/* Mode Selection */}
           <div className="card">
             <h3 className="font-semibold mb-3">Editing Mode</h3>
@@ -260,10 +305,192 @@ export default function Editor() {
                     maxLength={40}
                     className="w-full bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
                   />
+
+                  {/* Animation Intensity */}
+                  <div>
+                    <p className="text-sm text-dark-300 mb-2">Animation Intensity</p>
+                    <div className="flex gap-2">
+                      {INTENSITY_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.id}
+                          onClick={() => setAnimationIntensity(opt.id)}
+                          className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                            animationIntensity === opt.id
+                              ? 'border-primary-500 bg-primary-500/15 text-primary-400'
+                              : 'border-dark-600 text-dark-400 hover:border-dark-500'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
           )}
+
+          {/* Subtitle Style */}
+          <div className="card">
+            <h3 className="font-semibold mb-3 flex items-center gap-2">
+              <Type className="w-4 h-4 text-primary-400" />
+              Subtitle Style
+            </h3>
+
+            {/* Preset Selector */}
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              {SUBTITLE_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  onClick={() => {
+                    setSubtitlePreset(preset.id)
+                    setCaptionStyle(preset.id)
+                  }}
+                  className={`p-2.5 rounded-lg border text-left transition-all ${
+                    subtitlePreset === preset.id
+                      ? 'border-primary-500 bg-primary-500/10'
+                      : 'border-dark-700 hover:border-dark-500'
+                  }`}
+                >
+                  <span className={`inline-block text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded mb-1 ${
+                    subtitlePreset === preset.id ? 'bg-primary-500/20 text-primary-400' : 'bg-dark-700 text-dark-400'
+                  }`}>
+                    {preset.name}
+                  </span>
+                  <p className="text-[10px] text-dark-400 leading-tight">{preset.desc}</p>
+                </button>
+              ))}
+            </div>
+
+            {/* Font Family */}
+            <div className="mb-3">
+              <label className="text-sm text-dark-300 mb-1.5 flex items-center gap-1.5">
+                <Type className="w-3.5 h-3.5" />
+                Font Family
+              </label>
+              <select
+                value={fontFamily}
+                onChange={(e) => setFontFamily(e.target.value)}
+                className="w-full bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-sm focus:border-primary-500 focus:outline-none appearance-none cursor-pointer"
+              >
+                {FONT_OPTIONS.map((font) => (
+                  <option key={font} value={font}>{font}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Font Size */}
+            <div className="mb-3">
+              <label className="text-sm text-dark-300 mb-1.5 flex items-center justify-between">
+                <span>Font Size</span>
+                <span className="text-primary-400 font-mono text-xs">{fontSize}px</span>
+              </label>
+              <input
+                type="range"
+                min={24}
+                max={56}
+                value={fontSize}
+                onChange={(e) => setFontSize(parseInt(e.target.value))}
+                aria-label="Font size"
+                className="w-full h-1.5 bg-dark-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-primary-500 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:cursor-pointer"
+              />
+              <div className="flex justify-between text-[10px] text-dark-500 mt-1">
+                <span>24px</span>
+                <span>56px</span>
+              </div>
+            </div>
+
+            {/* Subtitle Color */}
+            <div className="mb-3">
+              <label className="flex items-center justify-between text-sm">
+                <span className="text-dark-300 flex items-center gap-1.5">
+                  <Palette className="w-3.5 h-3.5" />
+                  Subtitle Color
+                </span>
+                <input
+                  type="color"
+                  value={subtitleColor}
+                  onChange={(e) => setSubtitleColor(e.target.value)}
+                  aria-label="Subtitle color"
+                  className="w-8 h-8 rounded bg-transparent border border-dark-600 cursor-pointer"
+                />
+              </label>
+            </div>
+
+            {/* Subtitle Position */}
+            <div>
+              <p className="text-sm text-dark-300 mb-2">Position</p>
+              <div className="flex gap-2">
+                {POSITION_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.id}
+                    onClick={() => setSubtitlePosition(opt.id)}
+                    className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                      subtitlePosition === opt.id
+                        ? 'border-primary-500 bg-primary-500/15 text-primary-400'
+                        : 'border-dark-600 text-dark-400 hover:border-dark-500'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Sound Effects */}
+          <div className="card">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold flex items-center gap-2">
+                <Volume2 className="w-4 h-4 text-primary-400" />
+                Sound Effects
+              </h3>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={sfxEnabled}
+                aria-label="Toggle sound effects"
+                onClick={() => setSfxEnabled((v) => !v)}
+                className={`relative w-11 h-6 rounded-full transition-colors ${
+                  sfxEnabled ? 'bg-primary-600' : 'bg-dark-700'
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
+                    sfxEnabled ? 'translate-x-5' : ''
+                  }`}
+                />
+              </button>
+            </div>
+            <p className="text-xs text-dark-400 mb-3">
+              Add automatic sound effects: whooshes, transitions, and emphasis sounds.
+            </p>
+            {sfxEnabled && (
+              <div>
+                <p className="text-sm text-dark-300 mb-2">Intensity</p>
+                <div className="flex gap-2 mb-2">
+                  {INTENSITY_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => setSfxIntensity(opt.id)}
+                      className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                        sfxIntensity === opt.id
+                          ? 'border-primary-500 bg-primary-500/15 text-primary-400'
+                          : 'border-dark-600 text-dark-400 hover:border-dark-500'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-dark-500">
+                  {sfxIntensity === 'subtle' && 'Light transition sounds only, barely noticeable.'}
+                  {sfxIntensity === 'normal' && 'Balanced mix of whooshes, pops, and transition sounds.'}
+                  {sfxIntensity === 'intense' && 'Full sound design with emphasis hits, bass drops, and dramatic transitions.'}
+                </p>
+              </div>
+            )}
+          </div>
 
           {/* Pipeline Steps */}
           <div className="card">
@@ -285,6 +512,12 @@ export default function Editor() {
                 <Sparkles className="w-4 h-4 text-primary-400" />
                 Effects & Subtitles (MoviePy)
               </div>
+              {sfxEnabled && (
+                <div className="flex items-center gap-2 text-dark-300">
+                  <Volume2 className="w-4 h-4 text-primary-400" />
+                  Sound Effects ({sfxIntensity})
+                </div>
+              )}
               {selectedMode !== 'podcast' && motionEnabled && (
                 <div className="flex items-center gap-2 text-dark-300">
                   <Wand2 className="w-4 h-4 text-accent-400" />
