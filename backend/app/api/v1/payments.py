@@ -88,6 +88,9 @@ async def payment_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             client_host = request.client.host if request.client else "unknown"
             logger.warning("Invalid webhook signature from %s", client_host)
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid signature")
+    else:
+        logger.error("FEDAPAY_SECRET_KEY not configured — rejecting webhook")
+        raise HTTPException(status_code=500, detail="Payment system misconfigured")
 
     import json as _json
     try:

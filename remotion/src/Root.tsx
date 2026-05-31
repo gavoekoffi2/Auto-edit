@@ -4,11 +4,13 @@ import { Intro } from "./compositions/Intro";
 import { Outro } from "./compositions/Outro";
 import { Captions } from "./compositions/Captions";
 import { LowerThird } from "./compositions/LowerThird";
+import { TransitionWipe } from "./compositions/TransitionWipe";
 import {
   captionsSchema,
   introSchema,
   lowerThirdSchema,
   outroSchema,
+  transitionWipeSchema,
 } from "./theme";
 
 /**
@@ -73,6 +75,22 @@ export const RemotionRoot: React.FC = () => {
         schema={lowerThirdSchema}
         defaultProps={lowerThirdSchema.parse({})}
         durationInFrames={150}
+        fps={30}
+        width={1920}
+        height={1080}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: props.durationInFrames,
+          fps: props.fps,
+          width: props.width,
+          height: props.height,
+        })}
+      />
+      <Composition
+        id="TransitionWipe"
+        component={TransitionWipe}
+        schema={transitionWipeSchema}
+        defaultProps={transitionWipeSchema.parse({})}
+        durationInFrames={20}
         fps={30}
         width={1920}
         height={1080}

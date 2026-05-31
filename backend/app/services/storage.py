@@ -54,9 +54,10 @@ def get_absolute_path(relative_path: str) -> str:
     _validate_path(relative_path)
     abs_path = os.path.abspath(os.path.join(settings.UPLOAD_DIR, relative_path))
 
-    # Ensure path is within UPLOAD_DIR
-    upload_root = os.path.abspath(settings.UPLOAD_DIR)
-    if not abs_path.startswith(upload_root):
+    # Resolve symlinks before checking containment to prevent symlink attacks.
+    abs_path_real = os.path.realpath(abs_path)
+    upload_root_real = os.path.realpath(settings.UPLOAD_DIR)
+    if not abs_path_real.startswith(upload_root_real + os.sep) and abs_path_real != upload_root_real:
         raise ValueError("Path traversal detected")
 
     return abs_path

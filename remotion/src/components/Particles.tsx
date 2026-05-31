@@ -55,13 +55,12 @@ const ShapeRenderer: React.FC<{
 
 const SingleParticle: React.FC<{
   index: number;
-  count: number;
   color: string;
   size: number;
   shape: ParticleShape;
   direction: "up" | "down";
   baseOpacity: number;
-}> = ({ index, count, color, size, shape, direction, baseOpacity }) => {
+}> = ({ index, color, size, shape, direction, baseOpacity }) => {
   const frame = useCurrentFrame();
   const { durationInFrames, width, height } = useVideoConfig();
 
@@ -134,7 +133,6 @@ export const Particles: React.FC<ParticlesProps> = ({
         <SingleParticle
           key={i}
           index={i}
-          count={clampedCount}
           color={color}
           size={size}
           shape={shapes[i % shapes.length]}

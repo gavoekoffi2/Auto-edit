@@ -1,37 +1,57 @@
 import { Link } from 'react-router-dom'
-import { Zap, Wand2, Clock, Globe, Mic, Scissors, Sparkles, Film } from 'lucide-react'
+import { Zap, Wand2, Clock, Globe, Mic, Scissors, Sparkles, Film, Type, Volume2, Palette, Music } from 'lucide-react'
 import Footer from '../components/layout/Footer'
 
 const features = [
   {
     icon: Mic,
     title: 'AI Transcription',
-    description: 'Automatic speech-to-text powered by Whisper AI. Generate subtitles instantly.',
+    description: 'Automatic speech-to-text powered by Whisper AI. Generate frame-perfect subtitles instantly.',
+  },
+  {
+    icon: Type,
+    title: 'Dynamic Subtitle Styles',
+    description: 'Choose from Karaoke, Neon, Bold, Modern, and more. Customize fonts, colors, and positioning to match your brand.',
   },
   {
     icon: Clock,
     title: 'Silence Removal',
-    description: 'Automatically detect and remove dead air, pauses, and silence from your videos.',
+    description: 'Automatically detect and remove dead air, pauses, and silence. Keep your audience engaged every second.',
   },
   {
     icon: Scissors,
     title: 'Smart Scene Detection',
-    description: 'AI detects scene changes and intelligently cuts your video into perfect segments.',
+    description: 'AI detects scene changes and intelligently cuts your video into perfect segments for maximum impact.',
+  },
+  {
+    icon: Wand2,
+    title: 'Professional Motion Design',
+    description: 'Animated intros, word-by-word captions, and end-screens rendered with Remotion. Studio-quality output.',
+  },
+  {
+    icon: Music,
+    title: 'Automatic Sound Effects',
+    description: 'AI-placed whooshes, transitions, and emphasis sounds with adjustable intensity from subtle to dramatic.',
+  },
+  {
+    icon: Palette,
+    title: 'Font & Color Customization',
+    description: 'Six premium font families, full color control, and position options. Make every video uniquely yours.',
   },
   {
     icon: Sparkles,
-    title: 'Auto Effects',
-    description: 'Add transitions, zoom effects, and dynamic visuals with a single click.',
+    title: 'One-Click Effects',
+    description: 'Add transitions, zoom effects, and dynamic visuals with a single click. No editing skills required.',
   },
   {
     icon: Film,
     title: 'Multi-Format Export',
-    description: 'Export optimized for TikTok, YouTube, or Podcast with preset configurations.',
+    description: 'Export optimized for TikTok, YouTube, or Podcast with preset configurations tuned for each platform.',
   },
   {
     icon: Globe,
     title: 'Cloud Processing',
-    description: 'Upload once, process in the cloud. No heavy software needed.',
+    description: 'Upload once, process in the cloud. No heavy software, no GPU required. Edit from any device.',
   },
 ]
 
@@ -39,19 +59,19 @@ const modes = [
   {
     name: 'TikTok Mode',
     emoji: '🔥',
-    description: 'Vertical crop, fast cuts, auto-subtitles, 60s max',
+    description: 'Vertical crop, fast cuts, karaoke subtitles, sound effects, 60s max',
     color: 'from-rose-500 to-pink-500',
   },
   {
     name: 'YouTube Mode',
     emoji: '🎥',
-    description: 'Optimized for engagement, silence removal, chapters',
+    description: 'Optimized engagement, motion design, custom subtitles, chapters',
     color: 'from-red-500 to-orange-500',
   },
   {
     name: 'Podcast Mode',
     emoji: '🎙️',
-    description: 'Audio cleanup, silence removal, auto-transcription',
+    description: 'Audio cleanup, silence removal, auto-transcription, export-ready',
     color: 'from-purple-500 to-indigo-500',
   },
 ]
@@ -77,7 +97,8 @@ export default function Landing() {
 
             <p className="text-xl text-dark-400 mb-10 max-w-2xl mx-auto">
               Upload your video, choose a mode, and let AutoEdit handle the rest.
-              Silence removal, scene detection, subtitles, and effects — all automated.
+              Silence removal, scene detection, dynamic subtitles, motion design,
+              sound effects, and professional styling — all automated in minutes.
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -124,7 +145,8 @@ export default function Landing() {
               <span className="gradient-text"> AutoEdit</span>
             </h2>
             <p className="text-dark-400 text-lg max-w-2xl mx-auto">
-              Powered by cutting-edge open-source AI tools: Whisper, auto-editor, PySceneDetect, and MoviePy.
+              Powered by cutting-edge AI: Whisper transcription, intelligent motion design, dynamic subtitle styles,
+              automatic sound effects, and professional-grade export — all in one platform.
             </p>
           </div>
 
@@ -176,7 +198,7 @@ export default function Landing() {
           </div>
 
           <div className="flex flex-col md:flex-row items-center justify-center gap-4">
-            {['Upload', 'AI Analysis', 'Remove Silence', 'Detect Scenes', 'Apply Effects', 'Add Subtitles', 'Export'].map(
+            {['Upload', 'AI Analysis', 'Remove Silence', 'Detect Scenes', 'Style Subtitles', 'Add Effects & SFX', 'Export'].map(
               (step, i) => (
                 <div key={step} className="flex items-center gap-4">
                   <div className="flex flex-col items-center">

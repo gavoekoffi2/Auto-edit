@@ -15,6 +15,7 @@ from app.models.job import Job
 from app.schemas.job import JobCreate, JobResponse
 from app.api.deps import get_current_user
 from app.services.storage import get_absolute_path
+from app.config import VALID_JOB_TYPES, VALID_MODES
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,12 @@ async def create_job(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Validate job_type and mode against config whitelist
+    if data.job_type not in VALID_JOB_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid job_type")
+    if data.mode and data.mode not in VALID_MODES:
+        raise HTTPException(status_code=400, detail="Invalid mode")
+
     # Verify video belongs to user
     result = await db.execute(
         select(Video).where(Video.id == data.video_id, Video.user_id == current_user.id)

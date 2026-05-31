@@ -26,10 +26,17 @@ MODE_PRESETS = {
         # Motion design: animated captions are the signature TikTok look, plus a
         # short branded intro/outro. Animated captions replace burned-in subs.
         "subtitles": False,
+        "subtitle_style": {
+            "preset": "karaoke",
+            "font": "Bangers",
+        },
         "motion": {
             "animated_captions": True,
             "caption_position": "center",
             "font_scale": 1.15,
+            "caption_style": "karaoke",
+            "font_family": "Bangers",
+            "animation_intensity": "intense",
             "intro": {"title": "AutoEdit", "subtitle": ""},
             "outro": {"title": "Follow for more", "call_to_action": "Follow"},
             "intro_seconds": 2.0,
@@ -46,10 +53,17 @@ MODE_PRESETS = {
             "fade_out": 0.5,
         },
         "subtitles": False,
+        "subtitle_style": {
+            "preset": "classic",
+            "font": "Montserrat",
+        },
         "motion": {
             "animated_captions": True,
             "caption_position": "bottom",
             "font_scale": 1.0,
+            "caption_style": "classic",
+            "font_family": "Montserrat",
+            "animation_intensity": "normal",
             "intro": {"title": "AutoEdit", "subtitle": ""},
             "outro": {"title": "Thanks for watching", "call_to_action": "Subscribe"},
         },
@@ -61,6 +75,9 @@ MODE_PRESETS = {
         "scene_detection": False,
         "effects": {},
         "subtitles": True,
+        "subtitle_style": {
+            "preset": "minimal",
+        },
         "motion": {},
         "max_duration": None,
     },
@@ -109,7 +126,7 @@ def run_pipeline(
     if params:
         for key, value in params.items():
             if (
-                key in ("motion", "effects")
+                key in ("motion", "effects", "subtitle_style")
                 and isinstance(value, dict)
                 and isinstance(config.get(key), dict)
             ):
@@ -227,10 +244,10 @@ def run_pipeline(
             results["effects_error"] = str(e)
             results["steps_failed"].append("effects")
 
-    # Step 5: Add Subtitles (85-90%)
+    # Step 5: Add Subtitles (80-85%)
     srt_path = results.get("transcription", {}).get("srt_path")
     if config.get("subtitles") and srt_path and os.path.exists(srt_path):
-        update_progress(87, "Adding subtitles...")
+        update_progress(82, "Adding subtitles...")
         try:
             sub_result = add_subtitles(
                 current_video,
@@ -246,14 +263,65 @@ def run_pipeline(
                 results["steps_completed"].append("subtitles")
             else:
                 results["steps_failed"].append("subtitles")
-            update_progress(90, "Subtitles added")
+            update_progress(85, "Subtitles added")
         except Exception as e:
             logger.error(f"Subtitles failed: {e}", exc_info=True)
             results["subtitles_error"] = str(e)
             results["steps_failed"].append("subtitles")
 
+    # Step 5.5: Sound Effects (85-90%)
+    sfx_config = config.get("sfx", {})
+    if sfx_config.get("enabled"):
+        update_progress(86, "Adding sound effects...")
+        try:
+            from app.processing.sound_effects import add_sound_effects
+
+            sfx_result = add_sound_effects(
+                current_video,
+                output_dir,
+                sfx_config=sfx_config,
+                scenes=results.get("scenes"),
+                subtitles_srt=srt_path if srt_path and os.path.exists(srt_path) else None,
+            )
+            new_video = sfx_result.get("output_path")
+            if (
+                new_video
+                and new_video != current_video
+                and os.path.exists(new_video)
+                and os.path.getsize(new_video) > 0
+            ):
+                intermediate_files.append(current_video if current_video != video_path else None)
+                current_video = new_video
+                results["sound_effects"] = sfx_result
+                results["steps_completed"].append("sound_effects")
+            elif sfx_result.get("skipped"):
+                logger.info("Sound effects skipped: %s", sfx_result["skipped"])
+                results["sound_effects"] = sfx_result
+            else:
+                results["steps_failed"].append("sound_effects")
+            update_progress(90, "Sound effects applied")
+        except Exception as e:
+            logger.error(f"Sound effects failed: {e}", exc_info=True)
+            results["sound_effects_error"] = str(e)
+            results["steps_failed"].append("sound_effects")
+
     # Step 6: Motion Design via Remotion (90-99%)
     motion_config = config.get("motion") or {}
+
+    # Forward font_family, caption_style, subtitle_preset from top-level params
+    # or subtitle_style into motion_config so the Remotion compositions receive
+    # them.
+    if config.get("subtitle_style"):
+        ss = config["subtitle_style"]
+        motion_config.setdefault("caption_style", ss.get("preset"))
+        motion_config.setdefault("font_family", ss.get("font"))
+    if config.get("font_family"):
+        motion_config["font_family"] = config["font_family"]
+    if config.get("caption_style"):
+        motion_config["caption_style"] = config["caption_style"]
+    if config.get("subtitle_preset"):
+        motion_config.setdefault("caption_style", config["subtitle_preset"])
+
     if motion_config and any(
         motion_config.get(k) for k in ("intro", "outro", "animated_captions")
     ):

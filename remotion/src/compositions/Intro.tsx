@@ -7,7 +7,6 @@ import {
   useVideoConfig,
 } from "remotion";
 import { Particles } from "../components/Particles";
-import { GlowText } from "../components/GlowText";
 import { IntroProps } from "../theme";
 
 /**

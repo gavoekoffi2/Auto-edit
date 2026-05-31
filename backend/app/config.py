@@ -52,7 +52,17 @@ class Settings(BaseSettings):
     @field_validator("SECRET_KEY")
     @classmethod
     def validate_secret_key(cls, v: str) -> str:
+        is_production = (
+            os.environ.get("PRODUCTION") == "1"
+            or os.environ.get("ENV") == "production"
+        )
         if not v or v == "dev-secret-key-change-in-production":
+            if is_production:
+                raise ValueError(
+                    "SECRET_KEY must be explicitly set in production. "
+                    "Set the SECRET_KEY environment variable to a secure value "
+                    "(at least 32 characters)."
+                )
             generated = secrets.token_urlsafe(32)
             logger.warning(
                 "SECRET_KEY not set or insecure. Generating random key for this session. "

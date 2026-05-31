@@ -12,7 +12,6 @@ import {
   CaptionsProps,
   CaptionSegment,
   CaptionStyle,
-  AnimationIntensity,
 } from "../theme";
 
 /**
