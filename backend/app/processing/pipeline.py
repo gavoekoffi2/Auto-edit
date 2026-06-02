@@ -238,7 +238,19 @@ def run_pipeline(
                 current_video = new_video
                 results["silence_removal"] = {
                     "output_path": new_video,
+                    "source_duration": silence_result.get("source_duration"),
+                    "removed_seconds_estimate": silence_result.get("removed_seconds_estimate"),
+                    "silence_ranges": silence_result.get("silence_ranges", []),
+                    "kept_ranges": silence_result.get("kept_ranges", []),
                 }
+                if results.get("transcription") and silence_result.get("kept_ranges"):
+                    from app.processing.silence import remap_transcription_to_kept_ranges
+
+                    results["original_transcription"] = results["transcription"]
+                    results["transcription"] = remap_transcription_to_kept_ranges(
+                        results["transcription"],
+                        silence_result["kept_ranges"],
+                    )
                 results["steps_completed"].append("silence_removal")
             else:
                 logger.warning("Silence removal produced empty output, keeping original")

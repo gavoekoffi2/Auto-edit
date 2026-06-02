@@ -15,6 +15,7 @@ Design goals:
 import os
 import json
 import shutil
+import signal
 import logging
 import subprocess
 from typing import Optional
@@ -126,7 +127,8 @@ def _render_composition(
 ) -> None:
     """Render a single composition with `npx remotion render`."""
     remotion_dir = _remotion_dir()
-    props_file = os.path.join(work_dir, f"props_{comp_id}.json")
+    props_file = os.path.abspath(os.path.join(work_dir, f"props_{comp_id}.json"))
+    output_path = os.path.abspath(output_path)
     with open(props_file, "w", encoding="utf-8") as f:
         json.dump(props, f)
 
@@ -154,13 +156,36 @@ def _render_composition(
         cmd += ["--codec=h264"]
 
     logger.info("Rendering Remotion composition '%s' -> %s", comp_id, output_path)
-    result = subprocess.run(
-        cmd, cwd=remotion_dir, capture_output=True, text=True,
-        timeout=timeout, start_new_session=True,
+    effective_timeout = max(timeout, 1800) if alpha else timeout
+    proc = subprocess.Popen(
+        cmd,
+        cwd=remotion_dir,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
     )
-    if result.returncode != 0:
+    try:
+        stdout, stderr = proc.communicate(timeout=effective_timeout)
+    except subprocess.TimeoutExpired as exc:
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except Exception:
+            pass
+        try:
+            stdout, stderr = proc.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except Exception:
+                pass
+            stdout, stderr = proc.communicate()
         raise RuntimeError(
-            f"Remotion render of '{comp_id}' failed: {result.stderr[-1000:]}"
+            f"Remotion render of '{comp_id}' timed out after {effective_timeout}s: {str(exc)}"
+        ) from exc
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"Remotion render of '{comp_id}' failed: {stderr[-1000:]}"
         )
     if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
         raise RuntimeError(f"Remotion produced empty output for '{comp_id}'")
