@@ -1,0 +1,87 @@
+version: "3.9"
+
+# =========================================================================
+# Override de production.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Differences vs dev:
+#   - APP_ENV=production (active fail-closed rate limit + SECRET_KEY strict)
+#   - pas de --reload uvicorn
+#   - pas de bind-mount ./backend (le code est dans l'image)
+#   - postgres/redis ne sont PLUS exposes sur l'host
+#   - workers concurrency par defaut = 4 (override via CELERY_CONCURRENCY)
+#   - logging json + log-level info
+# =========================================================================
+
+services:
+  postgres:
+    ports: !reset []           # ne pas exposer publiquement
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+    command: postgres -c log_min_duration_statement=200
+
+  redis:
+    ports: !reset []
+
+  backend:
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --proxy-headers
+      --forwarded-allow-ips=*
+      --log-level info
+      --workers 2
+    # IMPORTANT: backend ET worker doivent partager le même volume d'uploads.
+    # Sans ce mount, l'API sauvegarde la vidéo dans la couche privée du container
+    # backend, puis Celery ne la retrouve pas dans /app/uploads.
+    volumes: !override
+      - uploads_data:/app/uploads
+    ports: !reset []           # nginx parle au backend en interne
+    environment:
+      APP_ENV: production
+
+  worker:
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-4} --prefetch-multiplier=1
+    volumes: !override
+      - uploads_data:/app/uploads
+    environment:
+      APP_ENV: production
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app inspect ping --destination celery@$$HOSTNAME | grep -q pong"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  frontend:
+    profiles: ["local-frontend"]
+    ports: !reset []
+
+  # Nginx reste disponible en reverse-proxy interne/dev, mais en production
+  # Caddy prend les ports publics 80/443 pour générer/renouveler HTTPS
+  # automatiquement avec Let's Encrypt.
+  nginx:
+    ports: !reset []
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      BACKEND_DOMAIN: ${BACKEND_DOMAIN:-localhost}
+      TLS_EMAIL: ${TLS_EMAIL:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

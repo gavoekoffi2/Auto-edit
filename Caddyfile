@@ -1,0 +1,29 @@
+{$BACKEND_DOMAIN:localhost} {
+    encode gzip zstd
+
+    # Large video uploads. Caddy streams request bodies, but this guards abuse.
+    request_body {
+        max_size 550MB
+    }
+
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        Strict-Transport-Security "max-age=31536000"
+    }
+
+    # Backend API. Keep /api/... intact because FastAPI mounts /api and /api/v1.
+    reverse_proxy /api* backend:8000 {
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        transport http {
+            read_timeout 300s
+            write_timeout 300s
+        }
+    }
+
+    # Optional: if this domain is opened directly, serve the built frontend too.
+    reverse_proxy frontend:80
+}

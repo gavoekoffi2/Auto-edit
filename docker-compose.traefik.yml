@@ -1,0 +1,40 @@
+services:
+  backend:
+    networks:
+      - default
+      - web
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.autoedit-api.rule: "Host(`autoedit.srv1305401.hstgr.cloud`) && PathPrefix(`/api`)"
+      traefik.http.routers.autoedit-api.entrypoints: "websecure"
+      traefik.http.routers.autoedit-api.tls: "true"
+      traefik.http.routers.autoedit-api.tls.certresolver: "letsencrypt"
+      traefik.http.routers.autoedit-api.priority: "30000"
+      traefik.http.services.autoedit-api.loadbalancer.server.port: "8000"
+
+  # Frontend public servi par Netlify en production. Ce service ne doit être
+  # lancé sur le VPS que manuellement avec --profile local-frontend.
+  frontend:
+    profiles: ["local-frontend"]
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: https://autoedit.srv1305401.hstgr.cloud/api
+    networks:
+      - web
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.autoedit-frontend.rule: "Host(`autoedit.srv1305401.hstgr.cloud`)"
+      traefik.http.routers.autoedit-frontend.entrypoints: "websecure"
+      traefik.http.routers.autoedit-frontend.tls: "true"
+      traefik.http.routers.autoedit-frontend.tls.certresolver: "letsencrypt"
+      traefik.http.routers.autoedit-frontend.priority: "10000"
+      traefik.http.services.autoedit-frontend.loadbalancer.server.port: "80"
+  nginx:
+    profiles: ["local-frontend"]
+  caddy:
+    profiles: ["caddy-https"]
+
+networks:
+  web:
+    external: true
