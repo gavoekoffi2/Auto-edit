@@ -41,7 +41,9 @@ def detect_scenes(
         scene_manager.detect_scenes(video)
         scene_list = scene_manager.get_scene_list()
     finally:
-        video.release()
+        close = getattr(video, "release", None) or getattr(video, "close", None)
+        if close:
+            close()
 
     scenes = []
     for start, end in scene_list:
