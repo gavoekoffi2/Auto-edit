@@ -12,9 +12,11 @@ via LLM pour scorer chaque cut.
 from __future__ import annotations
 
 import logging
+import re
+from difflib import SequenceMatcher
 from typing import Iterable
 
-from app.processing.types import Cut, EditDecisionList, SilenceRange, Transcript, Word
+from app.processing.types import Cut, EditDecisionList, SilenceRange, Transcript, TranscriptSegment, Word
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,10 @@ class EditDecisionService:
         filler_words: set[str] | None = None,
         max_silence_keep: float = 0.3,
         boundary_pad: float = 0.05,
+        repetition_similarity_threshold: float = 0.86,
+        repetition_window_s: float = 45.0,
+        low_confidence_threshold: float = 0.32,
+        min_low_confidence_words: int = 2,
     ):
         # Défaut: union FR + EN
         self.filler_words: set[str] = filler_words or (
@@ -51,6 +57,10 @@ class EditDecisionService:
         )
         self.max_silence_keep = max_silence_keep
         self.boundary_pad = boundary_pad
+        self.repetition_similarity_threshold = repetition_similarity_threshold
+        self.repetition_window_s = repetition_window_s
+        self.low_confidence_threshold = low_confidence_threshold
+        self.min_low_confidence_words = min_low_confidence_words
 
     # ------------------------------------------------------------------
     # API publique
@@ -128,7 +138,9 @@ class EditDecisionService:
 
         # 3. Casse les cuts qui contiennent un silence interne trop long.
         long_silences = [s for s in silences if (s.end - s.start) > self.max_silence_keep]
+        smart_drop_ranges = self._detect_repetition_ranges(transcript) + self._detect_low_confidence_ranges(transcript)
         cuts = self._split_on_silences(cuts, long_silences)
+        cuts = self._apply_drop_ranges(cuts, smart_drop_ranges)
 
         # 4. Fusionne les cuts adjacents de même flag (boundary pad peut créer
         # de mini-cuts).
@@ -145,6 +157,9 @@ class EditDecisionService:
                 "max_silence_keep": self.max_silence_keep,
                 "boundary_pad": self.boundary_pad,
                 "source_duration": total_duration,
+                "repetition_ranges_count": sum(1 for r in smart_drop_ranges if r.reason == "repetition"),
+                "low_confidence_ranges_count": sum(1 for r in smart_drop_ranges if r.reason == "low_confidence"),
+                "smart_drop_ranges": [r.to_dict() for r in smart_drop_ranges],
             },
         )
         logger.info(
@@ -159,6 +174,109 @@ class EditDecisionService:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+    def _detect_repetition_ranges(self, transcript: Transcript) -> list[SilenceRange]:
+        """Detect near-duplicate sentence/segment repetitions and drop later takes.
+
+        This is the AutoEdit equivalent of the user's requested "video-use"
+        editorial intelligence: transcript-aware analysis decides which take is
+        repeated, while FFmpeg later applies the cut precisely.
+        """
+        ranges: list[SilenceRange] = []
+        seen: list[tuple[float, float, str]] = []
+        for seg in transcript.segments:
+            normalized = self._normalize_segment_text(seg)
+            if len(normalized.split()) < 3:
+                continue
+            for prev_start, _prev_end, prev_text in reversed(seen[-12:]):
+                if seg.start - prev_start > self.repetition_window_s:
+                    continue
+                if SequenceMatcher(None, prev_text, normalized).ratio() >= self.repetition_similarity_threshold:
+                    ranges.append(
+                        SilenceRange(
+                            start=max(0.0, seg.start - self.boundary_pad),
+                            end=max(seg.start, seg.end + self.boundary_pad),
+                            reason="repetition",
+                        )
+                    )
+                    break
+            seen.append((seg.start, seg.end, normalized))
+        return self._merge_ranges(ranges)
+
+    def _detect_low_confidence_ranges(self, transcript: Transcript) -> list[SilenceRange]:
+        """Drop segments Whisper itself considers unreliable.
+
+        Low-confidence spans often correspond to mumbled, noisy, or bad takes.
+        We only drop when at least a few words have confidence metadata to avoid
+        deleting content from providers that do not expose word confidence.
+        """
+        ranges: list[SilenceRange] = []
+        for seg in transcript.segments:
+            confident_words = [w for w in seg.words if w.confidence is not None]
+            if len(confident_words) < self.min_low_confidence_words:
+                continue
+            avg = sum(float(w.confidence or 0.0) for w in confident_words) / len(confident_words)
+            if avg <= self.low_confidence_threshold:
+                ranges.append(
+                    SilenceRange(
+                        start=max(0.0, seg.start - self.boundary_pad),
+                        end=max(seg.start, seg.end + self.boundary_pad),
+                        reason="low_confidence",
+                    )
+                )
+        return self._merge_ranges(ranges)
+
+    def _normalize_segment_text(self, seg: TranscriptSegment) -> str:
+        text = " ".join(w.text for w in seg.words) if seg.words else seg.text
+        tokens = [
+            _normalize(tok)
+            for tok in re.findall(r"[\wÀ-ÿ'-]+", text.lower())
+        ]
+        return " ".join(t for t in tokens if t and t not in self.filler_words)
+
+    def _merge_ranges(self, ranges: list[SilenceRange]) -> list[SilenceRange]:
+        if not ranges:
+            return []
+        merged: list[SilenceRange] = []
+        for r in sorted(ranges, key=lambda x: (x.start, x.end)):
+            if not merged or r.start > merged[-1].end + 0.03 or r.reason != merged[-1].reason:
+                merged.append(r)
+            else:
+                merged[-1] = SilenceRange(
+                    start=merged[-1].start,
+                    end=max(merged[-1].end, r.end),
+                    reason=r.reason,
+                )
+        return merged
+
+    def _apply_drop_ranges(self, cuts: list[Cut], ranges: list[SilenceRange]) -> list[Cut]:
+        if not ranges:
+            return cuts
+        result = cuts
+        for drop in sorted(ranges, key=lambda x: x.start):
+            next_result: list[Cut] = []
+            for cut in result:
+                if not cut.keep or drop.end <= cut.source_start or drop.start >= cut.source_end:
+                    next_result.append(cut)
+                    continue
+                if cut.source_start < drop.start:
+                    next_result.append(
+                        Cut(cut.source_start, max(cut.source_start, drop.start), True, cut.reason, cut.text)
+                    )
+                next_result.append(
+                    Cut(
+                        source_start=max(cut.source_start, drop.start),
+                        source_end=min(cut.source_end, drop.end),
+                        keep=False,
+                        reason=drop.reason,
+                    )
+                )
+                if drop.end < cut.source_end:
+                    next_result.append(
+                        Cut(min(cut.source_end, drop.end), cut.source_end, True, cut.reason, cut.text)
+                    )
+            result = next_result
+        return result
+
     def _split_on_silences(self, cuts: list[Cut], silences: list[SilenceRange]) -> list[Cut]:
         if not silences:
             return cuts

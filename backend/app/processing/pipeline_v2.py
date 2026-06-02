@@ -208,8 +208,8 @@ def run_pipeline_v2(
             "premium_ass_path": None,
             "transcript_path": os.path.join(output_dir, "transcript.json"),
         }
-        # Captions premium mot-par-mot: écriture dès la transcription pour que
-        # le rendu final ne tombe pas sur le SRT basique à fond noir.
+        # Captions premium mot-par-mot: premier fichier brut. Il sera réécrit
+        # après l'EDL avec les timestamps compactés sur la timeline finale.
         try:
             from app.processing.premium_caption_service import PremiumCaptionService
             premium_ass = PremiumCaptionService().write_ass(
@@ -242,6 +242,22 @@ def run_pipeline_v2(
         results["silence_detection_error"] = str(e)[:500]
         results["steps_failed"].append("silence_detection")
 
+    # 2b. video-use visual keyframe analysis (optional, fail-soft)
+    try:
+        if options.get("video_use_analysis", True):
+            progress(38, "Analyse visuelle video-use…")
+            from app.processing.video_use_analyzer import VideoUseAnalyzer
+            vua = VideoUseAnalyzer(workdir=output_dir)
+            results["video_use"] = vua.extract_keyframes(video_path, max_frames=48)
+            if results["video_use"].get("available"):
+                results["steps_completed"].append("video_use_analysis")
+            else:
+                results["steps_failed"].append("video_use_analysis")
+    except Exception as e:
+        logger.warning("[pipeline_v2] video-use analysis failed: %s", e)
+        results["video_use"] = {"available": False, "error": str(e)[:500], "frames_count": 0, "frames": []}
+        results["steps_failed"].append("video_use_analysis")
+
     # 3. EDL
     total_duration = _get_duration_safe(video_path)
     edl = None
@@ -261,6 +277,18 @@ def run_pipeline_v2(
             json.dump(edl.to_dict(), f, ensure_ascii=False, indent=2)
         results["edl_path"] = edl_path
         results["edl_total_kept_duration"] = edl.total_kept_duration
+        if transcript is not None and options.get("dynamic_captions", True):
+            try:
+                from app.processing.premium_caption_service import PremiumCaptionService
+                compact_transcript = _remap_transcript_to_edl(transcript, edl)
+                premium_ass = PremiumCaptionService().write_ass(
+                    compact_transcript,
+                    os.path.join(output_dir, "premium_captions.compacted.ass"),
+                )
+                results.setdefault("transcription", {})["premium_ass_path"] = premium_ass
+                results["transcription"]["compacted_words_count"] = len(compact_transcript.words)
+            except Exception as cap_err:
+                logger.warning("[pipeline_v2] compacted premium captions failed: %s", cap_err)
         results["steps_completed"].append("edl")
         progress(50, "EDL générée")
     except Exception as e:
@@ -310,8 +338,10 @@ def run_pipeline_v2(
 
     # 7. Overlays premium — intro/CTA + labels de section + titres de B-roll
     # + vraies cartes motion-design explicatives indépendantes des B-rolls.
-    overlays = _build_overlays(options=options, params=params or {}, total_duration=total_duration)
-    overlays.extend(_build_explainer_motion_overlays(total_duration=total_duration))
+    render_duration = float(edl.total_kept_duration if edl is not None else total_duration)
+    overlays = _build_overlays(options=options, params=params or {}, total_duration=render_duration)
+    if options.get("motion_design_overlays", bool(cues)):
+        overlays.extend(_build_explainer_motion_overlays(total_duration=render_duration))
     overlays.extend(_build_broll_motion_overlays(cues))
     rendered_overlays = []
     if overlays:
@@ -394,6 +424,55 @@ def run_pipeline_v2(
     return results
 
 
+def _remap_transcript_to_edl(transcript, edl):
+    """Map source transcript word timestamps onto the compacted output timeline.
+
+    FFmpegRenderer concatenates kept EDL cuts, so caption timestamps must be in
+    output time, not original source time. This prevents drift after removing
+    long silences/repeated takes.
+    """
+    from app.processing.types import Transcript, TranscriptSegment, Word
+
+    remapped_words: list[Word] = []
+    out_cursor = 0.0
+    for cut in edl.cuts:
+        if not cut.keep:
+            continue
+        cut_start = float(cut.source_start)
+        cut_end = float(cut.source_end)
+        for w in transcript.words:
+            if w.end <= cut_start or w.start >= cut_end:
+                continue
+            clipped_start = max(float(w.start), cut_start)
+            clipped_end = min(float(w.end), cut_end)
+            if clipped_end <= clipped_start:
+                continue
+            remapped_words.append(
+                Word(
+                    text=w.text,
+                    start=round(out_cursor + (clipped_start - cut_start), 3),
+                    end=round(out_cursor + (clipped_end - cut_start), 3),
+                    confidence=w.confidence,
+                )
+            )
+        out_cursor += max(0.0, cut_end - cut_start)
+
+    if not remapped_words:
+        return Transcript(language=transcript.language, text=transcript.text, segments=[])
+    return Transcript(
+        language=transcript.language,
+        text=" ".join(w.text for w in remapped_words),
+        segments=[
+            TranscriptSegment(
+                start=remapped_words[0].start,
+                end=remapped_words[-1].end,
+                text=" ".join(w.text for w in remapped_words),
+                words=remapped_words,
+            )
+        ],
+    )
+
+
 # ---------------------------------------------------------------------------
 def _get_duration_safe(video_path: str) -> float:
     try:
@@ -429,7 +508,7 @@ def _build_overlays(options: dict, params: dict, total_duration: float) -> list:
 
     # Petits labels de section pour éviter un rendu trop plat quand Remotion
     # n'est pas encore branché. Ils sont brûlés par FFmpeg dans le pass final.
-    if opts.get("dynamic_captions", True) and total_duration >= 25.0:
+    if opts.get("section_labels", bool(opts.get("ai_broll"))) and opts.get("dynamic_captions", True) and total_duration >= 25.0:
         labels = ["POINT CLÉ", "FORMATION", "ACTION"]
         for i, start in enumerate([18.0, 36.0, 54.0]):
             if start + 2.2 < total_duration - 3.0:
