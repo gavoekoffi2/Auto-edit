@@ -1,5 +1,3 @@
-import { loadFont } from "@remotion/fonts";
-import { staticFile } from "remotion";
 import type { FontFamily } from "./theme";
 
 /**
@@ -42,21 +40,20 @@ const FONT_FILES: Record<FontFamily, WeightFile[]> = {
   Bangers: [{ weight: "400", file: "Bangers-400.woff2" }],
 };
 
-// Register every weight of every font once, at module scope. loadFont() calls
-// delayRender internally, so the render waits until the files are loaded.
-for (const [family, weights] of Object.entries(FONT_FILES) as [
-  FontFamily,
-  WeightFile[],
-][]) {
-  for (const { weight, file } of weights) {
-    loadFont({
-      family,
-      url: staticFile(`fonts/${file}`),
-      weight,
-      format: "woff2",
-    });
-  }
-}
+export const FONT_FACE_CSS = Object.entries(FONT_FILES)
+  .flatMap(([family, weights]) =>
+    weights.map(
+      ({ weight, file }) => `
+@font-face {
+  font-family: '${family}';
+  src: url('/fonts/${file}') format('woff2');
+  font-weight: ${weight};
+  font-style: normal;
+  font-display: swap;
+}`
+    )
+  )
+  .join("\n");
 
 const GENERIC_FALLBACK = "'Helvetica Neue', Arial, sans-serif";
 

@@ -13,7 +13,7 @@ import {
   CaptionSegment,
   CaptionStyle,
 } from "../theme";
-import { getFontFamily } from "../fonts";
+import { FONT_FACE_CSS, getFontFamily, isDisplayFont } from "../fonts";
 
 /**
  * Transparent animated-caption overlay supporting multiple caption styles:
@@ -26,6 +26,97 @@ import { getFontFamily } from "../fonts";
  */
 
 const intensityMap = { subtle: 0.5, normal: 1, intense: 1.6 } as const;
+
+const IMPACT_WORDS = new Set([
+  "argent",
+  "business",
+  "liberte",
+  "liberté",
+  "financiere",
+  "financière",
+  "contact",
+  "commentaire",
+  "valeurs",
+  "abraham",
+  "solution",
+  "immigrant",
+  "francophone",
+  "revenus",
+  "opportunite",
+  "opportunité",
+]);
+
+const normalizeWord = (word: string) =>
+  word
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+
+const isImpactWord = (word: string, index: number) =>
+  index % 5 === 0 || IMPACT_WORDS.has(normalizeWord(word));
+
+const displayText = (word: string, fontFamily?: string | null) =>
+  fontFamily && (isDisplayFont(fontFamily) || fontFamily.includes("Bangers") || fontFamily.includes("Bebas"))
+    ? word.toUpperCase()
+    : word;
+
+const justifyForPosition = (position: "bottom" | "center" | "top") =>
+  position === "top" ? "flex-start" : position === "center" ? "center" : "flex-end";
+
+const captionSafeAreaStyle = (position: "bottom" | "center" | "top"): React.CSSProperties => {
+  if (position === "center") {
+    return {
+      justifyContent: "flex-start",
+      alignItems: "center",
+      // CSS vertical percentage padding is relative to the element width, not
+      // height. On a 1080x1920 vertical render, 94% width ≈ 53% height: below
+      // the mouth/eyes and around the chest safe-zone for face-cam footage.
+      paddingTop: "94%",
+      paddingLeft: "6%",
+      paddingRight: "6%",
+    };
+  }
+  return {
+    justifyContent: justifyForPosition(position),
+    alignItems: "center",
+    padding: "8%",
+  };
+};
+
+const SegmentFlash: React.FC<{ color: string; intensity: number }> = ({ color, intensity }) => {
+  const frame = useCurrentFrame();
+  const opacity = interpolate(frame, [0, 3, 10], [0.22 * intensity, 0.1 * intensity, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const scale = interpolate(frame, [0, 10], [0.92, 1.08], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  return (
+    <AbsoluteFill
+      style={{
+        pointerEvents: "none",
+        justifyContent: "center",
+        alignItems: "center",
+        opacity,
+        mixBlendMode: "screen",
+      }}
+    >
+      <div
+        style={{
+          width: "70%",
+          height: "22%",
+          borderRadius: "999px",
+          background: `radial-gradient(circle, ${color}66 0%, transparent 65%)`,
+          transform: `scale(${scale})`,
+          filter: "blur(22px)",
+        }}
+      />
+    </AbsoluteFill>
+  );
+};
 
 /* ──────────────────────── Classic Caption Line ──────────────────────── */
 
@@ -49,22 +140,14 @@ const ClassicCaptionLine: React.FC<{
   const exitOpacity = interpolate(exit, [0, 1], [1, 0]);
 
   const words = segment.text.split(" ").filter(Boolean);
-  const justify =
-    position === "top"
-      ? "flex-start"
-      : position === "center"
-        ? "center"
-        : "flex-end";
-
   return (
     <AbsoluteFill
       style={{
-        justifyContent: justify,
-        alignItems: "center",
-        padding: position === "center" ? 0 : "8%",
+        ...captionSafeAreaStyle(position),
         opacity: exitOpacity,
       }}
     >
+      <SegmentFlash color={brand.accentColor} intensity={1} />
       <div
         style={{
           transform: `translateY(${exitY}px)`,
@@ -126,37 +209,46 @@ const KaraokeCaptionLine: React.FC<{
   );
   const exitOpacity = interpolate(exit, [0, 1], [1, 0]);
 
-  const justify =
-    position === "top"
-      ? "flex-start"
-      : position === "center"
-        ? "center"
-        : "flex-end";
+  // Captions.ai-style face-cam captions should be compact. Showing the whole
+  // Whisper segment can create 3-4 lines and climb over the mouth. Keep a
+  // moving 6-word window around the active word so the caption stays in the
+  // chest safe-zone while remaining readable.
+  const activeWordIndex = Math.max(
+    0,
+    Math.min(wordCount - 1, Math.floor(frame / framesPerWord))
+  );
+  const windowSize = 6;
+  const displayStart = Math.max(
+    0,
+    Math.min(activeWordIndex - 2, Math.max(0, wordCount - windowSize))
+  );
+  const visibleWords = words.slice(displayStart, displayStart + windowSize);
 
   return (
     <AbsoluteFill
       style={{
-        justifyContent: justify,
-        alignItems: "center",
-        padding: position === "center" ? 0 : "8%",
+        ...captionSafeAreaStyle(position),
         opacity: exitOpacity,
       }}
     >
+      <SegmentFlash color={brand.accentColor} intensity={1} />
       <div
         style={{
-          maxWidth: "86%",
+          maxWidth: "74%",
           textAlign: "center",
           fontFamily: fontStack,
           fontWeight: 900,
           fontSize,
-          lineHeight: 1.2,
-          padding: "0.3em 0.6em",
-          borderRadius: 14,
-          background: "rgba(0, 0, 0, 0.5)",
-          backdropFilter: "blur(4px)",
+          lineHeight: 1.08,
+          padding: "0.18em 0.3em",
+          borderRadius: 0,
+          background: "transparent",
+          WebkitTextStroke: "2px rgba(0,0,0,0.78)",
+          textShadow: "0 4px 0 rgba(0,0,0,0.85), 0 8px 22px rgba(0,0,0,0.72)",
         }}
       >
-        {words.map((word, i) => {
+        {visibleWords.map((word, visibleIndex) => {
+          const i = displayStart + visibleIndex;
           const wordStart = i * framesPerWord;
           const wordEnd = (i + 1) * framesPerWord;
           const isCurrentWord = frame >= wordStart && frame < wordEnd;
@@ -167,7 +259,8 @@ const KaraokeCaptionLine: React.FC<{
             ? 1 + 0.08 * intensity * Math.sin((frame - wordStart) * 0.4)
             : 1;
 
-          const color = isCurrentWord
+          const emphasis = isImpactWord(word, i);
+          const color = isCurrentWord || emphasis
             ? brand.accentColor
             : isPastWord
               ? brand.accentColor + "aa"
@@ -199,7 +292,7 @@ const KaraokeCaptionLine: React.FC<{
                 willChange: "transform",
               }}
             >
-              {word}
+              {displayText(word, fontStack)}
             </span>
           );
         })}
@@ -231,22 +324,14 @@ const BounceCaptionLine: React.FC<{
   );
   const exitOpacity = interpolate(exit, [0, 1], [1, 0]);
 
-  const justify =
-    position === "top"
-      ? "flex-start"
-      : position === "center"
-        ? "center"
-        : "flex-end";
-
   return (
     <AbsoluteFill
       style={{
-        justifyContent: justify,
-        alignItems: "center",
-        padding: position === "center" ? 0 : "8%",
+        ...captionSafeAreaStyle(position),
         opacity: exitOpacity,
       }}
     >
+      <SegmentFlash color={brand.accentColor} intensity={1} />
       <div
         style={{
           maxWidth: "86%",
@@ -324,25 +409,17 @@ const GlowCaptionLine: React.FC<{
   );
   const exitOpacity = interpolate(exit, [0, 1], [1, 0]);
 
-  const justify =
-    position === "top"
-      ? "flex-start"
-      : position === "center"
-        ? "center"
-        : "flex-end";
-
   // Global glow pulse.
   const glowPulse = 1 + 0.25 * intensity * Math.sin(frame * 0.1);
 
   return (
     <AbsoluteFill
       style={{
-        justifyContent: justify,
-        alignItems: "center",
-        padding: position === "center" ? 0 : "8%",
+        ...captionSafeAreaStyle(position),
         opacity: exitOpacity,
       }}
     >
+      <SegmentFlash color={brand.accentColor} intensity={1} />
       <div
         style={{
           maxWidth: "86%",
@@ -420,22 +497,14 @@ const BoxedCaptionLine: React.FC<{
   );
   const exitOpacity = interpolate(exit, [0, 1], [1, 0]);
 
-  const justify =
-    position === "top"
-      ? "flex-start"
-      : position === "center"
-        ? "center"
-        : "flex-end";
-
   return (
     <AbsoluteFill
       style={{
-        justifyContent: justify,
-        alignItems: "center",
-        padding: position === "center" ? 0 : "8%",
+        ...captionSafeAreaStyle(position),
         opacity: exitOpacity,
       }}
     >
+      <SegmentFlash color={brand.accentColor} intensity={1} />
       <div
         style={{
           maxWidth: "90%",
@@ -532,22 +601,14 @@ const TypewriterCaptionLine: React.FC<{
   );
   const exitOpacity = interpolate(exit, [0, 1], [1, 0]);
 
-  const justify =
-    position === "top"
-      ? "flex-start"
-      : position === "center"
-        ? "center"
-        : "flex-end";
-
   return (
     <AbsoluteFill
       style={{
-        justifyContent: justify,
-        alignItems: "center",
-        padding: position === "center" ? 0 : "8%",
+        ...captionSafeAreaStyle(position),
         opacity: exitOpacity,
       }}
     >
+      <SegmentFlash color={brand.accentColor} intensity={1} />
       <div
         style={{
           maxWidth: "86%",
@@ -630,6 +691,7 @@ export const Captions: React.FC<CaptionsProps> = ({
 
   return (
     <AbsoluteFill style={{ backgroundColor: "transparent" }}>
+      <style>{FONT_FACE_CSS}</style>
       {segments.map((segment, i) => {
         const from = Math.max(0, Math.round(segment.start * fps));
         const frames = Math.max(
