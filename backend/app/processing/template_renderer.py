@@ -12,11 +12,13 @@ les backends avancés.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import shutil
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Iterable
 
 from app.config import settings
@@ -134,14 +136,49 @@ class TemplateRenderer:
 
     # ------------------------------------------------------------------
     def _hyperframes_overlay(self, ov: OverlayClip, target: str, aspect_ratio: str) -> str:
-        # Placeholder — Phase 2. On documente l'invocation attendue.
-        # Exemple (sera fait dans un container Node séparé):
-        #   docker run --rm -v ...:/work autoedit/hyperframes \
-        #       node render.js --template lower_third --props '{"name":"..."}' \
-        #       --out /work/out.mp4 --aspect 9:16
-        raise NotImplementedError(
-            "HyperFrames renderer non encore branché — voir docs/VIDEO_PIPELINE_ARCHITECTURE.md §7."
-        )
+        """Render an overlay with the AutoEdit HyperFrames-compatible Node wrapper.
+
+        The wrapper captures an HTML/CSS motion template in Chromium and encodes
+        a chroma-key MP4. The final FFmpeg pass removes the green background and
+        composites the clip over the edited video. This keeps the main pipeline
+        deterministic while giving Claude Code/HyperFrames-style HTML templates
+        real visual output instead of the previous placeholder.
+        """
+        node_bin = shutil.which("node")
+        if not node_bin:
+            raise RuntimeError("node not available for HyperFrames renderer")
+
+        repo_root = Path(__file__).resolve().parents[3]
+        hf_dir = repo_root / "templates" / "hyperframes"
+        render_js = hf_dir / "render.js"
+        template = hf_dir / "premium_overlay.html"
+        if not render_js.exists() or not template.exists():
+            raise RuntimeError(f"HyperFrames template files missing under {hf_dir}")
+
+        duration = max(0.45, float(ov.end) - float(ov.start))
+        props = {
+            "kind": ov.kind,
+            "title": ov.props.get("title") or ov.props.get("text") or "AutoEdit",
+            "subtitle": ov.props.get("subtitle") or ov.props.get("role") or "",
+            "step": ov.props.get("step") or "•",
+            **(ov.props or {}),
+        }
+        cmd = [
+            node_bin,
+            str(render_js),
+            "--template", str(template),
+            "--props", json.dumps(props, ensure_ascii=False),
+            "--out", target,
+            "--duration", f"{duration:.3f}",
+            "--aspect", aspect_ratio,
+            "--fps", "30",
+        ]
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=max(90, int(duration * 45)))
+        if proc.returncode != 0:
+            raise RuntimeError((proc.stderr or proc.stdout or "HyperFrames render failed")[:800])
+        if not os.path.exists(target) or os.path.getsize(target) == 0:
+            raise RuntimeError("empty HyperFrames overlay output")
+        return target
 
     def _remotion_overlay(self, ov: OverlayClip, target: str, aspect_ratio: str) -> str:
         # Placeholder — Phase 2.

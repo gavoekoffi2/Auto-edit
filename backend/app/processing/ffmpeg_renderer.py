@@ -267,16 +267,23 @@ class FFmpegRenderer:
         for cue in broll_cues:
             cmd += ["-i", cue.clip_path]
 
+        hyperframe_overlays = [
+            o for o in overlays
+            if o.clip_path and os.path.exists(o.clip_path) and os.path.getsize(o.clip_path) > 0
+        ]
+        for ov in hyperframe_overlays:
+            cmd += ["-i", ov.clip_path]
+
         music_input_index: int | None = None
         if options.music_path and os.path.exists(options.music_path):
-            music_input_index = 1 + len(broll_cues)
+            music_input_index = 1 + len(broll_cues) + len(hyperframe_overlays)
             cmd += ["-i", options.music_path]
 
         sfx_indices: list[tuple[int, float, int]] = []
         sfx_times = [t for t in (options.sfx_timestamps or []) if t >= 0]
         # Limit SFX count so long videos do not create huge filtergraphs.
         for sfx_variant, t in enumerate(sfx_times[:18]):
-            sfx_indices.append((1 + len(broll_cues) + (1 if music_input_index is not None else 0) + len(sfx_indices), t, sfx_variant))
+            sfx_indices.append((1 + len(broll_cues) + len(hyperframe_overlays) + (1 if music_input_index is not None else 0) + len(sfx_indices), t, sfx_variant))
             # Rotate several short SFX textures so the edit does not sound like
             # the same shutter pasted everywhere: crisp camera shutter, soft
             # snap, warm impact, and bright digital click.
@@ -295,7 +302,7 @@ class FFmpegRenderer:
 
         flash_indices: list[tuple[int, float]] = []
         for t in [x for x in (options.flash_timestamps or options.sfx_timestamps or []) if x >= 0][:18]:
-            flash_indices.append((1 + len(broll_cues) + (1 if music_input_index is not None else 0) + len(sfx_indices) + len(flash_indices), t))
+            flash_indices.append((1 + len(broll_cues) + len(hyperframe_overlays) + (1 if music_input_index is not None else 0) + len(sfx_indices) + len(flash_indices), t))
             cmd += [
                 "-f", "lavfi",
                 "-t", "0.20",
@@ -383,6 +390,26 @@ class FFmpegRenderer:
                 continue
             current = out_label
 
+        for ov_i, ov in enumerate(hyperframe_overlays, start=1):
+            input_idx = len(broll_cues) + ov_i
+            out_label = f"vhf{ov_i}"
+            start = max(0.0, float(ov.start))
+            end = max(start + 0.20, float(ov.end))
+            # HyperFrames overlays are encoded on a #00ff00 chroma background.
+            # Key it out, keep all rich HTML/CSS motion, then composite full-frame.
+            filter_parts.append(
+                f"[{input_idx}:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
+                f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=0x00ff00,"
+                f"colorkey=0x00ff00:0.22:0.08,format=rgba,"
+                f"setpts=PTS-STARTPTS+{start:.3f}/TB[hf{ov_i}]"
+            )
+            filter_parts.append(
+                f"[{current}][hf{ov_i}]overlay=0:0:"
+                f"enable='between(t,{start:.3f},{end:.3f})':"
+                f"eof_action=pass[{out_label}]"
+            )
+            current = out_label
+
         for flash_i, (input_idx, timestamp) in enumerate(flash_indices, start=1):
             filter_parts.append(
                 f"[{input_idx}:v]format=rgba,fade=t=out:st=0:d=0.20:alpha=1,"
@@ -412,10 +439,10 @@ class FFmpegRenderer:
                 )
             elif style == 1:
                 light_filter = (
-                    f"drawbox=x={int(width * 0.08)}:y=0:w=20:h={height}:"
-                    f"color=white@0.34:t=fill:enable='between(t,{timestamp:.3f},{timestamp + 0.11:.3f})',"
-                    f"drawbox=x={int(width * 0.72)}:y=0:w=80:h={height}:"
-                    f"color=yellow@0.20:t=fill:enable='between(t,{timestamp + 0.04:.3f},{timestamp + 0.25:.3f})'"
+                    f"drawbox=x={int(width * 0.035)}:y=0:w=14:h={height}:"
+                    f"color=white@0.16:t=fill:enable='between(t,{timestamp:.3f},{timestamp + 0.08:.3f})',"
+                    f"drawbox=x=0:y={int(height * 0.10)}:w={width}:h=18:"
+                    f"color=yellow@0.10:t=fill:enable='between(t,{timestamp + 0.03:.3f},{timestamp + 0.13:.3f})'"
                 )
             elif style == 2:
                 light_filter = (
@@ -486,7 +513,12 @@ class FFmpegRenderer:
                 )
                 subtitle_filters.append(f"subtitles='{srt}':force_style='{style}'")
 
-        overlay_ass = self._write_overlay_ass(overlays, out_path + ".overlays.ass", width, height)
+        overlay_ass = self._write_overlay_ass(
+            [o for o in overlays if o not in hyperframe_overlays],
+            out_path + ".overlays.ass",
+            width,
+            height,
+        )
         if overlay_ass:
             subtitle_filters.append(f"subtitles='{_escape_filter_path(overlay_ass)}'")
 

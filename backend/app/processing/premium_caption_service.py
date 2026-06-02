@@ -65,8 +65,8 @@ class PremiumCaptionService:
                 f"{cfg.margin_v},1"
             ),
             (
-                f"Style: PremiumSolid,{cfg.font_name},{cfg.base_font_size - 4},&H00FFFFFF,&H000000FF,"
-                "&H00000000,&H88000000,1,0,0,0,102,102,0,0,3,5,1,5,70,70,"
+                f"Style: PremiumSolid,{cfg.font_name},{cfg.base_font_size - 2},&H00FFFFFF,&H000000FF,"
+                "&H00000000,&H00000000,1,0,0,0,102,102,0,0,1,7,3,5,70,70,"
                 f"{cfg.margin_v},1"
             ),
             "",

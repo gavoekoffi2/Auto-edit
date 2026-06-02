@@ -90,7 +90,7 @@ class Settings(BaseSettings):
     BROLL_MAX_SEGMENT_DURATION: float = 8.0
 
     # Renderer abstrait
-    VIDEO_RENDERER: str = "ffmpeg"
+    VIDEO_RENDERER: str = "hyperframes"
 
     # Feature flags produit
     ENABLE_AI_BROLL: bool = True
