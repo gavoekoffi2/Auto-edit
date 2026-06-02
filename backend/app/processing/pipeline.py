@@ -176,6 +176,52 @@ def run_pipeline(
             results["transcription_error"] = str(e)
             results["steps_failed"].append("transcribe")
 
+    # Step 1.5: video-use visual analysis (fail-soft)
+    if config.get("video_use_analysis", True):
+        update_progress(26, "Running video-use visual analysis...")
+        try:
+            from app.processing.video_use_analyzer import VideoUseAnalyzer
+
+            video_use_result = VideoUseAnalyzer(output_dir).extract_keyframes(video_path)
+            results["video_use"] = video_use_result
+            if video_use_result.get("available"):
+                results["steps_completed"].append("video_use_analysis")
+            else:
+                results["steps_failed"].append("video_use_analysis")
+        except Exception as e:
+            logger.warning("video-use analysis failed: %s", e)
+            results["video_use"] = {"available": False, "error": str(e), "frames_count": 0, "frames": []}
+            results["steps_failed"].append("video_use_analysis")
+
+    # Step 1.75: Transcript smart cuts (repetitions/weak repeated takes)
+    if config.get("smart_cuts", True) and results.get("transcription"):
+        update_progress(28, "Removing repeated takes...")
+        try:
+            from app.processing.smart_cuts import apply_smart_cuts
+
+            transcription = results.get("transcription") or {}
+            smart_result = apply_smart_cuts(
+                current_video,
+                output_dir,
+                transcription,
+                enabled=True,
+            )
+            results["smart_cuts"] = smart_result
+            new_video = smart_result.get("output_path")
+            if (
+                new_video
+                and new_video != current_video
+                and os.path.exists(new_video)
+                and os.path.getsize(new_video) > 0
+            ):
+                intermediate_files.append(current_video if current_video != video_path else None)
+                current_video = new_video
+                results["steps_completed"].append("smart_cuts")
+        except Exception as e:
+            logger.error("Smart cuts failed: %s", e, exc_info=True)
+            results["smart_cuts_error"] = str(e)
+            results["steps_failed"].append("smart_cuts")
+
     # Step 2: Silence Removal (25-50%)
     if config.get("silence_removal"):
         update_progress(30, "Removing silence...")
