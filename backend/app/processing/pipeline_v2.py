@@ -125,6 +125,71 @@ V2_MODE_PRESETS: dict[str, dict] = {
 ProgressFn = Callable[[int, str], None]
 
 
+# Mode -> ASS subtitle template of the Auto Edit engine.
+MODE_TO_TEMPLATE: dict[str, str] = {
+    "tiktok": "tiktok_yellow",
+    "tiktok_viral": "tiktok_yellow",
+    "business_premium_african": "gold_lux",
+    "publicite_locale": "bold_box",
+    "youtube": "bold_box",
+    "formation_educative": "bold_box",
+    "podcast": "tiktok_yellow",
+    "podcast_propre": "tiktok_yellow",
+}
+
+
+def _transcript_to_vu(transcript, output_dir: str, video_path: str) -> str:
+    """Bridge the Whisper Transcript -> the engine's word-level `_vu.json`.
+
+    Reuses the existing (free, local) Whisper transcription so the engine does
+    not need a paid ElevenLabs call. Segments without word timestamps get words
+    synthesised by splitting the segment text evenly across its time span.
+    """
+    from app.autoedit_engine import ffmpeg_utils as engine_ffmpeg
+
+    segments: list[dict] = []
+    for s in transcript.segments:
+        words = [
+            {"word": w.text.strip(), "start": float(w.start), "end": float(w.end)}
+            for w in s.words
+            if (w.text or "").strip()
+        ]
+        if not words and (s.text or "").strip():
+            toks = s.text.split()
+            span = max(0.01, float(s.end) - float(s.start))
+            step = span / len(toks)
+            words = [
+                {
+                    "word": tok,
+                    "start": round(float(s.start) + i * step, 3),
+                    "end": round(float(s.start) + (i + 1) * step, 3),
+                }
+                for i, tok in enumerate(toks)
+            ]
+        if words:
+            segments.append({
+                "text": s.text,
+                "start": float(s.start),
+                "end": float(s.end),
+                "words": words,
+            })
+
+    duration = segments[-1]["end"] if segments else 0.0
+    probed = engine_ffmpeg.probe_duration(video_path)
+    if probed:
+        duration = max(duration, probed)
+
+    vu = {
+        "language": transcript.language or "auto",
+        "duration": round(duration, 3),
+        "segments": segments,
+    }
+    vu_path = os.path.join(output_dir, "engine_vu.json")
+    with open(vu_path, "w", encoding="utf-8") as fh:
+        json.dump(vu, fh, ensure_ascii=False, indent=2)
+    return vu_path
+
+
 def run_pipeline_v2(
     video_path: str,
     output_dir: str,
@@ -132,7 +197,113 @@ def run_pipeline_v2(
     params: Optional[dict] = None,
     progress_callback: Optional[ProgressFn] = None,
 ) -> dict:
-    """Exécute le pipeline V2.
+    """Pipeline V2 = the Auto Edit viral montage engine.
+
+    Reuses the local Whisper transcription, then drives the engine
+    (cut+grade -> dynamic zoom -> overlays -> SFX -> animated ASS subs) to
+    produce a vertical 1080x1920 reel. Return contract is V1-compatible:
+    `result.output_path` is what the Celery worker stores.
+
+    The previous modular V2 is kept as `run_pipeline_v2_legacy` for rollback.
+    """
+    if not os.path.exists(video_path):
+        raise FileNotFoundError(f"Input video not found: {video_path}")
+    if os.path.getsize(video_path) == 0:
+        raise ValueError("Input video file is empty")
+    os.makedirs(output_dir, exist_ok=True)
+
+    # ---- options & flags ---------------------------------------------------
+    preset = V2_MODE_PRESETS.get(mode or "", {}) if mode else {}
+    options = dict(preset)
+    raw_opts = (params or {}).get("options") if params else None
+    if isinstance(raw_opts, dict):
+        for k, v in raw_opts.items():
+            if v is not None:
+                options[k] = v
+
+    have_key = bool(getattr(settings, "OPENROUTER_API_KEY", "") or os.environ.get("OPENROUTER_API_KEY"))
+    do_broll = (
+        bool(settings.ENABLE_AI_BROLL)
+        and options.get("ai_broll", True) is not False
+        and have_key
+    )
+
+    template = MODE_TO_TEMPLATE.get(mode or "", "tiktok_yellow")
+    from app.autoedit_engine import config as engine_config
+    requested_tpl = (raw_opts or {}).get("subtitle_template") if isinstance(raw_opts, dict) else None
+    if requested_tpl in engine_config.ASS_TEMPLATES:
+        template = requested_tpl
+
+    def progress(p: int, msg: str) -> None:
+        if progress_callback:
+            progress_callback(p, msg)
+        logger.info(f"[pipeline_v2/engine {p}%] {msg}")
+
+    results: dict = {
+        "pipeline_version": "v2",
+        "engine": "autoedit_v4",
+        "mode": mode,
+        "options": options,
+        "aspect_ratio": "9:16",
+        "subtitle_template": template,
+        "steps_completed": [],
+        "steps_failed": [],
+        "broll": {"enabled": do_broll},
+    }
+
+    # ---- 1. Transcription (reuse local Whisper) ----------------------------
+    progress(5, "Transcription…")
+    from app.processing.transcription_service import TranscriptionService
+
+    ts = TranscriptionService(model_name=settings.WHISPER_MODEL, word_timestamps=True)
+    transcript = ts.transcribe(video_path, output_dir)
+    vu_path = _transcript_to_vu(transcript, output_dir, video_path)
+    results["transcription"] = {
+        "language": transcript.language,
+        "segments_count": len(transcript.segments),
+        "words_count": len(transcript.words),
+    }
+    results["steps_completed"].append("transcription")
+    if len(transcript.words) < 3:
+        raise RuntimeError("Transcription quasi vide — pas de parole exploitable pour le montage.")
+
+    # ---- 2. Auto Edit engine render ---------------------------------------
+    progress(10, "Montage Auto Edit…")
+    from app.autoedit_engine import ffmpeg_utils as engine_ffmpeg
+    from app.autoedit_engine import pipeline as engine_pipeline
+
+    engine_ffmpeg.ensure_ffmpeg()  # clear error if ffmpeg is missing in the image
+    final_path = engine_pipeline.run(
+        video_path,
+        output_dir,
+        vu=vu_path,
+        template=template,
+        do_broll=do_broll,
+        progress_callback=progress,
+    )
+
+    if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
+        raise RuntimeError("Le moteur Auto Edit n'a pas produit de vidéo de sortie.")
+
+    results["output_path"] = final_path
+    results["output_size_bytes"] = os.path.getsize(final_path)
+    results["steps_completed"].append("engine_render")
+    progress(100, "Terminé")
+    return results
+
+
+def run_pipeline_v2_legacy(
+    video_path: str,
+    output_dir: str,
+    mode: Optional[str] = None,
+    params: Optional[dict] = None,
+    progress_callback: Optional[ProgressFn] = None,
+) -> dict:
+    """[LEGACY] Ancien pipeline V2 modulaire — conservé pour rollback.
+
+    Le pipeline V2 actif est désormais le moteur Auto Edit (voir
+    `run_pipeline_v2` plus haut). On garde cette implémentation intacte afin de
+    pouvoir y revenir en une ligne si besoin.
 
     Le contrat de retour est compatible avec celui du pipeline V1: le worker
     Celery écrit `result.output_path` relatif à `UPLOAD_DIR`.
