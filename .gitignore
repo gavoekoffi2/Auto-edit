@@ -29,3 +29,13 @@ remotion/.remotion/
 *.swp
 *.swo
 celerybeat-schedule
+
+# Auto Edit engine — per-run outputs & heavy intermediates (SPEC: do not commit)
+# (commit instead: code, B-roll PNG, SFX WAV, transcript JSON, ASS, web deliverable)
+out/
+engine/out/
+*.mov
+base_only.mp4
+base_dyn.mp4
+composite*.mp4
+clips_graded/

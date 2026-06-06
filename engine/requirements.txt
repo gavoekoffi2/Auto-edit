@@ -1,0 +1,5 @@
+# Auto Edit engine — Python deps (Python 3.11+).
+# ffmpeg 7+ (static build) must be on PATH or set via FFMPEG_BIN / FFPROBE_BIN.
+numpy>=1.26
+Pillow>=10.2
+requests>=2.31
