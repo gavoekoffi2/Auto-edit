@@ -1,0 +1,114 @@
+{
+  "language": "fr",
+  "duration": 38.0,
+  "segments": [
+    {
+      "text": "Bonjour, aujourd'hui je vais te montrer trois astuces de productivité.",
+      "start": 0.0,
+      "end": 4.1,
+      "words": [
+        {"word": "Bonjour,", "start": 0.0, "end": 0.5},
+        {"word": "aujourd'hui", "start": 0.55, "end": 1.1},
+        {"word": "je", "start": 1.15, "end": 1.3},
+        {"word": "vais", "start": 1.35, "end": 1.6},
+        {"word": "te", "start": 1.65, "end": 1.8},
+        {"word": "montrer", "start": 1.85, "end": 2.3},
+        {"word": "trois", "start": 2.35, "end": 2.7},
+        {"word": "astuces", "start": 2.75, "end": 3.3},
+        {"word": "de", "start": 3.35, "end": 3.5},
+        {"word": "productivité.", "start": 3.55, "end": 4.1}
+      ]
+    },
+    {
+      "text": "euh",
+      "start": 5.4,
+      "end": 5.7,
+      "words": [
+        {"word": "euh", "start": 5.4, "end": 5.7}
+      ]
+    },
+    {
+      "text": "La première astuce, c'est de bloquer ton temps dans ton agenda.",
+      "start": 7.0,
+      "end": 11.4,
+      "words": [
+        {"word": "La", "start": 7.0, "end": 7.15},
+        {"word": "première", "start": 7.2, "end": 7.7},
+        {"word": "astuce,", "start": 7.75, "end": 8.3},
+        {"word": "c'est", "start": 8.35, "end": 8.6},
+        {"word": "de", "start": 8.65, "end": 8.8},
+        {"word": "bloquer", "start": 8.85, "end": 9.3},
+        {"word": "ton", "start": 9.35, "end": 9.55},
+        {"word": "temps", "start": 9.6, "end": 10.0},
+        {"word": "dans", "start": 10.05, "end": 10.3},
+        {"word": "ton", "start": 10.35, "end": 10.55},
+        {"word": "agenda.", "start": 10.6, "end": 11.4}
+      ]
+    },
+    {
+      "text": "Ça peut augmenter ta concentration de 80%.",
+      "start": 12.5,
+      "end": 16.8,
+      "words": [
+        {"word": "Ça", "start": 12.5, "end": 12.7},
+        {"word": "peut", "start": 12.75, "end": 13.0},
+        {"word": "augmenter", "start": 13.05, "end": 13.6},
+        {"word": "ta", "start": 13.65, "end": 13.8},
+        {"word": "concentration", "start": 13.85, "end": 14.7},
+        {"word": "de", "start": 14.75, "end": 14.9},
+        {"word": "80%.", "start": 14.95, "end": 16.8}
+      ]
+    },
+    {
+      "text": "La deuxième astuce, c'est de couper toutes les notifications.",
+      "start": 18.0,
+      "end": 22.2,
+      "words": [
+        {"word": "La", "start": 18.0, "end": 18.15},
+        {"word": "deuxième", "start": 18.2, "end": 18.7},
+        {"word": "astuce,", "start": 18.75, "end": 19.3},
+        {"word": "c'est", "start": 19.35, "end": 19.6},
+        {"word": "de", "start": 19.65, "end": 19.8},
+        {"word": "couper", "start": 19.85, "end": 20.3},
+        {"word": "toutes", "start": 20.35, "end": 20.7},
+        {"word": "les", "start": 20.75, "end": 20.9},
+        {"word": "notifications.", "start": 20.95, "end": 22.2}
+      ]
+    },
+    {
+      "text": "Et enfin, dors au moins sept heures chaque nuit pour rester productif.",
+      "start": 23.5,
+      "end": 29.0,
+      "words": [
+        {"word": "Et", "start": 23.5, "end": 23.7},
+        {"word": "enfin,", "start": 23.75, "end": 24.2},
+        {"word": "dors", "start": 24.25, "end": 24.6},
+        {"word": "au", "start": 24.65, "end": 24.8},
+        {"word": "moins", "start": 24.85, "end": 25.2},
+        {"word": "sept", "start": 25.25, "end": 25.6},
+        {"word": "heures", "start": 25.65, "end": 26.1},
+        {"word": "chaque", "start": 26.15, "end": 26.5},
+        {"word": "nuit", "start": 26.55, "end": 26.9},
+        {"word": "pour", "start": 26.95, "end": 27.2},
+        {"word": "rester", "start": 27.25, "end": 27.7},
+        {"word": "productif.", "start": 27.75, "end": 29.0}
+      ]
+    },
+    {
+      "text": "Applique ces trois astuces et ta productivité va exploser.",
+      "start": 30.5,
+      "end": 35.5,
+      "words": [
+        {"word": "Applique", "start": 30.5, "end": 31.0},
+        {"word": "ces", "start": 31.05, "end": 31.25},
+        {"word": "trois", "start": 31.3, "end": 31.6},
+        {"word": "astuces", "start": 31.65, "end": 32.2},
+        {"word": "et", "start": 32.25, "end": 32.4},
+        {"word": "ta", "start": 32.45, "end": 32.6},
+        {"word": "productivité", "start": 32.65, "end": 33.4},
+        {"word": "va", "start": 33.45, "end": 33.6},
+        {"word": "exploser.", "start": 33.65, "end": 35.5}
+      ]
+    }
+  ]
+}

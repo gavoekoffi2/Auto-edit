@@ -8,7 +8,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Dependances systeme (FFmpeg, ImageMagick, libs pour OpenCV/PySceneDetect)
+# Dependances systeme (FFmpeg, ImageMagick, libs pour OpenCV/PySceneDetect,
+# polices pour les overlays PIL + les sous-titres ASS/libass du moteur Auto Edit)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     imagemagick \
@@ -18,8 +19,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
     tini \
+    fontconfig \
+    fonts-dejavu-core \
+    fonts-dejavu-extra \
     && rm -rf /var/lib/apt/lists/* \
     && sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/' /etc/ImageMagick-6/policy.xml 2>/dev/null || true
+
+# Best-effort: fetch the exact display fonts (Montserrat / Anton / Bangers /
+# Bebas Neue) used by the subtitle templates. If the network is unavailable at
+# build time the engine falls back to DejaVu, so a failure here never breaks the
+# build.
+RUN mkdir -p /usr/local/share/fonts/autoedit \
+    && base="https://github.com/google/fonts/raw/main/ofl" \
+    && curl -fsSL "$base/anton/Anton-Regular.ttf"        -o /usr/local/share/fonts/autoedit/Anton-Regular.ttf        || true \
+    && curl -fsSL "$base/bangers/Bangers-Regular.ttf"    -o /usr/local/share/fonts/autoedit/Bangers-Regular.ttf      || true \
+    && curl -fsSL "$base/bebasneue/BebasNeue-Regular.ttf" -o /usr/local/share/fonts/autoedit/BebasNeue-Regular.ttf    || true \
+    && curl -fsSL "$base/montserrat/Montserrat%5Bwght%5D.ttf" -o /usr/local/share/fonts/autoedit/Montserrat-Variable.ttf || true \
+    && fc-cache -f /usr/local/share/fonts || true
 
 # User non-root (UID/GID 1000 — match l'host pour eviter les soucis de volume)
 RUN groupadd --system --gid 1000 app \
