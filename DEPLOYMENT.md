@@ -111,6 +111,58 @@ Après modification : **Trigger deploy / Redeploy site**. Ajoute aussi l'URL Net
 
 ---
 
+## 5bis. CI/CD — Déploiement automatique (GitHub Actions)
+
+À chaque `git push` sur **`main`**, le déploiement se fait tout seul :
+
+| Cible | Workflow | Déclencheur | Secrets requis |
+| --- | --- | --- | --- |
+| **Frontend** (Netlify) | `.github/workflows/netlify-frontend.yml` | push sur `main` | `NETLIFY_AUTH_TOKEN`, `NETLIFY_SITE_ID` |
+| **Backend** (VPS) | `.github/workflows/deploy-backend.yml` | push sur `main` touchant `backend/`, `renderers/`, `templates/`, `docker-compose*.yml`, `deploy.sh`, `Caddyfile`, `nginx/` | `VPS_SSH_HOST`, `VPS_SSH_USER`, `VPS_SSH_KEY` (+ option `VPS_SSH_PORT`) |
+
+> Tant que les secrets ne sont pas renseignés, le job correspondant **se saute
+> proprement** (warning, pas d'erreur rouge). Aucun risque pour le live.
+
+### Mettre en place les secrets (une seule fois)
+
+GitHub → repo **Settings → Secrets and variables → Actions → New repository secret** :
+
+**Frontend (Netlify)**
+- `NETLIFY_AUTH_TOKEN` : Netlify → User settings → Applications → *New access token*.
+- `NETLIFY_SITE_ID` : Netlify → Site → Site configuration → *Site ID* (API ID).
+
+**Backend (VPS)**
+- `VPS_SSH_HOST` : ex. `srv1305401.hstgr.cloud` (ou l'IP).
+- `VPS_SSH_USER` : ex. `root`.
+- `VPS_SSH_KEY` : une **clé privée** dédiée au déploiement. Sur ta machine :
+  ```bash
+  ssh-keygen -t ed25519 -f deploy_key -N ""                     # crée deploy_key (+ .pub)
+  ssh-copy-id -i deploy_key.pub root@srv1305401.hstgr.cloud      # autorise la clé sur le VPS
+  # Colle le CONTENU de deploy_key (la clé PRIVÉE) dans le secret VPS_SSH_KEY
+  ```
+- `VPS_SSH_PORT` *(optionnel)* : si SSH n'est pas sur 22.
+- Variable optionnelle `VPS_APP_DIR` (Settings → Variables) : dossier du repo sur
+  le VPS, défaut `/opt/Auto-edit`.
+
+**Prérequis VPS** : le repo doit déjà être cloné dans `VPS_APP_DIR` avec le
+remote `origin` (cf. §4). Le workflow fait `git fetch && git reset --hard
+origin/main` puis lance `./deploy.sh` (qui préserve le `.env`, rebuild la stack
+Docker et vérifie `/api/health`).
+
+### Le flux au quotidien
+
+```
+modif de code  ->  git push origin main  ->  Actions :
+                                              • build + deploy Netlify (frontend)
+                                              • ssh + deploy.sh sur le VPS (backend)
+```
+
+Déclenchement manuel aussi possible : onglet **Actions** → choisir le workflow →
+*Run workflow*. Les branches de feature (`claude/*`) ne déploient **pas** le
+live ; on ouvre une PR vers `main` puis on merge pour publier.
+
+---
+
 ## 6. Configurer le webhook FedaPay
 
 Dans le dashboard FedaPay, ajouter un webhook qui pointe vers :
