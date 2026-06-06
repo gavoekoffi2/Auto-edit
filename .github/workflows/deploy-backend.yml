@@ -1,0 +1,72 @@
+name: Deploy backend to VPS
+
+# Auto-deploys the backend (FastAPI + Celery worker + Postgres + Redis + Caddy)
+# to the production VPS whenever backend-related code lands on main.
+#
+# It SSHes in and runs the repo's own idempotent deploy.sh, which pulls the
+# latest main, preserves .env, rebuilds the Docker stack and health-checks it.
+#
+# Required GitHub secrets (Settings -> Secrets and variables -> Actions):
+#   VPS_SSH_HOST   public host/IP of the VPS   (e.g. srv1305401.hstgr.cloud)
+#   VPS_SSH_USER   SSH user                     (e.g. root)
+#   VPS_SSH_KEY    private SSH key (PEM) authorised on the VPS
+#   VPS_SSH_PORT   (optional) SSH port          (default 22)
+# Optional repo variable:
+#   VPS_APP_DIR    checkout dir on the VPS      (default /opt/Auto-edit)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "renderers/**"
+      - "templates/**"
+      - "worker.Dockerfile"
+      - "docker-compose.yml"
+      - "docker-compose.prod.yml"
+      - "deploy.sh"
+      - "Caddyfile"
+      - "nginx/**"
+      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch:
+
+# Never run two backend deploys at once; let an in-flight one finish.
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check deploy secrets are configured
+        id: cfg
+        env:
+          HOST: ${{ secrets.VPS_SSH_HOST }}
+        run: |
+          if [ -z "$HOST" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Backend deploy skipped::Set VPS_SSH_HOST / VPS_SSH_USER / VPS_SSH_KEY secrets to enable backend auto-deploy (see DEPLOYMENT.md)."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy over SSH
+        if: steps.cfg.outputs.configured == 'true'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_SSH_HOST }}
+          username: ${{ secrets.VPS_SSH_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          command_timeout: 40m
+          script: |
+            set -euo pipefail
+            APP_DIR="${{ vars.VPS_APP_DIR || '/opt/Auto-edit' }}"
+            echo "[ci-deploy] Updating $APP_DIR to origin/main"
+            cd "$APP_DIR"
+            git fetch origin main
+            git reset --hard origin/main
+            # deploy.sh preserves .env, rebuilds the stack and health-checks it.
+            ./deploy.sh
+            echo "[ci-deploy] Backend deploy finished."
