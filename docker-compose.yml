@@ -74,6 +74,18 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # One-shot: corrige les permissions du volume d'uploads. Les volumes nommés
+  # sont souvent créés en root, alors que backend/worker tournent en utilisateur
+  # `app` (uid 1000) et ne peuvent alors pas y écrire (upload -> 500). Ce service
+  # s'exécute en root, fixe les droits, puis sort. backend/worker l'attendent.
+  init-uploads:
+    image: busybox:1.36
+    command: ["sh", "-c", "mkdir -p /app/uploads && chown -R 1000:1000 /app/uploads && chmod -R u+rwX,g+rwX /app/uploads"]
+    user: "0:0"
+    volumes:
+      - uploads_data:/app/uploads
+    restart: "no"
+
   backend:
     build: ./backend
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -85,6 +97,8 @@ services:
     environment:
       <<: *backend-env
     depends_on:
+      init-uploads:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -100,6 +114,8 @@ services:
     environment:
       <<: *backend-env
     depends_on:
+      init-uploads:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
