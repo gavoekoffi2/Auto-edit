@@ -55,17 +55,20 @@ RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu 
 
 COPY . .
 
-# Volumes attendus
-RUN mkdir -p /app/uploads /app/whisper_cache \
+# Volumes attendus + cache runtime non monte sous /app.
+# docker-compose bind-mount ./backend:/app in dev/prod-like runs, so anything
+# created under /app at image build time can be hidden by the host mount and
+# become non-writable for the non-root app user.
+RUN mkdir -p /app/uploads /home/app/.cache \
     && chown -R app:app /app /home/app
 
 # Pre-cache du modele Whisper "base" pour eviter le download au 1er job.
 # Geree par une variable d'env pour permettre de skip en local si besoin.
 ARG PREDOWNLOAD_WHISPER=base
-ENV XDG_CACHE_HOME=/app/whisper_cache
+ENV XDG_CACHE_HOME=/home/app/.cache
 RUN if [ -n "$PREDOWNLOAD_WHISPER" ] && [ "$PREDOWNLOAD_WHISPER" != "skip" ]; then \
         python -c "import whisper; whisper.load_model('$PREDOWNLOAD_WHISPER')" \
-        && chown -R app:app /app/whisper_cache; \
+        && chown -R app:app /home/app/.cache; \
     fi
 
 USER app
