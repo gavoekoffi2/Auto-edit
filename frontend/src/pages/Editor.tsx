@@ -117,7 +117,11 @@ export default function Editor() {
           setProcessing(true)
         }
         const completed = jobs.find((j: { status: string }) => j.status === 'completed')
-        if (completed?.result) setCompletedResult(completed.result)
+        if (completed?.result) {
+          setCompletedResult(completed.result)
+          setActiveJobId(completed.id)
+          setProcessing(false)
+        }
       } catch {
         if (!cancelled) setLoadError('Impossible de charger la vidéo')
       }
@@ -229,7 +233,7 @@ export default function Editor() {
           {scenes && scenes.scenes.length > 0 && (
             <Timeline scenes={scenes.scenes} totalDuration={video.duration_s || 0} />
           )}
-          {activeJobId && processing && (
+          {activeJobId && (processing || completedResult) && (
             <JobProgress
               jobId={activeJobId}
               onComplete={handleJobComplete}
