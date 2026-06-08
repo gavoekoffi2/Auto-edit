@@ -32,14 +32,14 @@ export function useJobPolling(jobId: string | null, intervalMs = 2000) {
 
     const startPolling = async () => {
       const data = await poll()
-      if (data?.status === 'completed' || data?.status === 'failed') {
+      if (data?.status === 'completed' || data?.status === 'failed' || data?.status === 'cancelled') {
         setIsPolling(false)
         return
       }
 
       interval = setInterval(async () => {
         const result = await poll()
-        if (result?.status === 'completed' || result?.status === 'failed') {
+        if (result?.status === 'completed' || result?.status === 'failed' || result?.status === 'cancelled') {
           clearInterval(interval)
           setIsPolling(false)
         }

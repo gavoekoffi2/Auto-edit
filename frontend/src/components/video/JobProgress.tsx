@@ -1,15 +1,16 @@
 import { useEffect, useState, useCallback } from 'react'
-import { getJob, downloadJobResult } from '../../api/jobs'
-import { Loader2, CheckCircle, XCircle, Download, RefreshCw } from 'lucide-react'
+import { getJob, downloadJobResult, cancelJob } from '../../api/jobs'
+import { Loader2, CheckCircle, XCircle, Download, RefreshCw, Ban } from 'lucide-react'
 import { toast } from '../ui/Toast'
 
 interface Props {
   jobId: string
   onComplete?: (result: Record<string, unknown>) => void
   onRetry?: () => void
+  onCancelled?: () => void
 }
 
-export default function JobProgress({ jobId, onComplete, onRetry }: Props) {
+export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }: Props) {
   const [job, setJob] = useState<{
     status: string
     progress: number
@@ -17,6 +18,7 @@ export default function JobProgress({ jobId, onComplete, onRetry }: Props) {
     error_message: string | null
   } | null>(null)
   const [downloading, setDownloading] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>
@@ -37,6 +39,10 @@ export default function JobProgress({ jobId, onComplete, onRetry }: Props) {
         } else if (data.status === 'failed') {
           clearInterval(interval)
           toast('error', data.error_message || 'Processing failed')
+        } else if (data.status === 'cancelled') {
+          clearInterval(interval)
+          onCancelled?.()
+          toast('info', 'Traitement annulé')
         }
       } catch {
         errorCount++
@@ -53,7 +59,7 @@ export default function JobProgress({ jobId, onComplete, onRetry }: Props) {
       cancelled = true
       clearInterval(interval)
     }
-  }, [jobId, onComplete])
+  }, [jobId, onComplete, onCancelled])
 
   const handleDownload = useCallback(async () => {
     setDownloading(true)
@@ -67,6 +73,21 @@ export default function JobProgress({ jobId, onComplete, onRetry }: Props) {
     }
   }, [jobId])
 
+  const handleCancel = useCallback(async () => {
+    if (!window.confirm('Annuler ce traitement vidéo ?')) return
+    setCancelling(true)
+    try {
+      const data = await cancelJob(jobId)
+      setJob(data)
+      onCancelled?.()
+      toast('info', 'Traitement annulé')
+    } catch {
+      toast('error', "Impossible d'annuler le traitement")
+    } finally {
+      setCancelling(false)
+    }
+  }, [jobId, onCancelled])
+
   if (!job) return null
 
   const statusConfig = {
@@ -74,6 +95,7 @@ export default function JobProgress({ jobId, onComplete, onRetry }: Props) {
     processing: { icon: Loader2, color: 'text-primary-400', label: 'Processing...' },
     completed: { icon: CheckCircle, color: 'text-emerald-400', label: 'Complete!' },
     failed: { icon: XCircle, color: 'text-red-400', label: 'Failed' },
+    cancelled: { icon: Ban, color: 'text-amber-400', label: 'Annulé' },
   }
 
   const config = statusConfig[job.status as keyof typeof statusConfig] || statusConfig.pending
@@ -100,6 +122,17 @@ export default function JobProgress({ jobId, onComplete, onRetry }: Props) {
             style={{ width: `${job.progress}%` }}
           />
         </div>
+      )}
+
+      {isAnimating && (
+        <button
+          onClick={handleCancel}
+          disabled={cancelling}
+          className="btn-secondary text-sm inline-flex items-center gap-2 mb-3"
+        >
+          {cancelling ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
+          {cancelling ? 'Annulation...' : 'Annuler le traitement'}
+        </button>
       )}
 
       {job.status === 'failed' && (

@@ -174,6 +174,11 @@ export default function Editor() {
     handleAutoEdit()
   }, [handleAutoEdit])
 
+  const handleJobCancelled = useCallback(() => {
+    setActiveJobId(null)
+    setProcessing(false)
+  }, [])
+
   if (loadError) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-8 text-center">
@@ -229,6 +234,7 @@ export default function Editor() {
               jobId={activeJobId}
               onComplete={handleJobComplete}
               onRetry={handleRetry}
+              onCancelled={handleJobCancelled}
             />
           )}
         </div>

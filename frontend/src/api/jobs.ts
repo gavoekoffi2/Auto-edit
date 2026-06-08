@@ -58,3 +58,8 @@ export async function listJobs(videoId?: string) {
 export async function downloadJobResult(jobId: string) {
   await downloadWithAuth(`/jobs/${jobId}/download`, `autoedit_${jobId}.mp4`)
 }
+
+export async function cancelJob(jobId: string) {
+  const res = await client.post(`/jobs/${jobId}/cancel`)
+  return res.data
+}
