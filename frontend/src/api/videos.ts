@@ -1,6 +1,6 @@
 import client from './client'
 
-export const MAX_FILE_SIZE_MB = 2048
+export const MAX_FILE_SIZE_MB = 5120
 export const ALLOWED_VIDEO_EXTENSIONS = ['mp4', 'mov', 'm4v', 'avi', 'mkv', 'webm', 'flv', 'wmv', '3gp', '3g2', 'mts', 'm2ts']
 export const ALLOWED_VIDEO_MIME_TYPES = [
   'video/mp4',

@@ -50,9 +50,9 @@ class Settings(BaseSettings):
 
     # Storage
     UPLOAD_DIR: str = "./uploads"
-    MAX_UPLOAD_SIZE_MB: int = 2048
-    MAX_VIDEO_DURATION_FREE: int = 300  # 5 min in seconds
-    MAX_VIDEO_DURATION_PRO: int = 1800  # 30 min
+    MAX_UPLOAD_SIZE_MB: int = 5120
+    MAX_VIDEO_DURATION_FREE: int = 900  # 15 min in seconds
+    MAX_VIDEO_DURATION_PRO: int = 3600  # 60 min
     MAX_VIDEOS_PER_MONTH_FREE: int = 2
 
     # Long video processing
