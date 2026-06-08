@@ -9,6 +9,7 @@ import Timeline from '../components/video/Timeline'
 import JobProgress from '../components/video/JobProgress'
 import { getVideo, getStreamUrl } from '../api/videos'
 import {
+  getJobDownloadUrl,
   createJob,
   listJobs,
   listModes,
@@ -203,6 +204,9 @@ export default function Editor() {
   }
 
   const scenes = isScenes(completedResult?.scenes) ? completedResult!.scenes as Scenes : undefined
+  const previewSrc = activeJobId && completedResult
+    ? getJobDownloadUrl(activeJobId)
+    : getStreamUrl(videoId!)
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -229,7 +233,12 @@ export default function Editor() {
 
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
-          <VideoPlayer src={getStreamUrl(videoId!)} />
+          {completedResult && (
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+              Aperçu du montage final généré. Tu peux le lire ici ou utiliser le bouton Download Video.
+            </div>
+          )}
+          <VideoPlayer src={previewSrc} />
           {scenes && scenes.scenes.length > 0 && (
             <Timeline scenes={scenes.scenes} totalDuration={video.duration_s || 0} />
           )}

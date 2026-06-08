@@ -55,6 +55,11 @@ export async function listJobs(videoId?: string) {
   return res.data
 }
 
+export function getJobDownloadUrl(jobId: string) {
+  const base = import.meta.env.VITE_API_URL || '/api'
+  return `${base}/v1/jobs/${jobId}/download`
+}
+
 export async function downloadJobResult(jobId: string) {
   await downloadWithAuth(`/jobs/${jobId}/download`, `autoedit_${jobId}.mp4`)
 }
