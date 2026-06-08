@@ -14,7 +14,7 @@ x-backend-env: &backend-env
   SECRET_KEY: ${SECRET_KEY:?SECRET_KEY required (cf. .env.example)}
   CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost}
   UPLOAD_DIR: /app/uploads
-  MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-500}
+  MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-2048}
   WHISPER_MODEL: ${WHISPER_MODEL:-base}
   PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost}
   # Paiement

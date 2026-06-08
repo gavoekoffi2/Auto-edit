@@ -5,6 +5,8 @@ from typing import Optional, Literal
 
 from app.config import VALID_JOB_TYPES, VALID_MODES, VALID_PIPELINE_VERSIONS
 
+VALID_BROLL_DEMOGRAPHICS = {"african", "caucasian", "global"}
+
 
 class JobOptions(BaseModel):
     """Toggles produit pour le pipeline v2.
@@ -21,8 +23,18 @@ class JobOptions(BaseModel):
     vertical_9_16: Optional[bool] = None
     final_cta: Optional[bool] = None
     broll_style: Optional[str] = None  # ex: "african_business_premium"
+    broll_demographic: Optional[str] = None  # african | caucasian | global
     cta_text: Optional[str] = Field(default=None, max_length=120)
     logo_text: Optional[str] = Field(default=None, max_length=60)
+
+    @field_validator("broll_demographic")
+    @classmethod
+    def validate_broll_demographic(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_BROLL_DEMOGRAPHICS:
+            raise ValueError(
+                f"broll_demographic must be one of: {', '.join(sorted(VALID_BROLL_DEMOGRAPHICS))}"
+            )
+        return v
 
 
 class JobCreate(BaseModel):

@@ -7,8 +7,8 @@ real alpha channel.
 
 Anti-collision safe zone (px):
   * face   : y < 850 stays free
-  * graphics: y in [880, 1430]
-  * subs   : y ~ 1500  (>= 50 px below the overlay)
+  * graphics: y in [800, 1340]
+  * subs   : y ~ 1425  (TikTok-safe, distinct from overlays)
 
 Persistence: the intro animation plays once, then the overlay HOLDS its final
 state (counters/bars stay maxed) until the 0.20 s fade-out.  The clip length is
@@ -108,7 +108,7 @@ def _count_time(dur: float) -> float:
 def _draw_lower_third(img, draw, t, dur, spec):
     p = ease_out_back(clamp(t / _intro(dur)))
     slide = int((1 - p) * 420)                       # slide in from the left
-    y0 = 1180
+    y0 = 1100
     box = (PANEL_X0 - slide, y0, PANEL_X1 - slide, y0 + 190)
     _panel(draw, box, radius=28)
     # gold accent bar
@@ -124,7 +124,7 @@ def _draw_lower_third(img, draw, t, dur, spec):
 
 def _draw_stat(img, draw, t, dur, spec):
     p = ease_out_cube(clamp(t / _intro(dur)))
-    cy = 1155
+    cy = 1075
     box = (PANEL_X0, cy - 170, PANEL_X1, cy + 170)
     _panel(draw, box)
     value = spec.get("value")
@@ -145,7 +145,7 @@ def _draw_stat(img, draw, t, dur, spec):
 
 
 def _draw_progress(img, draw, t, dur, spec):
-    cy = 1155
+    cy = 1075
     box = (PANEL_X0, cy - 130, PANEL_X1, cy + 130)
     _panel(draw, box)
     target = float(spec.get("percent", 0))
@@ -170,7 +170,7 @@ def _draw_progress(img, draw, t, dur, spec):
 def _draw_list(img, draw, t, dur, spec):
     items = spec.get("items", [])[:4]
     n = max(1, len(items))
-    box = (PANEL_X0, 920, PANEL_X1, 920 + 90 + n * 110)
+    box = (PANEL_X0, 820, PANEL_X1, 820 + 90 + n * 110)
     box = (box[0], box[1], box[2], min(box[3], config.ZONE_OVERLAY_BOTTOM))
     _panel(draw, box)
     hdr_max = (box[2] - box[0]) - 80

@@ -41,6 +41,7 @@ const FALLBACK_MODES: ModeDescriptor[] = [
       remove_silence: true, dynamic_captions: true, ai_broll: true,
       music: true, sfx: false, vertical_9_16: true, final_cta: true,
       broll_style: 'african_business_premium',
+      broll_demographic: 'african',
     },
   },
 ]
@@ -326,10 +327,29 @@ export default function Editor() {
             />
             <ToggleRow
               icon={<ImageIcon className="w-4 h-4 text-primary-400" />}
-              label="B-roll IA (Afrique)"
+              label="B-roll IA"
               checked={!!options.ai_broll}
               onChange={toggle('ai_broll')}
             />
+
+            {options.ai_broll && (
+              <div className="mt-3">
+                <label className="text-xs text-dark-400 block mb-1">Personnes pour les images B-roll</label>
+                <select
+                  value={options.broll_demographic || 'african'}
+                  onChange={(e) => setOptions((prev) => ({
+                    ...prev,
+                    broll_demographic: e.target.value as JobOptions['broll_demographic'],
+                  }))}
+                  className="w-full bg-dark-800 border border-dark-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-primary-500"
+                >
+                  <option value="african">Africains / Afrique (défaut)</option>
+                  <option value="caucasian">Blancs / caucasiens</option>
+                  <option value="global">Mixte international</option>
+                </select>
+                <p className="text-xs text-dark-500 mt-1">Par défaut AutoEdit génère des scènes africaines modernes. Tu peux changer pour une autre audience.</p>
+              </div>
+            )}
             <ToggleRow
               icon={<Music className="w-4 h-4 text-primary-400" />}
               label="Musique"
@@ -391,7 +411,7 @@ export default function Editor() {
               <PipelineStep icon={<VolumeX className="w-4 h-4 text-primary-400" />} label="Détection silences & filler words" />
               <PipelineStep icon={<Film className="w-4 h-4 text-primary-400" />} label="EDL — plan de coupes" />
               {options.ai_broll && (
-                <PipelineStep icon={<ImageIcon className="w-4 h-4 text-primary-400" />} label="B-roll IA africain (OpenRouter)" />
+                <PipelineStep icon={<ImageIcon className="w-4 h-4 text-primary-400" />} label="B-roll IA + illustrations motion design" />
               )}
               <PipelineStep icon={<Sparkles className="w-4 h-4 text-primary-400" />} label="Captions, musique, export FFmpeg" />
             </div>

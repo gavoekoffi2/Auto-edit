@@ -31,7 +31,7 @@ _MODE_DEFINITIONS: list[dict] = [
         "defaults": {
             "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
             "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
-            "broll_style": "tiktok_viral",
+            "broll_style": "tiktok_viral", "broll_demographic": "african",
         },
     },
     {
@@ -43,7 +43,7 @@ _MODE_DEFINITIONS: list[dict] = [
         "defaults": {
             "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
             "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
-            "broll_style": "african_business_premium",
+            "broll_style": "african_business_premium", "broll_demographic": "african",
         },
     },
     {
@@ -55,7 +55,7 @@ _MODE_DEFINITIONS: list[dict] = [
         "defaults": {
             "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
             "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
-            "broll_style": "publicite_locale",
+            "broll_style": "publicite_locale", "broll_demographic": "african",
         },
     },
     {
@@ -67,7 +67,7 @@ _MODE_DEFINITIONS: list[dict] = [
         "defaults": {
             "remove_silence": True, "dynamic_captions": False, "ai_broll": False,
             "music": False, "sfx": False, "vertical_9_16": False, "final_cta": False,
-            "broll_style": "podcast_propre",
+            "broll_style": "podcast_propre", "broll_demographic": "african",
         },
     },
     {
@@ -79,7 +79,7 @@ _MODE_DEFINITIONS: list[dict] = [
         "defaults": {
             "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
             "music": False, "sfx": False, "vertical_9_16": False, "final_cta": False,
-            "broll_style": "formation_educative",
+            "broll_style": "formation_educative", "broll_demographic": "african",
         },
     },
     {

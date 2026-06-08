@@ -17,3 +17,13 @@ def test_invalid_job_type_lists_auto_edit_alias():
 
     assert "auto_edit" in str(exc_info.value)
     assert "pipeline" in str(exc_info.value)
+
+
+def test_broll_demographic_validation():
+    job = JobCreate(video_id=uuid4(), options={"broll_demographic": "caucasian"})
+    assert job.options.broll_demographic == "caucasian"
+
+    with pytest.raises(ValidationError) as exc_info:
+        JobCreate(video_id=uuid4(), options={"broll_demographic": "martian"})
+    assert "broll_demographic" in str(exc_info.value)
+    assert "african" in str(exc_info.value)

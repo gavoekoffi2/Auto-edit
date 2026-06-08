@@ -53,7 +53,7 @@ def _log(step: str, msg: str = "") -> None:
 
 def run(source: str, workdir: str, *, vu: Optional[str] = None,
         template: str = config.DEFAULT_TEMPLATE, do_broll: bool = True,
-        progress_callback=None) -> str:
+        broll_demographic: str = "african", progress_callback=None) -> str:
     os.makedirs(workdir, exist_ok=True)
     stem = Path(source).stem
     p = lambda *a: os.path.join(workdir, *a)  # noqa: E731 - tiny path helper
@@ -88,7 +88,9 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     have_key = bool(os.environ.get("OPENROUTER_API_KEY"))
     if do_broll and have_key:
         _p(46, "4 genimg")
-        ideas = content.derive_broll_ideas(vu_data)
+        ideas = content.derive_broll_ideas(
+            vu_data, demographic=broll_demographic, graphic_specs=specs
+        )
         images = genimg.generate_brolls(ideas, p("broll"))
         if images:
             _p(56, "5 broll_anim")

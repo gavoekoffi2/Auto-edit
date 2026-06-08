@@ -4,6 +4,8 @@ from app.processing.broll_planner import (
     STYLE_SUFFIXES,
     _scene_from_text,
 )
+from app.autoedit_engine.content import derive_broll_ideas
+
 from app.processing.types import (
     Cut,
     EditDecisionList,
@@ -75,3 +77,43 @@ def test_planner_respects_max_cues():
     )
     cues = BrollPlanner(BrollPlannerConfig(min_segment_duration=2.0, max_cues=5)).plan(transcript, edl)
     assert len(cues) <= 5
+
+
+def test_engine_broll_ideas_default_to_african_and_reduce_when_graphics_exist():
+    vu = {
+        "duration": 36.0,
+        "segments": [
+            {
+                "start": i * 3.0,
+                "end": (i + 1) * 3.0,
+                "text": "business client mobile money strategie croissance",
+                "words": [
+                    {"word": w, "start": i * 3.0 + j * 0.4, "end": i * 3.0 + (j + 1) * 0.4}
+                    for j, w in enumerate("business client mobile money strategie croissance".split())
+                ],
+            }
+            for i in range(12)
+        ],
+    }
+    graphics = [{"source_start": 0.0, "source_end": 8.0}, {"source_start": 18.0, "source_end": 26.0}]
+    plain = derive_broll_ideas(vu)
+    mixed = derive_broll_ideas(vu, demographic="african", graphic_specs=graphics)
+    assert len(mixed) < len(plain)
+    assert mixed
+    assert all("modern African people" in idea["prompt"] for idea in mixed)
+
+
+def test_engine_broll_ideas_can_target_caucasian_casting():
+    vu = {
+        "duration": 10.0,
+        "segments": [{
+            "start": 0.0, "end": 10.0, "text": "marketing finance client",
+            "words": [
+                {"word": "marketing", "start": 0.0, "end": 0.5},
+                {"word": "finance", "start": 1.0, "end": 1.5},
+                {"word": "client", "start": 2.0, "end": 2.5},
+            ],
+        }],
+    }
+    ideas = derive_broll_ideas(vu, n=1, demographic="caucasian")
+    assert "caucasian / white people" in ideas[0]["prompt"]

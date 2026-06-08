@@ -91,12 +91,20 @@ def build_zoom_expr(ranges: List[dict], fps: int = config.FPS) -> str:
 
 
 def build_vf(ranges: List[dict]) -> str:
-    """Full -vf chain: pre-scale x2 -> zoompan -> final 1080x1920 scale."""
+    """Full -vf chain: pre-scale x2 -> zoompan -> final 1080x1920 scale.
+
+    The x/y expressions add a slow panoramic drift while the piecewise z curve
+    does zoom-in/zoom-out plus micro-punches. This makes important moments feel
+    dynamic instead of a static centered zoom.
+    """
     z = build_zoom_expr(ranges)
+    t = "(on/30)"
+    x = f"(iw-iw/zoom)*(0.50+0.10*sin({t}*0.85))"
+    y = f"(ih-ih/zoom)*(0.50+0.06*cos({t}*0.65))"
     return (
         "scale=iw*2:ih*2,"
         f"zoompan=z='{z}'"
-        f":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+        f":x='{x}':y='{y}'"
         f":d=1:s={config.WIDTH}x{config.HEIGHT}:fps={config.FPS},"
         f"scale={config.WIDTH}:{config.HEIGHT}"
     )

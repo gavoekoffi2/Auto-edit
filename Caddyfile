@@ -3,7 +3,7 @@
 
     # Large video uploads. Caddy streams request bodies, but this guards abuse.
     request_body {
-        max_size 550MB
+        max_size 2100MB
     }
 
     header {
@@ -19,8 +19,8 @@
         header_up X-Real-IP {remote_host}
         header_up X-Forwarded-Proto {scheme}
         transport http {
-            read_timeout 300s
-            write_timeout 300s
+            read_timeout 900s
+            write_timeout 900s
         }
     }
 

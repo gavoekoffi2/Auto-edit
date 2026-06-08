@@ -9,7 +9,7 @@ from __future__ import annotations
 import glob
 import os
 from functools import lru_cache
-from typing import Optional
+from typing import Any, Optional
 
 from PIL import ImageFont
 
@@ -48,12 +48,30 @@ def _find_font_file(family: str) -> Optional[str]:
 
 
 @lru_cache(maxsize=256)
-def load_font(family: str, size: int) -> ImageFont.FreeTypeFont:
+def load_font(family: str, size: int) -> Any:
     """Load *family* at *size*, falling back to DejaVuSans-Bold."""
     path = _find_font_file(family)
     if path is None:
         path = config.FONT_FALLBACK
     try:
-        return ImageFont.truetype(path, size)
+        font = ImageFont.truetype(path, size)
+        # Montserrat-Variable.ttf defaults to the THIN axis in Pillow inside the
+        # production image. That made overlay/popup text look like hollow black
+        # outlines on video. Force a strong weight for PIL-rendered graphics.
+        if "montserrat" in family.lower() and hasattr(font, "set_variation_by_name"):
+            try:
+                font.set_variation_by_name("ExtraBold")
+            except Exception:
+                try:
+                    font.set_variation_by_name("Bold")
+                except Exception:
+                    pass
+        return font
     except OSError:
-        return ImageFont.truetype(config.FONT_FALLBACK, size)
+        fallback = config.FONT_FALLBACK if os.path.exists(config.FONT_FALLBACK) else _find_font_file("dejavusans")
+        if fallback:
+            try:
+                return ImageFont.truetype(fallback, size)
+            except OSError:
+                pass
+        return ImageFont.load_default()

@@ -47,6 +47,7 @@ V2_MODE_PRESETS: dict[str, dict] = {
         "vertical_9_16": True,
         "final_cta": False,
         "broll_style": "tiktok_viral",
+        "broll_demographic": "african",
     },
     "youtube": {
         "remove_silence": True,
@@ -57,6 +58,7 @@ V2_MODE_PRESETS: dict[str, dict] = {
         "vertical_9_16": False,
         "final_cta": False,
         "broll_style": "african_business_premium",
+        "broll_demographic": "african",
     },
     "podcast": {
         "remove_silence": True,
@@ -67,6 +69,7 @@ V2_MODE_PRESETS: dict[str, dict] = {
         "vertical_9_16": False,
         "final_cta": False,
         "broll_style": "podcast_propre",
+        "broll_demographic": "african",
     },
     # --- nouveaux v2 (Afrique francophone) ----------------------------------
     "tiktok_viral": {
@@ -78,6 +81,7 @@ V2_MODE_PRESETS: dict[str, dict] = {
         "vertical_9_16": True,
         "final_cta": True,
         "broll_style": "tiktok_viral",
+        "broll_demographic": "african",
     },
     "business_premium_african": {
         "remove_silence": True,
@@ -88,6 +92,7 @@ V2_MODE_PRESETS: dict[str, dict] = {
         "vertical_9_16": True,
         "final_cta": True,
         "broll_style": "african_business_premium",
+        "broll_demographic": "african",
     },
     "publicite_locale": {
         "remove_silence": True,
@@ -98,6 +103,7 @@ V2_MODE_PRESETS: dict[str, dict] = {
         "vertical_9_16": True,
         "final_cta": True,
         "broll_style": "publicite_locale",
+        "broll_demographic": "african",
     },
     "podcast_propre": {
         "remove_silence": True,
@@ -108,6 +114,7 @@ V2_MODE_PRESETS: dict[str, dict] = {
         "vertical_9_16": False,
         "final_cta": False,
         "broll_style": "podcast_propre",
+        "broll_demographic": "african",
     },
     "formation_educative": {
         "remove_silence": True,
@@ -118,6 +125,7 @@ V2_MODE_PRESETS: dict[str, dict] = {
         "vertical_9_16": False,
         "final_cta": False,
         "broll_style": "formation_educative",
+        "broll_demographic": "african",
     },
 }
 
@@ -279,6 +287,7 @@ def run_pipeline_v2(
         vu=vu_path,
         template=template,
         do_broll=do_broll,
+        broll_demographic=options.get("broll_demographic") or "african",
         progress_callback=progress,
     )
 

@@ -27,6 +27,27 @@ _ENUM_HINTS = re.compile(
     re.IGNORECASE,
 )
 
+BROLL_DEMOGRAPHIC_SUFFIXES = {
+    "african": (
+        "modern African people and African environments, francophone West/Central Africa, "
+        "premium realistic look, no stereotypes, no clichés"
+    ),
+    "caucasian": (
+        "caucasian / white people in modern professional environments, premium realistic look"
+    ),
+    "global": (
+        "diverse international people, inclusive casting, premium realistic modern environments"
+    ),
+}
+
+
+def _demographic_suffix(style: Optional[str]) -> str:
+    return BROLL_DEMOGRAPHIC_SUFFIXES.get(style or "african", BROLL_DEMOGRAPHIC_SUFFIXES["african"])
+
+
+def _overlaps(start: float, end: float, spans: list[tuple[float, float]]) -> bool:
+    return any(start < span_end and end > span_start for span_start, span_end in spans)
+
 
 def tokenize(text: str) -> List[str]:
     return [w.lower() for w in _WORD_RE.findall(text)]
@@ -160,25 +181,45 @@ def derive_overlay_specs(vu: dict) -> List[dict]:
     return specs
 
 
-def derive_broll_ideas(vu: dict, n: Optional[int] = None) -> List[dict]:
+def derive_broll_ideas(
+    vu: dict,
+    n: Optional[int] = None,
+    demographic: str = "african",
+    graphic_specs: Optional[List[dict]] = None,
+) -> List[dict]:
     """
-    Build ~1 B-roll idea per SECONDS_PER_BROLL of speech.
+    Build B-roll ideas that complement motion-design graphics.
 
-    Each idea: {prompt, label, source_start, source_end}.  One strong idea per
-    slot, derived from the densest keywords spoken in that slot.
+    The engine now mixes two visual systems:
+      * motion-design illustrations/cards for many key points;
+      * fewer generated B-roll images for the strongest remaining visual ideas.
+
+    Each idea: {prompt, label, source_start, source_end}.
     """
     words = _all_words(vu)
     if not words:
         return []
     total = float(vu.get("duration") or words[-1]["end"])
+    graphic_spans = [
+        (float(g.get("source_start", 0.0)), float(g.get("source_end", 0.0)))
+        for g in (graphic_specs or [])
+    ]
     if n is None:
-        n = max(1, round(total / config.SECONDS_PER_BROLL))
+        # Motion design covers part of the narration, so B-roll is less frequent
+        # (cheaper and less repetitive than one generated image every 5s).
+        seconds_per = config.SECONDS_PER_BROLL_WITH_MOTION if graphic_spans else config.SECONDS_PER_BROLL
+        n = max(1, round(total / seconds_per))
 
     counts = keyword_counts(vu)
+    suffix = _demographic_suffix(demographic)
     ideas: List[dict] = []
     slot = total / n
     for i in range(n):
         s, e = i * slot, (i + 1) * slot
+        if graphic_spans and _overlaps(s, e, graphic_spans) and i % 2 == 0:
+            # Let motion-design carry this beat; keep the next non-overlapping
+            # slots for generated B-roll. This saves image-generation credits.
+            continue
         in_slot = " ".join(w["word"] for w in words if s <= float(w["start"]) < e)
         toks = _content_tokens(in_slot)
         if not toks:
@@ -187,7 +228,8 @@ def derive_broll_ideas(vu: dict, n: Optional[int] = None) -> List[dict]:
         ranked = sorted(set(toks), key=lambda t: counts.get(t, 0), reverse=True)
         focus = ranked[:4]
         label = (ranked[0] if ranked else "").upper()
-        prompt = ", ".join(focus) if focus else " ".join(toks[:4])
+        core_prompt = ", ".join(focus) if focus else " ".join(toks[:4])
+        prompt = f"{core_prompt}. Visual direction: {suffix}."
         ideas.append({
             "id": f"br_{i:03d}",
             "prompt": prompt,

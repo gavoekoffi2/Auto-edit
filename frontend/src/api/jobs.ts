@@ -11,6 +11,7 @@ export interface JobOptions {
   vertical_9_16?: boolean
   final_cta?: boolean
   broll_style?: string
+  broll_demographic?: 'african' | 'caucasian' | 'global'
   cta_text?: string
   logo_text?: string
 }

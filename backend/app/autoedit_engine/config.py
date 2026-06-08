@@ -53,18 +53,18 @@ GRADE_WARM_CINEMATIC = (
 # STEP 4 — ZOOM DYNAMIQUE (Ken Burns + micro-punches) — RÈGLE PRO #3
 # --------------------------------------------------------------------------- #
 KB_ZOOM_MIN = 1.0
-KB_ZOOM_MAX = 1.11
-PUNCH_EVERY = 3.5       # seconds between gaussian micro-punches inside a segment
-PUNCH_AMP = 0.10
+KB_ZOOM_MAX = 1.16
+PUNCH_EVERY = 3.2       # seconds between gaussian micro-punches inside a segment
+PUNCH_AMP = 0.08
 PUNCH_SIGMA = 0.30 / 2.5  # = 0.12
 
 # --------------------------------------------------------------------------- #
 # STEP 5 — OVERLAYS (anti-collision safe zones, in px)
 # --------------------------------------------------------------------------- #
-ZONE_FACE_MAX_Y = 850          # y < 850 : keep free (face)
-ZONE_OVERLAY_TOP = 880         # graphic overlays live in [880, 1430]
-ZONE_OVERLAY_BOTTOM = 1430
-ZONE_SUBS_Y = 1500             # subtitles centred near y = 1500
+ZONE_FACE_MAX_Y = 800          # y < 800 : keep free (face)
+ZONE_OVERLAY_TOP = 800         # graphic overlays live higher, clear of captions
+ZONE_OVERLAY_BOTTOM = 1340
+ZONE_SUBS_Y = 1425             # TikTok-safe: higher than bottom UI, below overlays
 ZONE_OVERLAY_SUBS_GAP = 50     # >= 50 px between overlay bottom and subtitles
 
 OVERLAY_FADE_IN = 0.13         # seconds
@@ -89,7 +89,8 @@ BROLL_STYLE_PREFIX = (
     "vertical composition. Subject: "
 )
 
-SECONDS_PER_BROLL = 5.0        # ~1 image every 5 s of speech (n ~= duration / 5)
+SECONDS_PER_BROLL = 5.0        # legacy: ~1 image every 5 s of speech
+SECONDS_PER_BROLL_WITH_MOTION = 9.0  # motion design also illustrates key beats, so fewer AI images
 
 # Entrance animations cycled in this exact order (Étape 6).
 BROLL_ENTRANCES = [
@@ -111,7 +112,7 @@ BROLL_CHIP_Y = 250
 KEYWORD_TOP_N = 8
 KEYWORD_MIN_GAP = 8.0          # seconds between two occurrences of the same word
 KEYWORD_POPUP_DUR = 1.5
-KEYWORD_POPUP_Y = 450          # above the face, TikTok style
+KEYWORD_POPUP_Y = 380          # above the face, TikTok style
 KEYWORD_CHIP_COLOR = (212, 175, 55, 255)   # gold
 
 # Stopwords filtered before counting keyword frequency (FR + EN).
