@@ -19,17 +19,21 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
   } | null>(null)
   const [downloading, setDownloading] = useState(false)
   const [cancelling, setCancelling] = useState(false)
+  const [connectionWarning, setConnectionWarning] = useState('')
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>
     let cancelled = false
     let errorCount = 0
+    let warnedAboutConnection = false
 
     const poll = async () => {
       try {
         const data = await getJob(jobId)
         if (cancelled) return
         errorCount = 0
+        warnedAboutConnection = false
+        setConnectionWarning('')
         setJob(data)
 
         if (data.status === 'completed') {
@@ -47,17 +51,29 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
       } catch {
         errorCount++
         if (errorCount >= 5 && !cancelled) {
-          clearInterval(interval)
-          toast('error', 'Lost connection to server. Please refresh the page.')
+          setConnectionWarning(
+            "Connexion instable. Ne ferme pas la page : le traitement continue sur le serveur et AutoEdit va reprendre le suivi automatiquement.",
+          )
+          if (!warnedAboutConnection) {
+            warnedAboutConnection = true
+            toast('info', 'Connexion instable, mais le traitement continue sur le serveur.')
+          }
         }
       }
     }
 
     poll()
     interval = setInterval(poll, 2000)
+    const resumePolling = () => {
+      if (!cancelled) poll()
+    }
+    window.addEventListener('focus', resumePolling)
+    document.addEventListener('visibilitychange', resumePolling)
     return () => {
       cancelled = true
       clearInterval(interval)
+      window.removeEventListener('focus', resumePolling)
+      document.removeEventListener('visibilitychange', resumePolling)
     }
   }, [jobId, onComplete, onCancelled])
 
@@ -122,6 +138,12 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
             style={{ width: `${job.progress}%` }}
           />
         </div>
+      )}
+
+      {connectionWarning && isAnimating && (
+        <p className="text-xs text-amber-300 bg-amber-400/10 rounded-lg p-3 mb-3">
+          {connectionWarning}
+        </p>
       )}
 
       {isAnimating && (

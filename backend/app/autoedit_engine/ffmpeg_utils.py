@@ -26,13 +26,31 @@ def ensure_ffmpeg() -> None:
         )
 
 
-def run(cmd: Sequence[str], *, timeout: int = 1800, check: bool = True) -> subprocess.CompletedProcess:
-    """Run an ffmpeg/ffprobe command, surfacing stderr on failure."""
+def _default_timeout() -> int | None:
+    """Return the configured media-command timeout.
+
+    Import lazily to keep this low-level helper usable from standalone engine
+    scripts. A value <= 0 disables the subprocess timeout.
+    """
+    try:
+        from app.config import settings
+        configured = int(getattr(settings, "FFMPEG_COMMAND_TIMEOUT_SECONDS", 21600) or 0)
+    except Exception:
+        configured = int(os.environ.get("FFMPEG_COMMAND_TIMEOUT_SECONDS", "21600") or 0)
+    return configured if configured > 0 else None
+
+
+def run(cmd: Sequence[str], *, timeout: int | None = None, check: bool = True) -> subprocess.CompletedProcess:
+    """Run an ffmpeg/ffprobe command, surfacing stderr on failure.
+
+    The old 30-minute hardcoded timeout could kill longer AutoEdit renders in
+    the middle of processing. Default to the app setting instead.
+    """
     proc = subprocess.run(
         list(cmd),
         capture_output=True,
         text=True,
-        timeout=timeout,
+        timeout=_default_timeout() if timeout is None else timeout,
         start_new_session=True,
     )
     if check and proc.returncode != 0:

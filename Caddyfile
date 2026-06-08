@@ -19,8 +19,8 @@
         header_up X-Real-IP {remote_host}
         header_up X-Forwarded-Proto {scheme}
         transport http {
-            read_timeout 900s
-            write_timeout 900s
+            read_timeout 3600s
+            write_timeout 3600s
         }
     }
 

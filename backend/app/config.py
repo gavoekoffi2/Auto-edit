@@ -55,6 +55,15 @@ class Settings(BaseSettings):
     MAX_VIDEO_DURATION_PRO: int = 1800  # 30 min
     MAX_VIDEOS_PER_MONTH_FREE: int = 2
 
+    # Long video processing
+    # A 3-4 minute mobile video can take far longer than its playback duration
+    # once Whisper, generated visuals, FFmpeg compositing and SFX are chained.
+    # Keep these configurable and generous so jobs do not die mid-render because
+    # of a fixed worker/subprocess timeout. Set to 0 to disable the Celery limit.
+    CELERY_TASK_TIME_LIMIT_SECONDS: int = 0
+    CELERY_TASK_SOFT_TIME_LIMIT_SECONDS: int = 0
+    FFMPEG_COMMAND_TIMEOUT_SECONDS: int = 21600  # 6h per heavy command
+
     # FedaPay
     FEDAPAY_SECRET_KEY: Optional[str] = None
     FEDAPAY_PUBLIC_KEY: Optional[str] = None
@@ -85,7 +94,9 @@ class Settings(BaseSettings):
     # B-roll style & planning
     BROLL_STYLE: str = "african_business_premium"
     BROLL_DEFAULT_ASPECT_RATIO: str = "9:16"
-    BROLL_MAX_CUES_PER_VIDEO: int = 12
+    # Cost-aware default: motion-design cards cover part of the video, so the
+    # engine does not need to generate a new image every few seconds.
+    BROLL_MAX_CUES_PER_VIDEO: int = 8
     BROLL_MIN_SEGMENT_DURATION: float = 2.5
     BROLL_MAX_SEGMENT_DURATION: float = 8.0
 
