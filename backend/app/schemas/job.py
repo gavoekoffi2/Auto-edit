@@ -36,9 +36,14 @@ class JobCreate(BaseModel):
     @field_validator("job_type")
     @classmethod
     def validate_job_type(cls, v: str) -> str:
-        if v not in VALID_JOB_TYPES:
-            raise ValueError(f"job_type must be one of: {', '.join(VALID_JOB_TYPES)}")
-        return v
+        # Frontend/product wording uses "auto_edit" for the main full pipeline.
+        # Internally the backend worker dispatches that same operation as "pipeline".
+        aliases = {"auto_edit": "pipeline"}
+        normalized = aliases.get(v, v)
+        if normalized not in VALID_JOB_TYPES:
+            allowed = sorted(set(VALID_JOB_TYPES) | set(aliases))
+            raise ValueError(f"job_type must be one of: {', '.join(allowed)}")
+        return normalized
 
     @field_validator("mode")
     @classmethod
