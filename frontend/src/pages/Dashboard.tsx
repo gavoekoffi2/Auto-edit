@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Film, Trash2, Clock, CheckCircle, AlertCircle, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Film, Trash2, Clock, CheckCircle, AlertCircle, Loader2, ChevronLeft, ChevronRight, Download } from 'lucide-react'
 import UploadZone from '../components/video/UploadZone'
 import { listVideos, deleteVideo } from '../api/videos'
+import { listJobs, downloadJobResult } from '../api/jobs'
 import { useAuthStore } from '../store/authStore'
 import { getMe } from '../api/auth'
 import { toast } from '../components/ui/Toast'
@@ -16,24 +17,53 @@ interface Video {
   created_at: string
 }
 
+interface JobSummary {
+  id: string
+  status: string
+  progress: number
+  result?: Record<string, unknown> | null
+}
+
 const statusIcons: Record<string, typeof Film> = {
   uploaded: Clock,
   processing: Loader2,
   ready: CheckCircle,
+  completed: CheckCircle,
+  failed: AlertCircle,
   error: AlertCircle,
 }
 
 const statusColors: Record<string, string> = {
   uploaded: 'text-dark-400',
   processing: 'text-primary-400',
+  pending: 'text-primary-400',
   ready: 'text-emerald-400',
+  completed: 'text-emerald-400',
+  failed: 'text-red-400',
   error: 'text-red-400',
+}
+
+function getDisplayStatus(video: Video, latestJob?: JobSummary) {
+  if (latestJob?.status === 'completed') return 'Montage terminé'
+  if (latestJob?.status === 'processing') return `Montage ${latestJob.progress ?? 0}%`
+  if (latestJob?.status === 'pending') return 'Montage en attente'
+  if (latestJob?.status === 'failed') return 'Montage échoué'
+  if (video.status === 'ready') return 'Vidéo prête'
+  if (video.status === 'uploaded') return 'Importée'
+  if (video.status === 'processing') return 'Traitement...'
+  if (video.status === 'error') return 'Erreur'
+  return video.status
+}
+
+function getStatusKey(video: Video, latestJob?: JobSummary) {
+  return latestJob?.status || video.status
 }
 
 const PAGE_SIZE = 10
 
 export default function Dashboard() {
   const [videos, setVideos] = useState<Video[]>([])
+  const [latestJobs, setLatestJobs] = useState<Record<string, JobSummary | undefined>>({})
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -49,6 +79,17 @@ export default function Dashboard() {
       ])
       setVideos(videosData.videos)
       setTotal(videosData.total)
+      const jobEntries = await Promise.all(
+        videosData.videos.map(async (video: Video) => {
+          try {
+            const jobs = await listJobs(video.id) as JobSummary[]
+            return [video.id, jobs[0]] as const
+          } catch {
+            return [video.id, undefined] as const
+          }
+        }),
+      )
+      setLatestJobs(Object.fromEntries(jobEntries))
       if (userData) setUser(userData)
     } catch (err) {
       toast('error', 'Failed to load dashboard data')
@@ -78,6 +119,15 @@ export default function Dashboard() {
     } catch {
       toast('error', 'Failed to delete video')
       loadData() // Reload on error
+    }
+  }
+
+  const handleDownload = async (jobId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      await downloadJobResult(jobId)
+    } catch {
+      toast('error', 'Impossible de télécharger le montage')
     }
   }
 
@@ -128,8 +178,11 @@ export default function Dashboard() {
           <>
             <div className="grid gap-4">
               {videos.map((video) => {
-                const StatusIcon = statusIcons[video.status] || Film
-                const statusColor = statusColors[video.status] || 'text-dark-400'
+                const latestJob = latestJobs[video.id]
+                const statusKey = getStatusKey(video, latestJob)
+                const StatusIcon = statusIcons[statusKey] || Film
+                const statusColor = statusColors[statusKey] || 'text-dark-400'
+                const hasCompletedMontage = Boolean(latestJob?.status === 'completed' && latestJob.result?.output_path)
 
                 return (
                   <div
@@ -154,9 +207,19 @@ export default function Dashboard() {
 
                     <div className="flex items-center gap-4">
                       <span className={`flex items-center gap-1 text-sm ${statusColor}`}>
-                        <StatusIcon className={`w-4 h-4 ${video.status === 'processing' ? 'animate-spin' : ''}`} />
-                        {video.status}
+                        <StatusIcon className={`w-4 h-4 ${statusKey === 'processing' || statusKey === 'pending' ? 'animate-spin' : ''}`} />
+                        {getDisplayStatus(video, latestJob)}
                       </span>
+                      {hasCompletedMontage && latestJob && (
+                        <button
+                          onClick={(e) => handleDownload(latestJob.id, e)}
+                          className="btn-secondary py-2 px-3 text-xs flex items-center gap-1"
+                          aria-label="Download final montage"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          Montage
+                        </button>
+                      )}
                       <button
                         onClick={(e) => handleDelete(video.id, e)}
                         className="text-dark-500 hover:text-red-400 transition-colors"
