@@ -35,15 +35,27 @@ export function validateVideoFile(file: File) {
   }
 }
 
+async function warmAuthSession() {
+  // Force le refresh token AVANT d'envoyer une grosse vidéo. Sinon un token
+  // expiré peut n'être découvert qu'après plusieurs minutes d'upload mobile.
+  await client.get('/auth/me', { timeout: 15000 })
+}
+
 export async function uploadVideo(file: File, onProgress?: (percent: number) => void) {
   validateVideoFile(file)
+
+  await warmAuthSession()
 
   const formData = new FormData()
   formData.append('file', file)
 
   const res = await client.post('/videos/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 600000, // 10min timeout for large uploads
+    // Ne jamais couper côté navigateur: sur mobile, une vidéo de 3 minutes peut
+    // dépasser 10 minutes selon la 4G/Wi-Fi. Le serveur/proxy garde ses propres
+    // limites de sécurité; ici on attend la vraie réponse au lieu d'afficher
+    // "timeout of 600000ms exceeded".
+    timeout: 0,
     onUploadProgress: (e) => {
       if (e.total && onProgress) {
         onProgress(Math.round((e.loaded * 100) / e.total))

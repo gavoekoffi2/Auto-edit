@@ -73,7 +73,8 @@ async def save_upload(
     size = 0
     first_chunk: bytes = b""
     async with aiofiles.open(file_path, "wb") as f:
-        while chunk := await file.read(1024 * 1024):  # 1MB chunks
+        chunk_size = 8 * 1024 * 1024  # 8MB chunks: fewer syscalls for large mobile uploads
+        while chunk := await file.read(chunk_size):
             if not first_chunk:
                 first_chunk = chunk[:32]
             size += len(chunk)
