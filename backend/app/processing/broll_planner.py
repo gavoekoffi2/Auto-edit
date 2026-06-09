@@ -155,7 +155,12 @@ class BrollPlanner:
         for b in blocks:
             duration = min(b.end - b.start, cfg.max_segment_duration)
             scene = _scene_from_text(b.text)
-            prompt = f"{scene} {style_suffix}".strip()
+            excerpt = _safe_excerpt(b.text)
+            prompt = (
+                f"{scene} Must directly illustrate this exact spoken excerpt: \"{excerpt}\". "
+                f"Avoid generic stock imagery; every person, object and action should match the narration. "
+                f"{style_suffix}"
+            ).strip()
             cues.append(
                 BrollCue(
                     segment_start=b.start,
@@ -183,3 +188,10 @@ def _scene_from_text(text: str) -> str:
         if pattern.search(text):
             return scene
     return FALLBACK_SCENE
+
+
+def _safe_excerpt(text: str, max_chars: int = 190) -> str:
+    compact = re.sub(r"\s+", " ", text).strip()
+    if len(compact) <= max_chars:
+        return compact
+    return compact[: max_chars - 1].rstrip() + "…"

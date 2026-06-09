@@ -96,7 +96,9 @@ class Settings(BaseSettings):
     BROLL_DEFAULT_ASPECT_RATIO: str = "9:16"
     # Cost-aware default: motion-design cards cover part of the video, so the
     # engine does not need to generate a new image every few seconds.
-    BROLL_MAX_CUES_PER_VIDEO: int = 8
+    BROLL_MAX_CUES_PER_VIDEO: int = 14
+    BROLL_SHORTS_MAX_DURATION_SECONDS: float = 90.0
+    BROLL_SHORTS_MAX_CUES_PER_VIDEO: int = 18
     BROLL_MIN_SEGMENT_DURATION: float = 2.5
     BROLL_MAX_SEGMENT_DURATION: float = 8.0
 

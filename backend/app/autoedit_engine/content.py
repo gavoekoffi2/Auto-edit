@@ -40,6 +40,36 @@ BROLL_DEMOGRAPHIC_SUFFIXES = {
     ),
 }
 
+# Spoken-text → visual scene mapping. This is intentionally closer to the
+# transcript than the old keyword-only prompts: each generated image should show
+# the exact idea being discussed during that timestamp, not a generic business
+# stock photo.
+BROLL_SCENE_RULES: list[tuple[re.Pattern[str], str]] = [
+    # Put specific visual actions before broad words like “client” so a phrase
+    # such as “client paie en mobile money” produces a payment image, not a
+    # generic support/call-center image.
+    (re.compile(r"\b(mobile money|momo|orange money|wave|moov money|airtel money|paiement|payer)\b", re.I),
+     "a close-up of a mobile-money payment on a smartphone in a modern African shop"),
+    (re.compile(r"\b(e[- ]?commerce|boutique en ligne|vente en ligne|shopify|woocommerce|commande|livraison)\b", re.I),
+     "an African e-commerce seller checking online orders, parcels ready for delivery, laptop and smartphone visible"),
+    (re.compile(r"\b(client|clients|prospect|prospects|service client|support|appel|call center|centre d'appel)\b", re.I),
+     "an African customer-service agent wearing a headset, speaking with a customer while a CRM dashboard is open"),
+    (re.compile(r"\b(argent|finance|budget|investissement|revenu|profit|chiffre d'affaires|co[uû]t|prix)\b", re.I),
+     "an African entrepreneur reviewing a financial dashboard with revenue charts and budget notes"),
+    (re.compile(r"\b(marketing|publicit[ée]|marque|branding|r[ée]seaux sociaux|instagram|tiktok|facebook|whatsapp)\b", re.I),
+     "an African creator planning a social-media marketing campaign on a phone and laptop"),
+    (re.compile(r"\b(formation|cours|apprendre|coach|strat[ée]gie|m[ée]thode|conseil|solution)\b", re.I),
+     "an African coach explaining a business strategy on a clean whiteboard to attentive learners"),
+    (re.compile(r"\b(restaur|cuisine|chef|menu|repas)\b", re.I),
+     "a modern African restaurant team serving customers and preparing orders"),
+    (re.compile(r"\b(immobili|maison|appartement|terrain|location|airbnb)\b", re.I),
+     "an African real-estate agent presenting a modern apartment and handing over keys"),
+    (re.compile(r"\b(salon|beaut[ée]|coiffure|cosm[ée]tique|maquillage|peau)\b", re.I),
+     "a premium African beauty salon with a stylist serving a smiling customer"),
+    (re.compile(r"\b(transport|moto|voiture|taxi|chauffeur)\b", re.I),
+     "a clean African urban transport scene with a delivery rider checking a route on a smartphone"),
+]
+
 
 def _demographic_suffix(style: Optional[str]) -> str:
     return BROLL_DEMOGRAPHIC_SUFFIXES.get(style or "african", BROLL_DEMOGRAPHIC_SUFFIXES["african"])
@@ -181,6 +211,74 @@ def derive_overlay_specs(vu: dict) -> List[dict]:
     return specs
 
 
+def _broll_seconds_per(total_duration: float, has_motion_graphics: bool) -> float:
+    """Return cadence for generated B-roll images.
+
+    Shorts/Reels need more frequent visual changes. For longer videos, keep a
+    slower cadence so cost and render time stay under control.
+    """
+    if total_duration <= config.SHORTS_MAX_DURATION_SECONDS:
+        return (
+            config.SHORTS_SECONDS_PER_BROLL_WITH_MOTION
+            if has_motion_graphics
+            else config.SHORTS_SECONDS_PER_BROLL
+        )
+    return config.SECONDS_PER_BROLL_WITH_MOTION if has_motion_graphics else config.SECONDS_PER_BROLL
+
+
+def _broll_windows(vu: dict, target_seconds: float, max_windows: int) -> List[dict]:
+    """Create timestamp-aligned transcript windows for B-roll.
+
+    The old planner divided the whole video into abstract equal slots, which can
+    cut across sentence boundaries and produce visuals that feel unrelated. This
+    window builder starts from real word timings and carries the exact spoken
+    text that the image must illustrate.
+    """
+    words = _all_words(vu)
+    if not words:
+        return []
+    windows: List[dict] = []
+    cur: List[dict] = []
+    cur_start: Optional[float] = None
+    for word in words:
+        w_start = float(word["start"])
+        w_end = float(word.get("end", w_start + 0.25))
+        if cur_start is None:
+            cur_start = w_start
+        cur.append(word)
+        reached_duration = (w_end - cur_start) >= target_seconds
+        sentence_break = str(word.get("word", "")).rstrip().endswith(('.', '!', '?', ';', ':'))
+        if reached_duration or (sentence_break and (w_end - cur_start) >= target_seconds * 0.65):
+            text = " ".join(str(w.get("word", "")).strip() for w in cur).strip()
+            if text:
+                windows.append({"start": cur_start, "end": w_end, "text": text})
+            cur, cur_start = [], None
+            if len(windows) >= max_windows:
+                break
+    if cur and cur_start is not None and len(windows) < max_windows:
+        end = float(cur[-1].get("end", cur_start + target_seconds))
+        text = " ".join(str(w.get("word", "")).strip() for w in cur).strip()
+        if text:
+            windows.append({"start": cur_start, "end": end, "text": text})
+    return windows
+
+
+def _scene_for_broll_text(text: str, focus: List[str]) -> str:
+    for pattern, scene in BROLL_SCENE_RULES:
+        if pattern.search(text):
+            return scene
+    if focus:
+        return f"a cinematic visual metaphor for: {', '.join(focus[:4])}, shown through realistic people and objects"
+    return "a realistic premium business scene that directly illustrates the spoken idea"
+
+
+def _safe_excerpt(text: str, max_chars: int = 190) -> str:
+    compact = re.sub(r"\s+", " ", text).strip()
+    if len(compact) <= max_chars:
+        return compact
+    return compact[: max_chars - 1].rstrip() + "…"
+
+
 def derive_broll_ideas(
     vu: dict,
     n: Optional[int] = None,
@@ -188,13 +286,15 @@ def derive_broll_ideas(
     graphic_specs: Optional[List[dict]] = None,
 ) -> List[dict]:
     """
-    Build B-roll ideas that complement motion-design graphics.
+    Build B-roll ideas that match the spoken segment at each timestamp.
 
-    The engine now mixes two visual systems:
+    The engine mixes two visual systems:
       * motion-design illustrations/cards for many key points;
-      * fewer generated B-roll images for the strongest remaining visual ideas.
+      * generated B-roll images for the strongest spoken beats.
 
-    Each idea: {prompt, label, source_start, source_end}.
+    Shorts get a denser B-roll cadence. Each idea keeps the exact spoken excerpt
+    in the prompt so the generated image corresponds to the narration where it
+    appears.
     """
     words = _all_words(vu)
     if not words:
@@ -204,34 +304,39 @@ def derive_broll_ideas(
         (float(g.get("source_start", 0.0)), float(g.get("source_end", 0.0)))
         for g in (graphic_specs or [])
     ]
+    is_short = total <= config.SHORTS_MAX_DURATION_SECONDS
+    seconds_per = _broll_seconds_per(total, bool(graphic_spans))
     if n is None:
-        # Motion design covers part of the narration, so B-roll is less frequent
-        # (cheaper and less repetitive than one generated image every 5s).
-        seconds_per = config.SECONDS_PER_BROLL_WITH_MOTION if graphic_spans else config.SECONDS_PER_BROLL
         n = max(1, round(total / seconds_per))
 
     counts = keyword_counts(vu)
     suffix = _demographic_suffix(demographic)
     ideas: List[dict] = []
-    slot = total / n
-    for i in range(n):
-        s, e = i * slot, (i + 1) * slot
-        if graphic_spans and _overlaps(s, e, graphic_spans) and i % 2 == 0:
-            # Let motion-design carry this beat; keep the next non-overlapping
-            # slots for generated B-roll. This saves image-generation credits.
+    windows = _broll_windows(vu, seconds_per, max_windows=max(n * 2, n + 4))
+
+    for idx, window in enumerate(windows):
+        if len(ideas) >= n:
+            break
+        s, e, spoken_text = float(window["start"]), float(window["end"]), window["text"]
+        if graphic_spans and not is_short and _overlaps(s, e, graphic_spans) and idx % 2 == 0:
+            # For long videos, let some motion-design beats carry the narration.
+            # For shorts, do NOT skip: Claude wants more frequent B-roll.
             continue
-        in_slot = " ".join(w["word"] for w in words if s <= float(w["start"]) < e)
-        toks = _content_tokens(in_slot)
+        toks = _content_tokens(spoken_text)
         if not toks:
             continue
-        # Strongest idea = highest-frequency tokens spoken in this slot.
         ranked = sorted(set(toks), key=lambda t: counts.get(t, 0), reverse=True)
-        focus = ranked[:4]
-        label = (ranked[0] if ranked else "").upper()
-        core_prompt = ", ".join(focus) if focus else " ".join(toks[:4])
-        prompt = f"{core_prompt}. Visual direction: {suffix}."
+        focus = ranked[:5]
+        label = (ranked[0] if ranked else toks[0]).upper()
+        scene = _scene_for_broll_text(spoken_text, focus)
+        excerpt = _safe_excerpt(spoken_text)
+        prompt = (
+            f"{scene}. Must directly illustrate this exact spoken excerpt: \"{excerpt}\". "
+            f"Key concepts to show: {', '.join(focus[:4])}. Visual direction: {suffix}. "
+            "Avoid generic stock imagery; show concrete objects, people and actions mentioned in the excerpt."
+        )
         ideas.append({
-            "id": f"br_{i:03d}",
+            "id": f"br_{len(ideas):03d}",
             "prompt": prompt,
             "label": label,
             "source_start": round(s, 3),

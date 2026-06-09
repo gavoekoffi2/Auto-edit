@@ -7,6 +7,8 @@ than re-declaring constants, which keeps the viral-montage recipe reproducible.
 """
 from __future__ import annotations
 
+import os
+
 # --------------------------------------------------------------------------- #
 # FORMAT
 # --------------------------------------------------------------------------- #
@@ -89,8 +91,14 @@ BROLL_STYLE_PREFIX = (
     "vertical composition. Subject: "
 )
 
-SECONDS_PER_BROLL = 5.0        # legacy: ~1 image every 5 s of speech
-SECONDS_PER_BROLL_WITH_MOTION = 9.0  # motion design also illustrates key beats, so fewer AI images
+# B-roll cadence. Shorts need a denser visual rhythm; longer videos stay more
+# cost-aware because motion-design cards also illustrate key beats. Values can
+# be overridden in production through environment variables without code edits.
+SECONDS_PER_BROLL = float(os.getenv("SECONDS_PER_BROLL", "5.0"))
+SECONDS_PER_BROLL_WITH_MOTION = float(os.getenv("SECONDS_PER_BROLL_WITH_MOTION", "7.0"))
+SHORTS_MAX_DURATION_SECONDS = float(os.getenv("SHORTS_MAX_DURATION_SECONDS", "90.0"))
+SHORTS_SECONDS_PER_BROLL = float(os.getenv("SHORTS_SECONDS_PER_BROLL", "3.5"))
+SHORTS_SECONDS_PER_BROLL_WITH_MOTION = float(os.getenv("SHORTS_SECONDS_PER_BROLL_WITH_MOTION", "4.0"))
 
 # Entrance animations cycled in this exact order (Étape 6).
 BROLL_ENTRANCES = [

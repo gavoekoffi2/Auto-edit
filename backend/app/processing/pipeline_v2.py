@@ -454,13 +454,18 @@ def run_pipeline_v2_legacy(
         try:
             progress(55, "Planification du B-roll africain…")
             from app.processing.broll_planner import BrollPlanner, BrollPlannerConfig
+            max_cues = (
+                settings.BROLL_SHORTS_MAX_CUES_PER_VIDEO
+                if total_duration <= settings.BROLL_SHORTS_MAX_DURATION_SECONDS
+                else settings.BROLL_MAX_CUES_PER_VIDEO
+            )
             planner = BrollPlanner(
                 BrollPlannerConfig(
                     style=broll_style,
                     aspect_ratio=aspect_ratio,
                     min_segment_duration=settings.BROLL_MIN_SEGMENT_DURATION,
                     max_segment_duration=settings.BROLL_MAX_SEGMENT_DURATION,
-                    max_cues=settings.BROLL_MAX_CUES_PER_VIDEO,
+                    max_cues=max_cues,
                 )
             )
             cues = planner.plan(transcript, edl)

@@ -57,6 +57,7 @@ def test_planner_produces_prompts_with_african_style():
     style_suffix = STYLE_SUFFIXES["african_business_premium"]
     for c in cues:
         assert style_suffix.split(",")[0] in c.prompt  # début du style appliqué
+        assert "Must directly illustrate this exact spoken excerpt" in c.prompt
         assert c.aspect_ratio in ("9:16", "16:9", "1:1", "4:5")
         assert c.style == "african_business_premium"
 
@@ -79,7 +80,7 @@ def test_planner_respects_max_cues():
     assert len(cues) <= 5
 
 
-def test_engine_broll_ideas_default_to_african_and_reduce_when_graphics_exist():
+def test_engine_broll_ideas_default_to_african_and_match_spoken_excerpt():
     vu = {
         "duration": 36.0,
         "segments": [
@@ -96,11 +97,41 @@ def test_engine_broll_ideas_default_to_african_and_reduce_when_graphics_exist():
         ],
     }
     graphics = [{"source_start": 0.0, "source_end": 8.0}, {"source_start": 18.0, "source_end": 26.0}]
-    plain = derive_broll_ideas(vu)
-    mixed = derive_broll_ideas(vu, demographic="african", graphic_specs=graphics)
-    assert len(mixed) < len(plain)
-    assert mixed
-    assert all("modern African people" in idea["prompt"] for idea in mixed)
+    ideas = derive_broll_ideas(vu, demographic="african", graphic_specs=graphics)
+    assert ideas
+    assert all("modern African people" in idea["prompt"] for idea in ideas)
+    assert all("Must directly illustrate this exact spoken excerpt" in idea["prompt"] for idea in ideas)
+    assert any("mobile-money payment" in idea["prompt"] for idea in ideas)
+
+
+def test_engine_broll_ideas_are_more_dense_for_shorts_even_with_graphics():
+    def make_vu(duration: float, count: int):
+        return {
+            "duration": duration,
+            "segments": [
+                {
+                    "start": i * (duration / count),
+                    "end": (i + 1) * (duration / count),
+                    "text": "marketing client paiement mobile money boutique en ligne",
+                    "words": [
+                        {
+                            "word": w,
+                            "start": i * (duration / count) + j * 0.45,
+                            "end": i * (duration / count) + (j + 1) * 0.45,
+                        }
+                        for j, w in enumerate("marketing client paiement mobile money boutique en ligne".split())
+                    ],
+                }
+                for i in range(count)
+            ],
+        }
+
+    graphics = [{"source_start": 0.0, "source_end": 30.0}]
+    short_ideas = derive_broll_ideas(make_vu(60.0, 20), demographic="african", graphic_specs=graphics)
+    long_ideas = derive_broll_ideas(make_vu(180.0, 60), demographic="african", graphic_specs=graphics)
+
+    assert len(short_ideas) >= 12  # ~1 B-roll every 4s on shorts
+    assert len(short_ideas) / 60.0 > len(long_ideas) / 180.0
 
 
 def test_engine_broll_ideas_can_target_caucasian_casting():
