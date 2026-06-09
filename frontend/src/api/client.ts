@@ -110,18 +110,33 @@ client.interceptors.response.use(
 )
 
 /**
- * Download a file using auth header instead of token in URL.
+ * Download a file using the auth header instead of exposing the token in the URL.
+ *
+ * Rendered videos can be large (tens or hundreds of MB). Keep this request out
+ * of the default 30s axios timeout, otherwise mobile/slow connections receive
+ * a generic "download failed" even though the backend is correctly streaming a
+ * completed montage. Also keep the object URL alive briefly: revoking it
+ * immediately after `click()` is unreliable on some mobile browsers.
  */
 export async function downloadWithAuth(url: string, filename: string): Promise<void> {
-  const response = await client.get(url, { responseType: 'blob' })
-  const blob = new Blob([response.data])
+  const response = await client.get(url, {
+    responseType: 'blob',
+    timeout: 0,
+  })
+
+  const rawContentType = response.headers['content-type']
+  const contentType = typeof rawContentType === 'string' ? rawContentType : 'video/mp4'
+  const blob = new Blob([response.data], { type: contentType })
+  const objectUrl = URL.createObjectURL(blob)
   const link = document.createElement('a')
-  link.href = URL.createObjectURL(blob)
+  link.href = objectUrl
   link.download = filename
+  link.rel = 'noopener'
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
-  URL.revokeObjectURL(link.href)
+
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
 }
 
 export default client
