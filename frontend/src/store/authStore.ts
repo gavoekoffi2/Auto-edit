@@ -5,6 +5,9 @@ interface User {
   email: string
   full_name: string | null
   plan: string
+  effective_plan?: string
+  subscription_expires_at?: string | null
+  is_admin?: boolean
 }
 
 interface AuthState {

@@ -4,6 +4,8 @@ from uuid import UUID
 from datetime import datetime
 from typing import Optional
 
+from app.services.subscriptions import effective_plan
+
 
 class UserCreate(BaseModel):
     email: str
@@ -55,7 +57,26 @@ class UserResponse(BaseModel):
     email: str
     full_name: Optional[str]
     plan: str
+    effective_plan: str
+    subscription_expires_at: Optional[datetime] = None
+    is_admin: bool = False
     created_at: datetime
+
+    @classmethod
+    def model_validate(cls, obj, *args, **kwargs):
+        if not isinstance(obj, dict):
+            data = {
+                "id": obj.id,
+                "email": obj.email,
+                "full_name": obj.full_name,
+                "plan": obj.plan,
+                "effective_plan": effective_plan(obj),
+                "subscription_expires_at": obj.subscription_expires_at,
+                "is_admin": bool(getattr(obj, "is_admin", False)),
+                "created_at": obj.created_at,
+            }
+            return super().model_validate(data, *args, **kwargs)
+        return super().model_validate(obj, *args, **kwargs)
 
     model_config = {"from_attributes": True}
 

@@ -150,7 +150,7 @@ export default function Dashboard() {
         <div>
           <h1 className="text-3xl font-bold">Dashboard</h1>
           <p className="text-dark-400 mt-1">
-            {user ? `${user.plan.toUpperCase()} plan` : 'Manage your videos'}
+            {user ? `${(user.effective_plan || user.plan).toUpperCase()} plan` : 'Manage your videos'}
             {total > 0 && ` · ${total} video${total !== 1 ? 's' : ''}`}
           </p>
         </div>

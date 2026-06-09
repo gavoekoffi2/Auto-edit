@@ -134,6 +134,11 @@ class Settings(BaseSettings):
     # Compte ops
     # ---------------------------------------------------------------------
     SUPPORT_EMAIL: str = "support@autoedit.app"
+    ADMIN_EMAILS: str = ""
+
+    @property
+    def admin_email_set(self) -> set[str]:
+        return {e.strip().lower() for e in self.ADMIN_EMAILS.split(",") if e.strip()}
 
     @property
     def is_production(self) -> bool:

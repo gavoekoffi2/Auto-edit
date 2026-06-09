@@ -8,6 +8,7 @@ from sqlalchemy import select
 from app.db.session import get_db
 from app.models.user import User
 from app.services.auth import decode_token
+from app.config import settings
 
 security = HTTPBearer()
 
@@ -54,3 +55,13 @@ async def get_current_user(
         )
 
     return user
+
+
+async def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
+    configured_admin = current_user.email.lower() in settings.admin_email_set
+    if not (getattr(current_user, "is_admin", False) or configured_admin):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return current_user

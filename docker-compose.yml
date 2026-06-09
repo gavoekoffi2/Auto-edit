@@ -48,6 +48,7 @@ x-backend-env: &backend-env
   # Email
   EMAIL_PROVIDER: ${EMAIL_PROVIDER:-console}
   EMAIL_FROM: ${EMAIL_FROM:-AutoEdit <noreply@autoedit.app>}
+  ADMIN_EMAILS: ${ADMIN_EMAILS:-}
   EMAIL_SMTP_HOST: ${EMAIL_SMTP_HOST:-}
   EMAIL_SMTP_PORT: ${EMAIL_SMTP_PORT:-587}
   EMAIL_SMTP_USER: ${EMAIL_SMTP_USER:-}

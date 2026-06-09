@@ -19,6 +19,7 @@ from app.api.deps import get_current_user
 from app.services.auth import decode_token
 from app.services.storage import save_upload, get_absolute_path, get_video_duration
 from app.config import settings
+from app.services.subscriptions import effective_plan
 
 logger = logging.getLogger(__name__)
 
@@ -77,8 +78,10 @@ async def upload_video(
             detail="Filename is required",
         )
 
+    current_plan = effective_plan(current_user)
+
     # Check monthly video quota for free users
-    if current_user.plan == "free":
+    if current_plan == "free":
         month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         count_result = await db.execute(
             select(func.count()).select_from(Video).where(
@@ -101,7 +104,7 @@ async def upload_video(
     duration = get_video_duration(abs_path)
 
     # Check duration limits
-    if duration is not None and current_user.plan == "free":
+    if duration is not None and current_plan == "free":
         if duration > settings.MAX_VIDEO_DURATION_FREE:
             # Clean up uploaded file
             try:
@@ -113,7 +116,7 @@ async def upload_video(
                 detail=f"Free plan limited to {settings.MAX_VIDEO_DURATION_FREE // 60} min videos. "
                        f"Your video is {duration / 60:.1f} min. Upgrade to Pro.",
             )
-    elif duration is not None and current_user.plan == "pro":
+    elif duration is not None and current_plan == "pro":
         if duration > settings.MAX_VIDEO_DURATION_PRO:
             try:
                 os.unlink(abs_path)

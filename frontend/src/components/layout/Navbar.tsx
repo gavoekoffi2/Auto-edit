@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
-import { Zap, LogOut, User } from 'lucide-react'
+import { Zap, LogOut, User, Shield } from 'lucide-react'
 
 export default function Navbar() {
   const { accessToken, user, logout } = useAuthStore()
@@ -30,6 +30,12 @@ export default function Navbar() {
                 <Link to="/dashboard" className="text-dark-300 hover:text-white transition-colors">
                   Dashboard
                 </Link>
+                {user?.is_admin && (
+                  <Link to="/admin" className="text-dark-300 hover:text-white transition-colors flex items-center gap-1">
+                    <Shield className="w-4 h-4" />
+                    Admin
+                  </Link>
+                )}
                 <div className="flex items-center gap-3">
                   <span className="text-sm text-dark-400 flex items-center gap-1">
                     <User className="w-4 h-4" />
