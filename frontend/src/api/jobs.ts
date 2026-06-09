@@ -56,9 +56,16 @@ export async function listJobs(videoId?: string) {
   return res.data
 }
 
+function withAccessToken(url: string) {
+  const token = localStorage.getItem('access_token')
+  if (!token) return url
+  const separator = url.includes('?') ? '&' : '?'
+  return `${url}${separator}access_token=${encodeURIComponent(token)}`
+}
+
 export function getJobDownloadUrl(jobId: string) {
   const base = import.meta.env.VITE_API_URL || '/api'
-  return `${base}/v1/jobs/${jobId}/download`
+  return withAccessToken(`${base}/v1/jobs/${jobId}/download`)
 }
 
 export async function downloadJobResult(jobId: string) {

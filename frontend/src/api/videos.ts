@@ -79,9 +79,17 @@ export async function deleteVideo(id: string) {
   await client.delete(`/videos/${id}`)
 }
 
+function withAccessToken(url: string) {
+  const token = localStorage.getItem('access_token')
+  if (!token) return url
+  const separator = url.includes('?') ? '&' : '?'
+  return `${url}${separator}access_token=${encodeURIComponent(token)}`
+}
+
 export function getStreamUrl(id: string) {
-  // Stream endpoint is protected by auth header via client interceptor.
-  // We return just the path - VideoPlayer will need to use fetch with auth.
+  // The HTML <video> element cannot send Authorization headers. Put the current
+  // access token in the URL so the browser can stream metadata/ranges directly
+  // instead of downloading the whole file with fetch() first.
   const base = import.meta.env.VITE_API_URL || '/api'
-  return `${base}/v1/videos/${id}/stream`
+  return withAccessToken(`${base}/v1/videos/${id}/stream`)
 }

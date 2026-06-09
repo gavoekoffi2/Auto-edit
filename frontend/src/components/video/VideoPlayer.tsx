@@ -1,5 +1,5 @@
-import { useRef, useState, useEffect } from 'react'
-import { Play, Pause, Volume2, VolumeX, Maximize, Loader2 } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Play, Pause, Volume2, VolumeX, Maximize } from 'lucide-react'
 
 interface Props {
   src: string
@@ -7,55 +7,11 @@ interface Props {
 
 export default function VideoPlayer({ src }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const blobUrlRef = useRef<string>('')
   const [playing, setPlaying] = useState(false)
   const [muted, setMuted] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [blobUrl, setBlobUrl] = useState<string>('')
   const [error, setError] = useState('')
-
-  // Fetch video with auth header instead of token in URL
-  useEffect(() => {
-    let cancelled = false
-    const controller = new AbortController()
-
-    async function fetchVideo() {
-      setLoading(true)
-      setError('')
-      try {
-        const token = localStorage.getItem('access_token')
-        const res = await fetch(src, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          signal: controller.signal,
-        })
-        if (!res.ok) throw new Error(`Failed to load video (${res.status})`)
-        const blob = await res.blob()
-        if (!cancelled) {
-          const url = URL.createObjectURL(blob)
-          blobUrlRef.current = url
-          setBlobUrl(url)
-        }
-      } catch (err) {
-        if (!cancelled && err instanceof Error && err.name !== 'AbortError') {
-          setError(err.message)
-        }
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-
-    fetchVideo()
-    return () => {
-      cancelled = true
-      controller.abort()
-      if (blobUrlRef.current) {
-        URL.revokeObjectURL(blobUrlRef.current)
-        blobUrlRef.current = ''
-      }
-    }
-  }, [src])
 
   const togglePlay = () => {
     if (!videoRef.current) return
@@ -95,14 +51,6 @@ export default function VideoPlayer({ src }: Props) {
     return `${m}:${sec.toString().padStart(2, '0')}`
   }
 
-  if (loading) {
-    return (
-      <div className="bg-black rounded-xl aspect-video flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-primary-500 animate-spin" />
-      </div>
-    )
-  }
-
   if (error) {
     return (
       <div className="bg-dark-900 rounded-xl aspect-video flex items-center justify-center">
@@ -115,10 +63,14 @@ export default function VideoPlayer({ src }: Props) {
     <div className="relative bg-black rounded-xl overflow-hidden group">
       <video
         ref={videoRef}
-        src={blobUrl}
+        src={src}
         className="w-full aspect-video"
+        preload="metadata"
+        playsInline
+        controls={false}
         onTimeUpdate={() => videoRef.current && setCurrentTime(videoRef.current.currentTime)}
         onLoadedMetadata={() => videoRef.current && setDuration(videoRef.current.duration)}
+        onError={() => setError("Impossible de prévisualiser la vidéo. Essaie de recharger la page ou lance le téléchargement.")}
         onEnded={() => setPlaying(false)}
         onClick={togglePlay}
       />

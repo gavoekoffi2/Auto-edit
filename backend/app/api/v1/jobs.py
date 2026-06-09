@@ -4,6 +4,7 @@ from uuid import UUID
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -14,11 +15,33 @@ from app.models.video import Video
 from app.models.job import Job
 from app.schemas.job import JobCreate, JobResponse
 from app.api.deps import get_current_user
+from app.services.auth import decode_token
 from app.services.storage import get_absolute_path
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+optional_security = HTTPBearer(auto_error=False)
+
+
+async def get_media_user(
+    db: AsyncSession,
+    credentials: HTTPAuthorizationCredentials | None,
+    access_token: str | None,
+) -> User:
+    token = credentials.credentials if credentials else access_token
+    payload = decode_token(token) if token else None
+    if payload is None or payload.get("type") != "access" or not payload.get("sub"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+
+    result = await db.execute(select(User).where(User.id == UUID(payload["sub"])))
+    user = result.scalar_one_or_none()
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    return user
 
 
 _MODE_DEFINITIONS: list[dict] = [
@@ -260,9 +283,11 @@ async def cancel_job(
 @router.get("/{job_id}/download")
 async def download_result(
     job_id: UUID,
+    access_token: str | None = Query(None),
+    credentials: HTTPAuthorizationCredentials | None = Depends(optional_security),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
 ):
+    current_user = await get_media_user(db, credentials, access_token)
     result = await db.execute(
         select(Job).where(Job.id == job_id, Job.user_id == current_user.id)
     )

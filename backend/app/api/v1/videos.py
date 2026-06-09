@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from dateutil.relativedelta import relativedelta
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -15,17 +16,45 @@ from app.models.user import User
 from app.models.video import Video
 from app.schemas.video import VideoResponse, VideoListResponse
 from app.api.deps import get_current_user
+from app.services.auth import decode_token
 from app.services.storage import save_upload, get_absolute_path, get_video_duration
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+optional_security = HTTPBearer(auto_error=False)
 
 ALLOWED_EXTENSIONS = {
     ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm", ".flv", ".wmv",
     ".3gp", ".3g2", ".mts", ".m2ts",
 }
+
+
+async def get_stream_user(
+    db: AsyncSession,
+    credentials: HTTPAuthorizationCredentials | None,
+    access_token: str | None,
+) -> User:
+    """Authenticate video streaming via header or query token.
+
+    Normal API calls use the Authorization header. Native HTML video playback
+    cannot attach custom headers, so the frontend may pass the current access
+    token as a query parameter specifically for media streaming.
+    """
+    token = credentials.credentials if credentials else access_token
+    payload = decode_token(token) if token else None
+    if payload is None or payload.get("type") != "access" or not payload.get("sub"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+
+    result = await db.execute(select(User).where(User.id == UUID(payload["sub"])))
+    user = result.scalar_one_or_none()
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    return user
 
 
 @router.post("/upload", response_model=VideoResponse, status_code=status.HTTP_201_CREATED)
@@ -152,9 +181,11 @@ async def get_video(
 @router.get("/{video_id}/stream")
 async def stream_video(
     video_id: UUID,
+    access_token: str | None = Query(None),
+    credentials: HTTPAuthorizationCredentials | None = Depends(optional_security),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
 ):
+    current_user = await get_stream_user(db, credentials, access_token)
     result = await db.execute(
         select(Video).where(Video.id == video_id, Video.user_id == current_user.id)
     )
