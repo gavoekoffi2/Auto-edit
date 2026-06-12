@@ -126,7 +126,7 @@ def get_email_provider() -> EmailProvider:
 
 
 def send_password_reset_email(*, to_email: str, reset_url: str) -> bool:
-    subject = "Reinitialise ton mot de passe AutoEdit"
+    subject = "Reinitialise ton mot de passe CutForge"
     text = (
         f"Tu as demande une reinitialisation de mot de passe.\n\n"
         f"Clique sur ce lien pour creer un nouveau mot de passe "
@@ -156,7 +156,7 @@ def send_job_completed_email(*, to_email: str, video_title: str, download_url: s
     html = f"""<!doctype html><html><body style="font-family:Inter,system-ui,sans-serif;background:#0a0a0f;color:#fff;padding:32px">
   <div style="max-width:520px;margin:auto;background:#16171f;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:32px">
     <h1 style="margin:0 0 16px;font-size:22px">Ta video est prete</h1>
-    <p style="color:rgba(255,255,255,.7)">« {video_title} » a fini d'etre montee par AutoEdit.</p>
+    <p style="color:rgba(255,255,255,.7)">« {video_title} » a fini d'etre montee par CutForge.</p>
     <p style="margin:24px 0"><a href="{download_url}" style="display:inline-block;padding:12px 24px;background:#2a55f5;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Telecharger</a></p>
   </div></body></html>"""
     try:

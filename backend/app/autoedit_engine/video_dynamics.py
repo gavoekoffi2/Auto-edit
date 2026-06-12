@@ -98,7 +98,7 @@ def build_vf(ranges: List[dict]) -> str:
     dynamic instead of a static centered zoom.
     """
     z = build_zoom_expr(ranges)
-    t = "(on/30)"
+    t = f"(on/{config.FPS})"
     x = f"(iw-iw/zoom)*(0.50+0.10*sin({t}*0.85))"
     y = f"(ih-ih/zoom)*(0.50+0.06*cos({t}*0.65))"
     return (

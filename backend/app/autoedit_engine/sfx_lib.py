@@ -215,6 +215,100 @@ def _bass_hit() -> np.ndarray:
     return _fade(body + click, fout=0.06)
 
 
+# --------------------------------------------------------------------------- #
+# v4.2 — professional additions
+# --------------------------------------------------------------------------- #
+def _shutter_burst() -> np.ndarray:
+    """Rapid 3-shot camera burst (photo rafale)."""
+    t = _t(0.42)
+    out = np.zeros(len(t))
+    one = _shutter()
+    for k in range(3):
+        start = int(SR * 0.125 * k)
+        end = min(len(out), start + len(one))
+        out[start:end] += one[: end - start] * (1.0 - 0.15 * k)
+    return _fade(out, fout=0.03)
+
+
+def _camera_focus() -> np.ndarray:
+    """Autofocus double-beep right before a shot — subtle, high, short."""
+    t = _t(0.22)
+    out = np.zeros(len(t))
+    beep = _sine(2300, _t(0.045)) * _exp_env(_t(0.045), 30)
+    for start_s in (0.0, 0.11):
+        start = int(SR * start_s)
+        end = min(len(out), start + len(beep))
+        out[start:end] += beep[: end - start]
+    return _fade(out, fout=0.02)
+
+
+def _pen_scribble() -> np.ndarray:
+    """Pencil drawing on paper — gated filtered noise strokes (whiteboard)."""
+    t = _t(1.0)
+    n = _highpass(_noise(len(t), 31), 4)
+    # stroke gate: bursts of varying length, like quick pencil strokes
+    gate = np.zeros(len(t))
+    rng = np.random.default_rng(32)
+    pos = 0
+    while pos < len(t):
+        stroke = int(SR * rng.uniform(0.05, 0.16))
+        gap = int(SR * rng.uniform(0.015, 0.05))
+        end = min(len(t), pos + stroke)
+        seg = np.sin(np.pi * np.linspace(0, 1, end - pos)) * rng.uniform(0.5, 1.0)
+        gate[pos:end] = seg
+        pos = end + gap
+    return _fade(_lowpass(n * gate, 3), fout=0.08)
+
+
+def _tape_stop() -> np.ndarray:
+    """Tape-stop: a tone whose pitch collapses to zero (great as exit/riser)."""
+    t = _t(0.55)
+    freq = 660.0 * (1.0 - t / t[-1]) ** 1.6 + 18.0
+    body = _sine(freq, t) * (1.0 - 0.55 * t / t[-1])
+    hiss = _lowpass(_noise(len(t), 33), 25) * 0.18 * (1.0 - t / t[-1])
+    return _fade(body + hiss, fout=0.06)
+
+
+def _bubble() -> np.ndarray:
+    """Liquid pop with an upward pitch flick — playful UI accent."""
+    t = _t(0.14)
+    freq = np.linspace(420, 1500, len(t)) ** 1.0
+    return _fade(_sine(freq, t) * _exp_env(t, 24), fin=0.002, fout=0.02)
+
+
+def _snap() -> np.ndarray:
+    """Finger snap: sharp mid crack + tiny room tail."""
+    t = _t(0.18)
+    crack = _highpass(_noise(len(t), 34), 3) * _exp_env(t, 95)
+    body = _sine(1900, t) * _exp_env(t, 70) * 0.4
+    tail = _lowpass(_noise(len(t), 35), 18) * _exp_env(t, 22) * 0.25
+    return _fade(crack + body + tail, fin=0.001, fout=0.04)
+
+
+def _cinematic_hit() -> np.ndarray:
+    """Trailer-style hit: sub punch + metallic ring + long airy tail."""
+    t = _t(1.1)
+    sub = _sine(np.linspace(95, 38, len(t)), t) * _exp_env(t, 5)
+    ring = (_sine(523, t) + 0.6 * _sine(784, t) + 0.4 * _sine(1046.5, t)) * _exp_env(t, 6) * 0.35
+    crack = _noise(len(t), 36) * _exp_env(t, 90) * 0.5
+    air = _lowpass(_noise(len(t), 37), 55) * _exp_env(t, 3) * 0.22
+    return _fade(sub + ring + crack + air, fout=0.25)
+
+
+def _data_tick() -> np.ndarray:
+    """Fast digital ticks — pairs with animated counters."""
+    t = _t(0.30)
+    out = np.zeros(len(t))
+    tick = np.sign(_sine(2800, _t(0.012))) * _exp_env(_t(0.012), 240)
+    rng = np.random.default_rng(38)
+    for k in range(7):
+        start = int(SR * (0.012 + 0.040 * k) * rng.uniform(0.92, 1.05))
+        end = min(len(out), start + len(tick))
+        if end > start:
+            out[start:end] += tick[: end - start] * (1.0 - 0.09 * k)
+    return _fade(out * 0.6, fout=0.03)
+
+
 GENERATORS: Dict[str, Callable[[], np.ndarray]] = {
     "whoosh": _whoosh,
     "swoosh_up": lambda: _swoosh(True, 21),
@@ -235,6 +329,14 @@ GENERATORS: Dict[str, Callable[[], np.ndarray]] = {
     "digi_blip": _digi_blip,
     "reverse_swell": _reverse_swell,
     "bass_hit": _bass_hit,
+    "shutter_burst": _shutter_burst,
+    "camera_focus": _camera_focus,
+    "pen_scribble": _pen_scribble,
+    "tape_stop": _tape_stop,
+    "bubble": _bubble,
+    "snap": _snap,
+    "cinematic_hit": _cinematic_hit,
+    "data_tick": _data_tick,
 }
 
 

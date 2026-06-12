@@ -5,7 +5,7 @@ from uuid import UUID
 from datetime import datetime, timezone
 from dateutil.relativedelta import relativedelta
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Query, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -184,6 +184,7 @@ async def get_video(
 @router.get("/{video_id}/stream")
 async def stream_video(
     video_id: UUID,
+    request: Request,
     access_token: str | None = Query(None),
     credentials: HTTPAuthorizationCredentials | None = Depends(optional_security),
     db: AsyncSession = Depends(get_db),
@@ -204,7 +205,10 @@ async def stream_video(
     media_type = guessed_type or "application/octet-stream"
     if not media_type.startswith("video/"):
         media_type = "video/mp4"
-    return FileResponse(file_path, media_type=media_type)
+    # Range-aware: the <video> element can seek without re-downloading the file.
+    from app.services.media import ranged_file_response
+
+    return ranged_file_response(file_path, request, media_type=media_type)
 
 
 @router.delete("/{video_id}", status_code=status.HTTP_204_NO_CONTENT)

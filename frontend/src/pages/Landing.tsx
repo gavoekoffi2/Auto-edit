@@ -1,1304 +1,764 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useRef, useState } from 'react'
 import {
-  motion,
-  useScroll,
-  useTransform,
-  useReducedMotion,
-  AnimatePresence,
-  type Variants,
-} from 'framer-motion'
-import {
-  ArrowRight,
-  Sparkles,
-  Wand2,
-  Clock,
-  Subtitles,
-  Image as ImageIcon,
-  Music,
-  Scissors,
-  Smartphone,
-  Play,
-  Check,
-  ChevronDown,
-  Star,
-  Zap,
-  ShieldCheck,
+  ArrowRight, Check, ChevronDown, Image as ImageIcon, PenTool, Scissors,
+  Smartphone, Sparkles, Subtitles, Upload, Volume2, Wand2, Zap,
 } from 'lucide-react'
+import Logo from '../components/ui/Logo'
 import Footer from '../components/layout/Footer'
+import { BRAND } from '../brand'
+import '../styles/landing.css'
 
-// ============================================================================
-// Photos hébergées sur Unsplash — créateurs et entrepreneurs en environnement
-// urbain moderne. Les URLs sont stables (CDN Unsplash).
-// ============================================================================
-const PORTRAITS = {
-  aisha:
-    'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?auto=format&fit=crop&w=320&q=80',
-  kossi:
-    'https://images.unsplash.com/photo-1531123897727-8f129e1688ce?auto=format&fit=crop&w=320&q=80',
-  fatima:
-    'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=320&q=80',
-  yannick:
-    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=320&q=80',
-  awa:
-    'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=320&q=80',
+/* ========================================================================== */
+/*  Helpers d'animation                                                       */
+/* ========================================================================== */
+
+const CYCLE = 12 // secondes — boucle de la simulation de montage du hero
+
+/** Cale une animation partagée sur un instant précis du cycle de 12 s
+ *  (delay négatif = déphasage : le keyframe 0% tombe à `startSeconds`). */
+function ph(name: string, startSeconds: number): React.CSSProperties {
+  return {
+    animationName: name,
+    animationDelay: `${(startSeconds - CYCLE).toFixed(2)}s`,
+    animationTimingFunction: 'linear',
+  }
 }
 
-const HERO_VIDEO_THUMB =
-  'https://images.unsplash.com/photo-1611532736597-de2d4265fba3?auto=format&fit=crop&w=1280&q=80'
+/** La section apparaît (fade + translate) quand elle entre dans le viewport. */
+function Reveal({
+  children, delay = 0, className = '',
+}: { children: React.ReactNode; delay?: number; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          el.classList.add('is-visible')
+          io.disconnect()
+        }
+      },
+      { threshold: 0.15 },
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+  return (
+    <div ref={ref} className={`reveal ${className}`} style={{ transitionDelay: `${delay}ms` }}>
+      {children}
+    </div>
+  )
+}
 
-const SHOWCASE_IMAGES = [
-  'https://images.unsplash.com/photo-1573164574572-cb89e39749b4?auto=format&fit=crop&w=640&q=80',
-  'https://images.unsplash.com/photo-1556761175-5973dc0f32e7?auto=format&fit=crop&w=640&q=80',
-  'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=640&q=80',
-  'https://images.unsplash.com/photo-1543269865-cbf427effbad?auto=format&fit=crop&w=640&q=80',
+/* ========================================================================== */
+/*  Simulation de montage — le téléphone du hero                              */
+/*  Reproduit en CSS ce que le moteur fait vraiment : captions karaoké,       */
+/*  popup mot-clé, B-roll avec flash photo, scène motion design (dessin       */
+/*  qui se trace + compteur + cercle marqueur + flèche), pastilles SFX.       */
+/* ========================================================================== */
+
+const CAPTION_CHUNKS = [
+  ['VOICI', 'LA', 'MÉTHODE'],
+  ['POUR', 'EXPLOSER', 'TES'],
+  ['VENTES', 'EN', 'LIGNE'],
+  ['AVEC', 'CUTFORGE', '🔥'],
 ]
 
-// ============================================================================
-// Helpers de motion
-// ============================================================================
-const fadeUp: Variants = {
-  hidden: { opacity: 0, y: 28 },
-  show: (i: number = 0) => ({
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.65, delay: i * 0.08, ease: [0.22, 1, 0.36, 1] },
-  }),
+function useDemoCounter(target = 80, windowStart = 7.35, windowDur = 1.35) {
+  const [value, setValue] = useState(0)
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setValue(target)
+      return
+    }
+    let raf = 0
+    const tick = () => {
+      const t = (performance.now() / 1000) % CYCLE
+      const p = Math.min(1, Math.max(0, (t - windowStart) / windowDur))
+      setValue(Math.round(target * (1 - Math.pow(1 - p, 3))))
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [target, windowStart, windowDur])
+  return value
 }
 
-const stagger: Variants = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.08 } },
-}
-
-// ============================================================================
-// Composant principal
-// ============================================================================
-export default function Landing() {
+function SfxPill({ label, at, side = 'left' }: { label: string; at: number; side?: 'left' | 'right' }) {
   return (
-    <main className="overflow-x-clip">
-      <Hero />
-      <SocialProof />
-      <Pain />
-      <Solution />
-      <Features />
-      <HowItWorks />
-      <Modes />
-      <Showcase />
-      <Stats />
-      <Testimonials />
-      <PricingTeaser />
-      <Faq />
-      <FinalCta />
-      <Footer />
-    </main>
-  )
-}
-
-// ============================================================================
-// HERO
-// ============================================================================
-function Hero() {
-  const ref = useRef<HTMLDivElement>(null)
-  const reduce = useReducedMotion()
-  const { scrollYProgress } = useScroll({ target: ref, offset: ['start start', 'end start'] })
-  const y1 = useTransform(scrollYProgress, [0, 1], [0, -120])
-  const y2 = useTransform(scrollYProgress, [0, 1], [0, 80])
-  const opacity = useTransform(scrollYProgress, [0, 0.6], [1, 0.4])
-
-  return (
-    <section
-      ref={ref}
-      className="relative pt-20 sm:pt-28 pb-24 overflow-hidden noise"
-      style={{
-        backgroundImage:
-          'radial-gradient(ellipse 90% 50% at 50% -10%, rgba(63,114,255,0.18), transparent 60%), radial-gradient(ellipse 80% 50% at 90% 20%, rgba(249,115,22,0.12), transparent 60%), radial-gradient(ellipse 60% 50% at 10% 30%, rgba(168,85,247,0.14), transparent 60%)',
-      }}
+    <span
+      className={`pd-cycle absolute ${side === 'left' ? 'left-2' : 'right-2'} top-1/3 z-30 rounded-full bg-black/70 border border-white/15 px-2 py-0.5 text-[9px] font-semibold tracking-wider text-cyan-200 opacity-0`}
+      style={ph('pdSfx', at)}
     >
-      {/* Grid background */}
-      <div
-        aria-hidden
-        className="absolute inset-0 opacity-[0.15] bg-grid-fade bg-grid-32"
-        style={{ maskImage: 'linear-gradient(to bottom, black 30%, transparent 95%)' }}
-      />
-
-      {/* Floating blobs */}
-      {!reduce && (
-        <>
-          <motion.div
-            style={{ y: y1 }}
-            className="pointer-events-none absolute -top-32 -left-20 w-[520px] h-[520px] rounded-full bg-primary-600/20 blur-[120px] animate-float-slow"
-          />
-          <motion.div
-            style={{ y: y2 }}
-            className="pointer-events-none absolute top-20 right-0 w-[460px] h-[460px] rounded-full bg-accent-500/20 blur-[120px] animate-float-slower"
-          />
-        </>
-      )}
-
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          variants={stagger}
-          initial="hidden"
-          animate="show"
-          className="text-center max-w-4xl mx-auto"
-        >
-          {/* Badge */}
-          <motion.div
-            variants={fadeUp}
-            custom={0}
-            className="inline-flex items-center gap-2 glass rounded-full px-4 py-1.5 mb-7 text-sm"
-          >
-            <span className="relative flex w-2 h-2">
-              <span className="absolute inline-flex h-full w-full rounded-full bg-accent-400 opacity-70 animate-ping" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-accent-500" />
-            </span>
-            <span className="text-white/80">Nouveau · Pipeline IA V2 disponible</span>
-          </motion.div>
-
-          {/* Headline */}
-          <motion.h1
-            variants={fadeUp}
-            custom={1}
-            className="text-balance text-[40px] leading-[1.05] sm:text-6xl md:text-7xl font-bold tracking-tight"
-          >
-            Tu enregistres.{' '}
-            <span className="gradient-text animate-gradient-x">L&apos;IA monte.</span>
-            <br className="hidden sm:block" />
-            Tu publies.
-          </motion.h1>
-
-          {/* Sub */}
-          <motion.p
-            variants={fadeUp}
-            custom={2}
-            className="text-balance text-lg sm:text-xl text-white/70 mt-6 max-w-2xl mx-auto leading-relaxed"
-          >
-            Charge ta vidéo brute. AutoEdit coupe les silences, ajoute des
-            sous-titres dynamiques, du B-roll, de la musique et un habillage
-            premium. <span className="text-white">5&nbsp;minutes</span> au lieu
-            de 4&nbsp;heures.
-          </motion.p>
-
-          {/* CTAs */}
-          <motion.div
-            variants={fadeUp}
-            custom={3}
-            className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3"
-          >
-            <Link
-              to="/signup"
-              className="group relative overflow-hidden btn-primary text-base py-3.5 px-7 inline-flex items-center gap-2 shadow-glow-primary"
-            >
-              <span className="relative z-10 flex items-center gap-2">
-                Lancer mon premier montage
-                <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
-              </span>
-              <span
-                aria-hidden
-                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent translate-x-[-150%] group-hover:translate-x-[150%] transition-transform duration-700"
-              />
-            </Link>
-            <Link
-              to="/pricing"
-              className="btn-secondary text-base py-3.5 px-7 inline-flex items-center gap-2"
-            >
-              <Play className="w-4 h-4" />
-              Voir une démo
-            </Link>
-          </motion.div>
-
-          {/* Trust line */}
-          <motion.div
-            variants={fadeUp}
-            custom={4}
-            className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-white/50"
-          >
-            <span className="inline-flex items-center gap-1.5">
-              <Check className="w-4 h-4 text-emerald-400" /> 2 vidéos gratuites
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <Check className="w-4 h-4 text-emerald-400" /> Sans carte bancaire
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <Check className="w-4 h-4 text-emerald-400" /> Paiement Mobile Money
-            </span>
-          </motion.div>
-        </motion.div>
-
-        {/* Mockup */}
-        <motion.div
-          style={{ opacity }}
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4, duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
-          className="relative mt-16 sm:mt-20 max-w-5xl mx-auto"
-        >
-          <HeroMockup />
-        </motion.div>
-      </div>
-    </section>
+      {label}
+    </span>
   )
 }
 
-function HeroMockup() {
+function PhoneDemo() {
+  const counter = useDemoCounter()
   return (
-    <div className="relative">
-      <div
-        aria-hidden
-        className="absolute -inset-x-8 -bottom-10 h-40 bg-gradient-to-t from-dark-950 to-transparent"
-      />
-      <div className="glass rounded-2xl overflow-hidden shadow-card-premium">
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5">
-          <div className="flex gap-1.5">
-            <div className="w-3 h-3 rounded-full bg-red-500/80" />
-            <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
-            <div className="w-3 h-3 rounded-full bg-green-500/80" />
-          </div>
-          <div className="flex-1 text-center text-xs text-white/40">
-            autoedit.app — Studio
-          </div>
-        </div>
+    <div className="relative mx-auto w-[270px] sm:w-[300px]">
+      {/* halo */}
+      <div className="absolute -inset-8 rounded-[3rem] bg-gradient-to-tr from-primary-600/30 via-fuchsia-500/20 to-accent-500/30 blur-2xl" aria-hidden />
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-0">
-          {/* Preview */}
-          <div className="md:col-span-2 relative aspect-video bg-dark-900">
-            <img
-              src={HERO_VIDEO_THUMB}
-              alt="Aperçu studio AutoEdit"
-              className="absolute inset-0 w-full h-full object-cover opacity-90"
-              loading="eager"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-            {/* Play */}
-            <button
-              type="button"
-              className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-white/95 text-dark-900 flex items-center justify-center shadow-2xl"
-              aria-label="Lire la démo"
-            >
-              <Play className="w-6 h-6 fill-current" />
-            </button>
-            {/* Subtitle overlay */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 1.1, duration: 0.6 }}
-              className="absolute bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-md bg-black/70 backdrop-blur border border-white/10 text-sm font-semibold tracking-wide"
-            >
-              <span className="text-accent-300">Lance</span> ton business
-              aujourd&apos;hui
-            </motion.div>
-            {/* Timeline */}
-            <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/10">
-              <motion.div
-                initial={{ width: '12%' }}
-                animate={{ width: '64%' }}
-                transition={{ duration: 2.4, ease: 'easeInOut', repeat: Infinity, repeatType: 'reverse' }}
-                className="h-full bg-gradient-to-r from-primary-500 to-accent-500"
-              />
-            </div>
-          </div>
+      {/* cadre téléphone */}
+      <div className="relative rounded-[2.4rem] border border-white/15 bg-dark-900 p-2 shadow-2xl shadow-primary-900/40">
+        <div className="absolute left-1/2 top-4 z-40 h-1.5 w-16 -translate-x-1/2 rounded-full bg-black/70" aria-hidden />
+        <div className="relative aspect-[9/16] overflow-hidden rounded-[1.9rem] bg-dark-950">
 
-          {/* Side panel */}
-          <div className="p-5 bg-dark-900/60 border-t md:border-t-0 md:border-l border-white/5 space-y-4">
-            <SideStep done label="Transcription" sub="Mot par mot" />
-            <SideStep done label="Coupes intelligentes" sub="Silences + filler words" />
-            <SideStep done label="B-roll IA" sub="Contextuel" />
-            <SideStep active label="Sous-titres dynamiques" sub="En cours…" />
-            <SideStep label="Export 1080p · 9:16" />
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function SideStep(props: { label: string; sub?: string; done?: boolean; active?: boolean }) {
-  return (
-    <div className="flex items-start gap-3">
-      <div
-        className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
-          props.done
-            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-            : props.active
-            ? 'bg-primary-500/20 text-primary-300 border border-primary-500/40 animate-pulse-soft'
-            : 'bg-white/5 text-white/30 border border-white/10'
-        }`}
-      >
-        {props.done ? <Check className="w-3 h-3" /> : props.active ? '…' : ''}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-white">{props.label}</p>
-        {props.sub && <p className="text-xs text-white/50">{props.sub}</p>}
-      </div>
-    </div>
-  )
-}
-
-// ============================================================================
-// SOCIAL PROOF — bandeau plateformes + créateurs
-// ============================================================================
-function SocialProof() {
-  const items = [
-    'TikTok', 'Instagram Reels', 'YouTube Shorts', 'WhatsApp Business',
-    'Facebook', 'LinkedIn', 'Snapchat', 'Pinterest',
-  ]
-  return (
-    <section className="py-10 border-y border-white/5 bg-dark-900/40">
-      <p className="text-center text-xs uppercase tracking-[0.2em] text-white/40 mb-5">
-        Optimisé pour les plateformes où ton audience scrolle
-      </p>
-      <div className="mask-fade-x overflow-hidden">
-        <motion.div
-          className="flex gap-12 whitespace-nowrap"
-          animate={{ x: ['0%', '-50%'] }}
-          transition={{ duration: 38, repeat: Infinity, ease: 'linear' }}
-        >
-          {[...items, ...items, ...items].map((p, i) => (
-            <span
-              key={i}
-              className="text-xl sm:text-2xl font-display font-semibold text-white/30 hover:text-white/60 transition-colors"
-            >
-              {p}
-            </span>
-          ))}
-        </motion.div>
-      </div>
-    </section>
-  )
-}
-
-// ============================================================================
-// PAIN — Le vrai problème
-// ============================================================================
-function Pain() {
-  const pains = [
-    {
-      stat: '4h',
-      title: 'pour monter 1 minute',
-      desc: "Tu passes plus de temps à monter qu'à créer. Capcut, Premiere, DaVinci — chaque outil exige une courbe d&apos;apprentissage.",
-      tone: 'red',
-    },
-    {
-      stat: '3s',
-      title: 'avant que ton viewer scrolle',
-      desc: "Un montage lent, c'est une audience perdue. Les algorithmes punissent les vidéos qui n'accrochent pas dès la première seconde.",
-      tone: 'orange',
-    },
-    {
-      stat: '50K',
-      title: 'FCFA pour un monteur',
-      desc: "Externaliser, c'est cher, lent, et tu perds le contrôle créatif. Multiplie par 10 vidéos par mois — le budget explose.",
-      tone: 'amber',
-    },
-  ]
-
-  return (
-    <section className="py-24 sm:py-32 relative">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true, margin: '-80px' }}
-          variants={stagger}
-          className="max-w-3xl mx-auto text-center mb-16"
-        >
-          <motion.p
-            variants={fadeUp}
-            className="text-sm uppercase tracking-[0.2em] text-accent-400 font-semibold mb-4"
-          >
-            Le vrai problème
-          </motion.p>
-          <motion.h2
-            variants={fadeUp}
-            custom={1}
-            className="text-balance text-3xl sm:text-5xl font-bold leading-tight"
-          >
-            Tu as <span className="text-accent-300">le talent</span>.
-            <br />
-            Le montage te le vole.
-          </motion.h2>
-          <motion.p
-            variants={fadeUp}
-            custom={2}
-            className="text-white/60 text-lg mt-6 leading-relaxed"
-          >
-            Chaque jour qui passe sans publier, c'est une audience qui choisit
-            quelqu'un d'autre. Le problème n'est pas ton contenu — c'est tout
-            ce qui se passe entre l'enregistrement et la publication.
-          </motion.p>
-        </motion.div>
-
-        <motion.div
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true, margin: '-50px' }}
-          variants={stagger}
-          className="grid md:grid-cols-3 gap-5"
-        >
-          {pains.map((p, i) => (
-            <motion.div
-              key={p.title}
-              variants={fadeUp}
-              custom={i}
-              whileHover={{ y: -4 }}
-              className="relative card overflow-hidden group"
-            >
-              <div
-                aria-hidden
-                className={`absolute -top-16 -right-16 w-48 h-48 rounded-full blur-3xl opacity-30 group-hover:opacity-50 transition ${
-                  p.tone === 'red'
-                    ? 'bg-red-500'
-                    : p.tone === 'orange'
-                    ? 'bg-accent-500'
-                    : 'bg-amber-500'
-                }`}
-              />
-              <div className="relative">
-                <p className="text-5xl font-display font-bold mb-2 bg-clip-text text-transparent bg-gradient-to-br from-white to-white/40">
-                  {p.stat}
-                </p>
-                <h3 className="text-lg font-semibold mb-3">{p.title}</h3>
-                <p className="text-white/60 leading-relaxed">{p.desc}</p>
-              </div>
-            </motion.div>
-          ))}
-        </motion.div>
-      </div>
-    </section>
-  )
-}
-
-// ============================================================================
-// SOLUTION — Avant / Après
-// ============================================================================
-function Solution() {
-  return (
-    <section className="py-24 sm:py-32 relative border-t border-white/5">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true }}
-          variants={stagger}
-          className="max-w-3xl mx-auto text-center mb-16"
-        >
-          <motion.p
-            variants={fadeUp}
-            className="text-sm uppercase tracking-[0.2em] text-primary-300 font-semibold mb-4"
-          >
-            La solution
-          </motion.p>
-          <motion.h2 variants={fadeUp} custom={1} className="text-3xl sm:text-5xl font-bold leading-tight">
-            Une <span className="gradient-text">IA qui monte à ta place</span>,
-            pas un éditeur que tu dois apprendre.
-          </motion.h2>
-          <motion.p variants={fadeUp} custom={2} className="text-white/60 text-lg mt-6">
-            AutoEdit comprend ce que tu dis, coupe ce qui n'apporte rien,
-            illustre tes idées et habille ta vidéo. Tu valides, tu publies.
-          </motion.p>
-        </motion.div>
-
-        <div className="grid md:grid-cols-2 gap-6 lg:gap-10 items-stretch">
-          <BeforeAfter
-            label="Sans AutoEdit"
-            tone="bad"
-            duration="03:47"
-            metrics={[
-              { label: 'Temps de montage', value: '4h 12min' },
-              { label: 'Filler words', value: '38 « euh »' },
-              { label: 'Silences morts', value: '6 min cumulées' },
-              { label: 'Sous-titres', value: 'À taper à la main' },
-            ]}
-          />
-          <BeforeAfter
-            label="Avec AutoEdit"
-            tone="good"
-            duration="00:58"
-            metrics={[
-              { label: 'Temps de montage', value: '4 min 32s' },
-              { label: 'Filler words', value: '0 (auto)' },
-              { label: 'Silences morts', value: '0 (auto)' },
-              { label: 'Sous-titres', value: 'Animés, dynamiques' },
-            ]}
-          />
-        </div>
-      </div>
-    </section>
-  )
-}
-
-function BeforeAfter(props: {
-  label: string
-  tone: 'good' | 'bad'
-  duration: string
-  metrics: { label: string; value: string }[]
-}) {
-  const good = props.tone === 'good'
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 30 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: '-50px' }}
-      transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-      className={`relative card overflow-hidden ${
-        good ? 'border-emerald-500/30 shadow-glow-primary' : 'border-white/10'
-      }`}
-    >
-      <div className="flex items-center justify-between mb-4">
-        <span
-          className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-            good
-              ? 'bg-emerald-500/15 text-emerald-300'
-              : 'bg-red-500/15 text-red-300'
-          }`}
-        >
-          {props.label}
-        </span>
-        <span className="text-white/40 text-sm font-mono">{props.duration}</span>
-      </div>
-
-      <div className={`relative aspect-video rounded-lg overflow-hidden mb-5 ${good ? 'ring-1 ring-emerald-500/30' : ''}`}>
-        <div
-          className={`absolute inset-0 ${
-            good
-              ? 'bg-gradient-to-br from-emerald-500/20 via-primary-500/10 to-transparent'
-              : 'bg-gradient-to-br from-red-500/10 via-dark-800 to-dark-800'
-          }`}
-        />
-        {/* "Waveform" */}
-        <div className="absolute inset-x-4 top-1/2 -translate-y-1/2 flex items-end gap-[3px] h-16">
-          {Array.from({ length: 48 }).map((_, i) => {
-            const seed = (i * 37) % 100
-            const h = good
-              ? 30 + (seed % 60)
-              : seed < 15
-              ? 4
-              : seed < 60
-              ? 8 + (seed % 30)
-              : 12
-            return (
-              <div
-                key={i}
-                style={{ height: `${h}%` }}
-                className={`w-[3px] rounded-full ${
-                  good ? 'bg-emerald-300' : 'bg-white/30'
-                }`}
-              />
-            )
-          })}
-        </div>
-        {good && (
-          <motion.div
-            initial={{ x: '-100%' }}
-            whileInView={{ x: '110%' }}
-            viewport={{ once: true }}
-            transition={{ duration: 2.2, ease: 'easeInOut', delay: 0.3 }}
-            className="absolute inset-y-0 w-1 bg-white/70 shadow-[0_0_20px_rgba(255,255,255,0.8)]"
-          />
-        )}
-      </div>
-
-      <dl className="space-y-2.5 text-sm">
-        {props.metrics.map((m) => (
-          <div key={m.label} className="flex items-center justify-between">
-            <dt className="text-white/50">{m.label}</dt>
-            <dd
-              className={`font-semibold ${
-                good ? 'text-emerald-300' : 'text-white/80'
-              }`}
-            >
-              {m.value}
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </motion.div>
-  )
-}
-
-// ============================================================================
-// FEATURES
-// ============================================================================
-function Features() {
-  const features = [
-    {
-      icon: Scissors,
-      title: 'Coupes intelligentes',
-      desc: "Silences morts, hésitations, faux départs : tout disparaît automatiquement, sans coupures brutales.",
-    },
-    {
-      icon: Subtitles,
-      title: 'Sous-titres dynamiques',
-      desc: 'Mot par mot, synchronisés, animés. Lisibles même son coupé — comme les vidéos qui font 10M de vues.',
-    },
-    {
-      icon: ImageIcon,
-      title: 'B-roll IA contextuel',
-      desc: "L'IA comprend ce que tu racontes et illustre tes propos avec des visuels premium au bon moment.",
-    },
-    {
-      icon: Music,
-      title: 'Musique & SFX',
-      desc: 'Musique de fond qui baisse quand tu parles, effets sonores synchronisés sur les transitions.',
-    },
-    {
-      icon: Smartphone,
-      title: 'Formats verticaux natifs',
-      desc: 'Export 9:16 prêt pour TikTok, Reels, Shorts — ou 16:9 pour YouTube, 1:1 pour Instagram.',
-    },
-    {
-      icon: ShieldCheck,
-      title: 'Tes vidéos restent à toi',
-      desc: 'Aucun entraînement sur tes contenus. Tu peux supprimer ta vidéo à tout moment.',
-    },
-  ]
-
-  return (
-    <section className="py-24 sm:py-32 relative border-t border-white/5">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true }}
-          variants={stagger}
-          className="max-w-3xl mx-auto text-center mb-16"
-        >
-          <motion.p variants={fadeUp} className="text-sm uppercase tracking-[0.2em] text-primary-300 font-semibold mb-4">
-            Ce que fait AutoEdit
-          </motion.p>
-          <motion.h2 variants={fadeUp} custom={1} className="text-3xl sm:text-5xl font-bold leading-tight">
-            Tout ce qu'un{' '}
-            <span className="gradient-text">monteur expérimenté</span> ferait.
-            <br />
-            Sans le délai. Sans la facture.
-          </motion.h2>
-        </motion.div>
-
-        <motion.div
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true, margin: '-50px' }}
-          variants={stagger}
-          className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5"
-        >
-          {features.map((f, i) => (
-            <motion.div
-              key={f.title}
-              variants={fadeUp}
-              custom={i}
-              whileHover={{ y: -3, transition: { duration: 0.2 } }}
-              className="group relative card overflow-hidden"
-            >
-              <div
-                aria-hidden
-                className="absolute inset-0 bg-gradient-to-br from-primary-500/0 via-primary-500/0 to-accent-500/0 group-hover:from-primary-500/10 group-hover:to-accent-500/10 transition-all duration-500"
-              />
-              <div className="relative">
-                <div className="inline-flex w-11 h-11 rounded-xl bg-gradient-to-br from-primary-500/20 to-accent-500/20 border border-white/10 items-center justify-center mb-4 group-hover:scale-110 group-hover:rotate-3 transition-transform">
-                  <f.icon className="w-5 h-5 text-primary-300" />
-                </div>
-                <h3 className="font-semibold text-lg mb-2">{f.title}</h3>
-                <p className="text-white/60 leading-relaxed text-sm">{f.desc}</p>
-              </div>
-            </motion.div>
-          ))}
-        </motion.div>
-      </div>
-    </section>
-  )
-}
-
-// ============================================================================
-// HOW IT WORKS — 3 étapes
-// ============================================================================
-function HowItWorks() {
-  const steps = [
-    {
-      n: '01',
-      title: 'Charge ta vidéo',
-      desc: 'Glisse-dépose un fichier MP4, MOV ou WebM. Jusqu’à 500 Mo. Aucun logiciel à installer.',
-      tag: '< 30 secondes',
-    },
-    {
-      n: '02',
-      title: 'Choisis un style',
-      desc: 'TikTok viral, Business premium, Publicité locale, Podcast propre, Formation. Active les options.',
-      tag: '1 clic',
-    },
-    {
-      n: '03',
-      title: 'Récupère ta vidéo',
-      desc: "L'IA monte, illustre, sous-titre. Tu télécharges un MP4 prêt à publier sur n'importe quelle plateforme.",
-      tag: '~ 5 minutes',
-    },
-  ]
-
-  return (
-    <section className="py-24 sm:py-32 relative border-t border-white/5 bg-dark-900/30">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true }}
-          variants={stagger}
-          className="max-w-3xl mx-auto text-center mb-16"
-        >
-          <motion.p variants={fadeUp} className="text-sm uppercase tracking-[0.2em] text-accent-400 font-semibold mb-4">
-            En 3 étapes
-          </motion.p>
-          <motion.h2 variants={fadeUp} custom={1} className="text-3xl sm:text-5xl font-bold leading-tight">
-            Plus simple qu'envoyer un message{' '}
-            <span className="gradient-text">WhatsApp</span>.
-          </motion.h2>
-        </motion.div>
-
-        <div className="relative">
-          {/* connector line */}
+          {/* ----- couche 1 : le speaker (Ken Burns) -------------------- */}
           <div
-            aria-hidden
-            className="hidden md:block absolute top-12 left-[12%] right-[12%] h-px bg-gradient-to-r from-transparent via-white/15 to-transparent"
-          />
-          <motion.div
-            initial="hidden"
-            whileInView="show"
-            viewport={{ once: true, margin: '-50px' }}
-            variants={stagger}
-            className="grid md:grid-cols-3 gap-6 relative"
+            className="pd-cycle absolute inset-0"
+            style={{ animationName: 'pdKenBurns', animationTimingFunction: 'ease-in-out' }}
           >
-            {steps.map((s, i) => (
-              <motion.div
-                key={s.n}
-                variants={fadeUp}
-                custom={i}
-                className="card relative overflow-hidden"
-              >
-                <div className="flex items-center justify-between mb-5">
-                  <span className="font-display text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-br from-primary-300 to-accent-300">
-                    {s.n}
-                  </span>
-                  <span className="text-xs font-semibold uppercase tracking-wider px-2 py-1 rounded-full bg-white/5 border border-white/10 text-white/60">
-                    {s.tag}
-                  </span>
-                </div>
-                <h3 className="text-xl font-semibold mb-2">{s.title}</h3>
-                <p className="text-white/60 leading-relaxed">{s.desc}</p>
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </div>
-    </section>
-  )
-}
-
-// ============================================================================
-// MODES — cartes avec couleur
-// ============================================================================
-function Modes() {
-  const modes = [
-    {
-      icon: '🔥',
-      name: 'TikTok viral',
-      desc: 'Captions animées, B-roll, CTA',
-      gradient: 'from-rose-500/40 to-orange-500/40',
-    },
-    {
-      icon: '💼',
-      name: 'Business premium',
-      desc: 'B-roll moderne, musique sobre, CTA pro',
-      gradient: 'from-primary-500/40 to-violet-500/40',
-    },
-    {
-      icon: '📣',
-      name: 'Publicité locale',
-      desc: 'Restaurant, boutique, service — CTA clair',
-      gradient: 'from-accent-500/40 to-amber-500/40',
-    },
-    {
-      icon: '🎙️',
-      name: 'Podcast propre',
-      desc: 'Silences nettoyés, audio préservé',
-      gradient: 'from-emerald-500/40 to-teal-500/40',
-    },
-    {
-      icon: '🎓',
-      name: 'Formation',
-      desc: 'Captions lisibles, B-roll discret, 16:9',
-      gradient: 'from-sky-500/40 to-cyan-500/40',
-    },
-  ]
-  return (
-    <section className="py-24 sm:py-32 border-t border-white/5">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true }}
-          variants={stagger}
-          className="max-w-3xl mx-auto text-center mb-14"
-        >
-          <motion.h2 variants={fadeUp} className="text-3xl sm:text-5xl font-bold">
-            Un style pensé pour <span className="gradient-text">chaque objectif</span>.
-          </motion.h2>
-          <motion.p variants={fadeUp} custom={1} className="text-white/60 text-lg mt-5">
-            Sélectionne, lance, publie. Chaque mode applique les bonnes
-            coupes, la bonne mise en page et le bon rythme.
-          </motion.p>
-        </motion.div>
-
-        <motion.div
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true, margin: '-50px' }}
-          variants={stagger}
-          className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4"
-        >
-          {modes.map((m, i) => (
-            <motion.div
-              key={m.name}
-              variants={fadeUp}
-              custom={i}
-              whileHover={{ y: -4, scale: 1.02 }}
-              transition={{ type: 'spring', stiffness: 250, damping: 18 }}
-              className="group relative rounded-2xl p-5 overflow-hidden border border-white/10 bg-dark-900"
-            >
-              <div
-                aria-hidden
-                className={`absolute -top-12 -right-10 w-44 h-44 rounded-full blur-3xl bg-gradient-to-br ${m.gradient} opacity-50 group-hover:opacity-100 transition`}
-              />
-              <div className="relative">
-                <div className="text-3xl mb-3">{m.icon}</div>
-                <p className="font-semibold">{m.name}</p>
-                <p className="text-sm text-white/55 mt-1">{m.desc}</p>
-              </div>
-            </motion.div>
-          ))}
-        </motion.div>
-      </div>
-    </section>
-  )
-}
-
-// ============================================================================
-// SHOWCASE — mur d'images avec parallax
-// ============================================================================
-function Showcase() {
-  return (
-    <section className="py-24 sm:py-32 border-t border-white/5 relative overflow-hidden">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true }}
-          variants={stagger}
-          className="grid md:grid-cols-12 gap-10 items-center"
-        >
-          <motion.div variants={fadeUp} className="md:col-span-5">
-            <p className="text-sm uppercase tracking-[0.2em] text-primary-300 font-semibold mb-4">
-              Pensé pour ton public
-            </p>
-            <h2 className="text-3xl sm:text-4xl font-bold leading-tight">
-              Des visuels qui parlent à{' '}
-              <span className="gradient-text">ta communauté</span>.
-            </h2>
-            <p className="text-white/60 text-lg mt-5 leading-relaxed">
-              Le B-roll IA d&apos;AutoEdit génère des scènes qui résonnent avec
-              ton audience : créateurs, entrepreneurs, commerçants,
-              formateurs. Pas des stocks génériques importés d&apos;ailleurs.
-            </p>
-            <ul className="mt-6 space-y-2.5 text-sm text-white/70">
-              <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400" /> Scènes contextuelles modernes</li>
-              <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400" /> Photographie réaliste, jamais cliché</li>
-              <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400" /> Style configurable par mode</li>
-            </ul>
-          </motion.div>
-
-          <motion.div
-            variants={fadeUp}
-            custom={1}
-            className="md:col-span-7 grid grid-cols-2 gap-3 sm:gap-4"
-          >
-            {SHOWCASE_IMAGES.map((src, i) => (
-              <motion.div
-                key={src}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-                whileHover={{ scale: 1.03 }}
-                className={`relative overflow-hidden rounded-xl aspect-[4/5] ${
-                  i % 2 === 1 ? 'translate-y-6' : ''
-                }`}
-              >
-                <img
-                  src={src}
-                  alt=""
-                  className="absolute inset-0 w-full h-full object-cover"
-                  loading="lazy"
+            <div className="absolute inset-0 bg-gradient-to-b from-[#1d2440] via-[#232b52] to-[#101326]" />
+            {/* silhouette du créateur */}
+            <svg viewBox="0 0 100 178" className="absolute inset-x-0 bottom-0 mx-auto h-[72%]" aria-hidden>
+              <ellipse cx="50" cy="58" rx="20" ry="22" fill="#5a4634" />
+              <path d="M14 178 Q16 112 50 108 Q84 112 86 178 Z" fill="#2a55f5" />
+              <path d="M40 96 q10 10 20 0 l0 14 q-10 8 -20 0 Z" fill="#5a4634" />
+            </svg>
+            {/* barres audio */}
+            <div className="absolute bottom-[30%] left-1/2 flex -translate-x-1/2 items-end gap-1" aria-hidden>
+              {[0, 1, 2, 3, 4].map((i) => (
+                <span
+                  key={i}
+                  className="pd-bar w-1 rounded bg-cyan-300/80"
+                  style={{ height: `${10 + (i % 3) * 7}px`, animationDelay: `${i * 0.13}s` }}
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-              </motion.div>
-            ))}
-          </motion.div>
-        </motion.div>
-      </div>
-    </section>
-  )
-}
+              ))}
+            </div>
+          </div>
 
-// ============================================================================
-// STATS
-// ============================================================================
-function Stats() {
-  const stats = [
-    { value: '10x', label: 'plus rapide qu’un montage manuel' },
-    { value: '~5 min', label: 'pour une vidéo prête à publier' },
-    { value: '0', label: 'logiciel à installer' },
-    { value: '5', label: 'styles pré-configurés' },
-  ]
-  return (
-    <section className="py-20 border-t border-white/5">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true }}
-          variants={stagger}
-          className="grid grid-cols-2 md:grid-cols-4 gap-6"
-        >
-          {stats.map((s, i) => (
-            <motion.div
-              key={s.label}
-              variants={fadeUp}
-              custom={i}
-              className="text-center p-6 rounded-2xl border border-white/5 bg-dark-900/40"
-            >
-              <p className="font-display text-4xl sm:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-br from-white to-white/50">
-                {s.value}
-              </p>
-              <p className="text-white/60 text-sm mt-2 leading-tight">{s.label}</p>
-            </motion.div>
-          ))}
-        </motion.div>
-      </div>
-    </section>
-  )
-}
-
-// ============================================================================
-// TESTIMONIALS
-// ============================================================================
-function Testimonials() {
-  const items = [
-    {
-      quote:
-        'Avant AutoEdit je publiais une vidéo TikTok par semaine. Aujourd’hui c’est 5. Mon audience a triplé en deux mois.',
-      name: 'Aïsha K.',
-      role: 'Créatrice de contenu',
-      avatar: PORTRAITS.aisha,
-    },
-    {
-      quote:
-        'Je tourne mes plats le matin, AutoEdit monte pendant que je sers le midi. Mes ventes du soir ont augmenté de 40 %.',
-      name: 'Kossi A.',
-      role: 'Restaurateur',
-      avatar: PORTRAITS.kossi,
-    },
-    {
-      quote:
-        'J’ai arrêté de payer 50 000 FCFA par vidéo à mon monteur. Et la qualité est meilleure.',
-      name: 'Fatima D.',
-      role: 'Coach business',
-      avatar: PORTRAITS.fatima,
-    },
-    {
-      quote:
-        'Mes formations sont enfin regardées jusqu’à la fin. Les sous-titres dynamiques changent tout.',
-      name: 'Yannick T.',
-      role: 'Formateur en ligne',
-      avatar: PORTRAITS.yannick,
-    },
-    {
-      quote:
-        'L’IA comprend mon contenu et choisit des visuels qui matchent. Mes Reels font 10x plus de vues.',
-      name: 'Awa M.',
-      role: 'Influenceuse beauté',
-      avatar: PORTRAITS.awa,
-    },
-  ]
-  return (
-    <section className="py-24 sm:py-32 border-t border-white/5 relative">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true }}
-          variants={stagger}
-          className="max-w-3xl mx-auto text-center mb-16"
-        >
-          <motion.p variants={fadeUp} className="text-sm uppercase tracking-[0.2em] text-accent-400 font-semibold mb-4">
-            Ils l&apos;utilisent déjà
-          </motion.p>
-          <motion.h2 variants={fadeUp} custom={1} className="text-3xl sm:text-5xl font-bold leading-tight">
-            Des créateurs et entrepreneurs{' '}
-            <span className="gradient-text">qui publient plus</span>.
-          </motion.h2>
-        </motion.div>
-
-        <div className="mask-fade-x overflow-hidden">
-          <motion.div
-            className="flex gap-5 w-max"
-            animate={{ x: ['0%', '-50%'] }}
-            transition={{ duration: 50, repeat: Infinity, ease: 'linear' }}
+          {/* ----- popup mot-clé ----------------------------------------- */}
+          <div
+            className="pd-cycle absolute left-1/2 top-[16%] z-20 -translate-x-1/2 rounded-full border-2 border-amber-300 bg-black/70 px-3 py-1 text-[11px] font-extrabold tracking-wider text-white opacity-0"
+            style={ph('pdWindow22', 1.2)}
           >
-            {[...items, ...items].map((t, i) => (
-              <article
-                key={i}
-                className="w-[320px] sm:w-[380px] shrink-0 card flex flex-col gap-4"
-              >
-                <div className="flex gap-1 text-accent-400">
-                  {Array.from({ length: 5 }).map((_, k) => (
-                    <Star key={k} className="w-4 h-4 fill-current" />
-                  ))}
-                </div>
-                <p className="text-white/85 leading-relaxed">{t.quote}</p>
-                <div className="flex items-center gap-3 mt-auto pt-4 border-t border-white/5">
-                  <img
-                    src={t.avatar}
-                    alt={t.name}
-                    className="w-10 h-10 rounded-full object-cover border border-white/10"
-                    loading="lazy"
-                  />
-                  <div>
-                    <p className="font-semibold text-sm">{t.name}</p>
-                    <p className="text-xs text-white/50">{t.role}</p>
-                  </div>
-                </div>
-              </article>
-            ))}
-          </motion.div>
-        </div>
-      </div>
-    </section>
-  )
-}
+            MOBILE&nbsp;MONEY
+          </div>
 
-// ============================================================================
-// PRICING TEASER
-// ============================================================================
-function PricingTeaser() {
-  return (
-    <section className="py-24 sm:py-32 border-t border-white/5">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 grid md:grid-cols-2 gap-8 items-center">
-        <div>
-          <p className="text-sm uppercase tracking-[0.2em] text-primary-300 font-semibold mb-4">
-            Tarif
-          </p>
-          <h2 className="text-3xl sm:text-5xl font-bold leading-tight">
-            Moins cher qu&apos;<span className="gradient-text">une seule vidéo</span> chez un monteur.
-          </h2>
-          <p className="text-white/60 text-lg mt-5">
-            5 000 FCFA / mois. Vidéos illimitées. Tous les styles. Pas
-            d&apos;engagement. Annule en un clic depuis ton dashboard.
-          </p>
-          <Link to="/pricing" className="btn-secondary mt-6 inline-flex items-center gap-2">
-            Voir tous les plans <ArrowRight className="w-4 h-4" />
-          </Link>
-        </div>
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-          className="relative card shadow-glow-primary border-primary-500/30"
-        >
-          <div className="absolute -top-3 left-6">
-            <span className="bg-accent-500 text-white text-xs font-bold tracking-wider px-3 py-1 rounded-full">
-              LE PLUS POPULAIRE
+          {/* ----- B-roll IA --------------------------------------------- */}
+          <div className="pd-cycle absolute inset-0 z-20 opacity-0" style={{ animationName: 'pdBroll', animationTimingFunction: 'ease-in-out' }}>
+            <div className="absolute inset-0 bg-gradient-to-br from-[#7c4a1e] via-[#a8632a] to-[#2c1c10]" />
+            <svg viewBox="0 0 100 178" className="absolute inset-0 h-full w-full" aria-hidden>
+              <circle cx="36" cy="64" r="13" fill="#3b2a18" />
+              <rect x="20" y="80" width="32" height="42" rx="8" fill="#0e7490" />
+              <rect x="56" y="70" width="28" height="44" rx="4" fill="#134e4a" />
+              <rect x="60" y="76" width="20" height="12" rx="2" fill="#5eead4" opacity="0.85" />
+              <rect x="60" y="92" width="20" height="3" rx="1.5" fill="#99f6e4" opacity="0.6" />
+              <rect x="60" y="98" width="14" height="3" rx="1.5" fill="#99f6e4" opacity="0.4" />
+            </svg>
+            {/* coins cyan façon viseur */}
+            <div className="absolute inset-3" aria-hidden>
+              <span className="absolute left-0 top-0 h-5 w-5 border-l-2 border-t-2 border-cyan-300" />
+              <span className="absolute right-0 top-0 h-5 w-5 border-r-2 border-t-2 border-cyan-300" />
+              <span className="absolute bottom-0 left-0 h-5 w-5 border-b-2 border-l-2 border-cyan-300" />
+              <span className="absolute bottom-0 right-0 h-5 w-5 border-b-2 border-r-2 border-cyan-300" />
+            </div>
+            <span className="absolute left-1/2 top-[10%] -translate-x-1/2 rounded-full bg-amber-400 px-2.5 py-0.5 text-[10px] font-extrabold text-black">
+              VENDEUR EN LIGNE
             </span>
           </div>
-          <div className="flex items-baseline gap-2 mb-2 mt-2">
-            <span className="text-5xl font-display font-bold">5 000</span>
-            <span className="text-white/60">FCFA / mois</span>
+
+          {/* ----- scène MOTION DESIGN ----------------------------------- */}
+          <div className="pd-cycle absolute inset-0 z-20 opacity-0" style={{ animationName: 'pdMotion', animationTimingFunction: 'ease-in-out' }}>
+            <div className="absolute inset-0 bg-gradient-to-b from-[#0b0e1a] to-[#1a132e]" />
+            <div className="cf-grid-dots absolute inset-0 opacity-60" />
+
+            <span
+              className="pd-cycle absolute left-1/2 top-[9%] -translate-x-1/2 rounded-full border border-amber-300 bg-black/60 px-2.5 py-0.5 text-[9px] font-bold tracking-widest text-amber-300 opacity-0"
+              style={ph('pdPop', 7.0)}
+            >
+              CHIFFRE CLÉ
+            </span>
+
+            {/* dessin : panier qui se trace trait par trait */}
+            <svg viewBox="0 0 100 100" className="absolute left-1/2 top-[20%] h-[34%] w-[60%] -translate-x-1/2" fill="none" aria-hidden>
+              <path
+                d="M12 26 h14 l10 36 h40 l10 -28 h-52" stroke="#7dd3fc" strokeWidth="4"
+                strokeLinecap="round" strokeLinejoin="round" pathLength={100}
+                strokeDasharray={100} className="pd-cycle" style={ph('pdDraw', 6.9)}
+              />
+              <circle cx="42" cy="74" r="5" stroke="#7dd3fc" strokeWidth="4" pathLength={100}
+                strokeDasharray={100} className="pd-cycle" style={ph('pdDraw', 7.4)} />
+              <circle cx="66" cy="74" r="5" stroke="#7dd3fc" strokeWidth="4" pathLength={100}
+                strokeDasharray={100} className="pd-cycle" style={ph('pdDraw', 7.55)} />
+            </svg>
+
+            {/* compteur animé (synchronisé au cycle via rAF) */}
+            <div className="pd-cycle absolute left-1/2 top-[56%] -translate-x-1/2 text-center opacity-0" style={ph('pdPop', 7.3)}>
+              <span className="font-display text-5xl font-bold text-amber-300 drop-shadow-[0_2px_0_rgba(0,0,0,0.7)]">
+                {counter}%
+              </span>
+            </div>
+
+            {/* mot-clé entouré au marqueur */}
+            <div className="pd-cycle absolute left-1/2 top-[70%] -translate-x-1/2 opacity-0" style={ph('pdPop', 7.6)}>
+              <span className="relative font-display text-2xl font-bold tracking-wide text-white">
+                CLIENTS
+                <svg viewBox="0 0 120 46" className="absolute -inset-x-4 -inset-y-2 h-[calc(100%+16px)] w-[calc(100%+32px)]" fill="none" aria-hidden>
+                  <ellipse
+                    cx="60" cy="23" rx="55" ry="19" stroke="#22d3ee" strokeWidth="3"
+                    pathLength={100} strokeDasharray={100}
+                    className="pd-cycle" style={ph('pdDraw', 7.9)}
+                  />
+                </svg>
+              </span>
+            </div>
+
+            {/* flèche dessinée à la main */}
+            <svg viewBox="0 0 60 90" className="absolute bottom-[16%] left-[6%] h-[26%]" fill="none" aria-hidden>
+              <path
+                d="M8 84 Q2 40 34 22 M22 22 L36 20 L34 34" stroke="#fbbf24" strokeWidth="4"
+                strokeLinecap="round" pathLength={100} strokeDasharray={100}
+                className="pd-cycle" style={ph('pdDraw', 8.1)}
+              />
+            </svg>
           </div>
-          <p className="text-white/60 mb-5 text-sm">Soit 10 $ — ou ~167 FCFA / jour.</p>
-          <ul className="space-y-2.5 text-sm">
-            {[
-              'Vidéos illimitées · 30 min max',
-              'Pipeline IA V2 + B-roll',
-              'Tous les styles (TikTok, Business…)',
-              'Sous-titres dynamiques',
-              'Musique + SFX',
-              'Export 1080p 9:16',
-              'Support prioritaire',
-            ].map((f) => (
-              <li key={f} className="flex items-center gap-2 text-white/80">
-                <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                {f}
-              </li>
+
+          {/* ----- flashs + balayages de transition ----------------------- */}
+          <div className="pd-cycle pointer-events-none absolute inset-0 z-30 bg-white opacity-0" style={ph('pdFlash', 3.25)} />
+          <div className="pd-cycle pointer-events-none absolute inset-0 z-30 bg-white opacity-0" style={ph('pdFlash', 6.7)} />
+          <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden" aria-hidden>
+            <div className="pd-cycle absolute -inset-y-10 w-1/3 bg-gradient-to-r from-transparent via-white/70 to-transparent opacity-0" style={ph('pdSweep', 3.25)} />
+            <div className="pd-cycle absolute -inset-y-10 w-1/3 bg-gradient-to-r from-transparent via-white/60 to-transparent opacity-0" style={ph('pdSweep', 6.7)} />
+          </div>
+
+          {/* ----- pastilles SFX ------------------------------------------ */}
+          <SfxPill label="📸 FLASH" at={3.35} side="right" />
+          <SfxPill label="〰 RISER" at={6.25} side="left" />
+          <SfxPill label="💥 WHOOSH" at={6.8} side="right" />
+          <SfxPill label="● POP" at={7.7} side="left" />
+          <SfxPill label="♪ DING" at={8.45} side="right" />
+
+          {/* ----- sous-titres karaoké ------------------------------------ */}
+          <div className="absolute inset-x-0 bottom-[9%] z-40 flex justify-center">
+            {CAPTION_CHUNKS.map((words, k) => (
+              <div
+                key={k}
+                className="pd-cycle absolute flex gap-1.5 font-display text-[17px] font-bold tracking-wide opacity-0"
+                style={ph('pdChunk', k * 3)}
+              >
+                {words.map((w, i) => (
+                  <span
+                    key={i}
+                    className="pd-cycle inline-block text-white drop-shadow-[0_2px_0_rgba(0,0,0,0.85)]"
+                    style={ph('pdWord', k * 3 + 0.18 + i * 0.85)}
+                  >
+                    {w}
+                  </span>
+                ))}
+              </div>
             ))}
-          </ul>
-          <Link
-            to="/signup"
-            className="btn-primary w-full justify-center mt-6 inline-flex items-center gap-2"
-          >
-            <Zap className="w-4 h-4" />
-            Démarrer mon essai
-          </Link>
-        </motion.div>
-      </div>
-    </section>
-  )
-}
+          </div>
 
-// ============================================================================
-// FAQ
-// ============================================================================
-function Faq() {
-  const items = [
-    {
-      q: 'Quelle est la durée maximale de mes vidéos ?',
-      a: 'En plan Free, 5 minutes par vidéo et 2 vidéos par mois. En plan Pro, 30 minutes par vidéo et illimité par mois. En Enterprise, aucune limite.',
-    },
-    {
-      q: 'Combien de temps prend un montage ?',
-      a: 'Compte environ 5 minutes pour une vidéo de 1 minute, et 10 à 15 minutes pour une vidéo de 5 minutes. Tu reçois une notification quand c’est prêt.',
-    },
-    {
-      q: 'Quels formats vidéo sont supportés ?',
-      a: 'MP4, MOV, WebM, AVI, MKV, FLV, WMV. Taille maximale 500 Mo par fichier. L’export se fait toujours en MP4 H.264 compatible TikTok / Reels / Shorts.',
-    },
-    {
-      q: 'Mes vidéos sont-elles privées ?',
-      a: 'Oui. Tes vidéos appartiennent uniquement à toi. Nous ne les utilisons jamais pour entraîner nos modèles. Tu peux les supprimer définitivement à tout moment depuis ton dashboard.',
-    },
-    {
-      q: 'Puis-je payer avec Mobile Money ?',
-      a: 'Oui — Orange Money, MTN Mobile Money, Moov Money et Wave sont supportés via FedaPay. Tu peux aussi payer par carte Visa / Mastercard.',
-    },
-    {
-      q: 'Puis-je annuler à tout moment ?',
-      a: 'Oui. Aucun engagement. Annule en un clic depuis ton dashboard. L’abonnement reste actif jusqu’à la fin du mois payé.',
-    },
-  ]
-  return (
-    <section className="py-24 sm:py-32 border-t border-white/5">
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-12"
-        >
-          <p className="text-sm uppercase tracking-[0.2em] text-primary-300 font-semibold mb-4">
-            FAQ
-          </p>
-          <h2 className="text-3xl sm:text-5xl font-bold leading-tight">
-            Les questions qu&apos;on{' '}
-            <span className="gradient-text">se pose toujours</span>.
-          </h2>
-        </motion.div>
-
-        <div className="space-y-3">
-          {items.map((it, i) => (
-            <FaqItem key={i} q={it.q} a={it.a} />
-          ))}
+          {/* ----- barre de progression du montage ------------------------ */}
+          <div className="absolute inset-x-6 bottom-3 z-40 h-0.5 overflow-hidden rounded bg-white/15">
+            <div className="pd-cycle h-full origin-left bg-gradient-to-r from-primary-400 to-accent-400" style={{ animationName: 'pdProgress' }} />
+          </div>
         </div>
       </div>
-    </section>
-  )
-}
 
-function FaqItem(props: { q: string; a: string }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true }}
-      transition={{ duration: 0.45 }}
-      className="card overflow-hidden p-0"
-    >
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between text-left px-5 py-4 gap-4"
-        aria-expanded={open}
-      >
-        <span className="font-medium">{props.q}</span>
-        <ChevronDown
-          className={`w-5 h-5 text-white/50 transition-transform ${open ? 'rotate-180' : ''}`}
-        />
-      </button>
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div
-            key="content"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-            className="overflow-hidden"
-          >
-            <div className="px-5 pb-5 text-white/70 leading-relaxed text-sm">
-              {props.a}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
-  )
-}
-
-// ============================================================================
-// FINAL CTA
-// ============================================================================
-function FinalCta() {
-  return (
-    <section className="relative py-28 sm:py-36 border-t border-white/5 overflow-hidden">
-      <div
-        aria-hidden
-        className="absolute inset-0"
-        style={{
-          backgroundImage:
-            'radial-gradient(ellipse 60% 60% at 50% 50%, rgba(63,114,255,0.25), transparent 70%), radial-gradient(ellipse 80% 60% at 30% 30%, rgba(249,115,22,0.18), transparent 60%)',
-        }}
-      />
-      <div className="relative max-w-3xl mx-auto px-4 text-center">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.7 }}
-        >
-          <Sparkles className="w-10 h-10 text-accent-300 mx-auto mb-5" />
-          <h2 className="text-4xl sm:text-6xl font-bold leading-tight">
-            Ta prochaine vidéo virale est{' '}
-            <span className="gradient-text">à 5 minutes</span>.
-          </h2>
-          <p className="text-white/65 text-lg mt-6 max-w-xl mx-auto">
-            Tes concurrents publient pendant que tu montes. Reprends ton temps.
-          </p>
-          <div className="mt-9 flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link
-              to="/signup"
-              className="btn-primary text-base py-3.5 px-7 inline-flex items-center gap-2 shadow-glow-primary"
-            >
-              <Wand2 className="w-4 h-4" />
-              Lancer mon premier montage
-            </Link>
-            <Link to="/pricing" className="btn-secondary text-base py-3.5 px-7">
-              Voir les tarifs
-            </Link>
-          </div>
-          <p className="text-white/40 text-xs mt-5 inline-flex items-center gap-2">
-            <Clock className="w-3.5 h-3.5" />
-            Inscription en 30 secondes · 2 vidéos gratuites · Sans carte
-          </p>
-        </motion.div>
+      {/* chips décoratives flottantes */}
+      <div className="cf-float absolute -left-16 top-12 hidden rounded-xl border border-white/10 bg-dark-900/90 px-3 py-2 text-xs font-semibold text-cyan-200 shadow-xl sm:block" style={{ animationDelay: '0.6s' }}>
+        ✂️ 38 silences coupés
       </div>
-    </section>
+      <div className="cf-float absolute -right-14 top-1/3 hidden rounded-xl border border-white/10 bg-dark-900/90 px-3 py-2 text-xs font-semibold text-amber-200 shadow-xl sm:block">
+        🎨 4 scènes motion design
+      </div>
+      <div className="cf-float absolute -left-12 bottom-16 hidden rounded-xl border border-white/10 bg-dark-900/90 px-3 py-2 text-xs font-semibold text-emerald-200 shadow-xl sm:block" style={{ animationDelay: '1.2s' }}>
+        🔊 27 effets sonores pro
+      </div>
+    </div>
+  )
+}
+
+/* ========================================================================== */
+/*  Vitrines mini-scènes motion design                                        */
+/* ========================================================================== */
+
+function MiniFrame({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="ms-float">
+      <div className="relative mx-auto aspect-[9/14] w-full max-w-[230px] overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-[#0b0e1a] to-[#191230] shadow-xl">
+        <div className="cf-grid-dots absolute inset-0 opacity-50" />
+        {children}
+      </div>
+      <p className="mt-4 text-center text-sm font-semibold text-dark-200">{title}</p>
+    </div>
+  )
+}
+
+function SceneIdea() {
+  return (
+    <MiniFrame title="Scène « idée » — dessin + mot-clé entouré">
+      <svg viewBox="0 0 100 100" className="absolute left-1/2 top-[14%] h-[42%] w-[64%] -translate-x-1/2" fill="none" aria-hidden>
+        <path d="M50 12 a23 23 0 0 1 12 42 l0 10 h-24 l0 -10 a23 23 0 0 1 12 -42 Z"
+          stroke="#fff" strokeWidth="4" strokeLinejoin="round" pathLength={100}
+          strokeDasharray={100} className="ms-cycle" style={{ animationName: 'msDraw' }} />
+        <path d="M42 74 h16 M45 81 h10" stroke="#22d3ee" strokeWidth="4" strokeLinecap="round"
+          pathLength={100} strokeDasharray={100} className="ms-cycle"
+          style={{ animationName: 'msDraw', animationDelay: '0.5s' }} />
+      </svg>
+      <div className="ms-cycle absolute left-1/2 top-[64%] -translate-x-1/2 opacity-0" style={{ animationName: 'msPop', animationDelay: '0.8s' }}>
+        <span className="relative font-display text-xl font-bold text-white">
+          LE&nbsp;SECRET
+          <svg viewBox="0 0 120 40" className="absolute -inset-x-3 -inset-y-1.5 h-[calc(100%+12px)] w-[calc(100%+24px)]" fill="none" aria-hidden>
+            <ellipse cx="60" cy="20" rx="56" ry="17" stroke="#fbbf24" strokeWidth="3" pathLength={100}
+              strokeDasharray={100} className="ms-cycle" style={{ animationName: 'msDraw', animationDelay: '1.2s' }} />
+          </svg>
+        </span>
+      </div>
+    </MiniFrame>
+  )
+}
+
+function SceneSteps() {
+  return (
+    <MiniFrame title="Scène « étapes » — cascade numérotée">
+      <span className="ms-cycle absolute left-1/2 top-[9%] -translate-x-1/2 rounded-full border border-amber-300/80 px-2.5 py-0.5 text-[9px] font-bold tracking-widest text-amber-300 opacity-0" style={{ animationName: 'msPop' }}>
+        ÉTAPES
+      </span>
+      {['CRÉER LA BOUTIQUE', 'AJOUTER LES PRODUITS', 'ENCAISSER MOMO'].map((step, i) => (
+        <div
+          key={step}
+          className="ms-cycle absolute left-1/2 flex w-[82%] -translate-x-1/2 items-center gap-2 rounded-full border border-cyan-300/60 bg-black/50 px-2 py-1.5 opacity-0"
+          style={{ top: `${26 + i * 17}%`, animationName: 'msPop', animationDelay: `${0.5 + i * 0.45}s` }}
+        >
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-400 text-[10px] font-extrabold text-black">{i + 1}</span>
+          <span className="text-[10px] font-bold text-white">{step}</span>
+        </div>
+      ))}
+      <svg viewBox="0 0 40 80" className="absolute bottom-[8%] right-[8%] h-[22%]" fill="none" aria-hidden>
+        <path d="M30 74 Q34 40 12 16 M12 30 L10 12 L28 16" stroke="#22d3ee" strokeWidth="4" strokeLinecap="round"
+          pathLength={100} strokeDasharray={100} className="ms-cycle"
+          style={{ animationName: 'msDraw', animationDelay: '2s' }} />
+      </svg>
+    </MiniFrame>
+  )
+}
+
+function useDemoCounterMini(target = 3) {
+  const [value, setValue] = useState(target)
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    let raf = 0
+    const tick = () => {
+      const t = (performance.now() / 1000) % 7
+      const p = Math.min(1, Math.max(0, (t - 1.0) / 1.3))
+      setValue(Math.max(1, Math.round(target * (1 - Math.pow(1 - p, 3)))))
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [target])
+  return value
+}
+
+function SceneNumber() {
+  const counter = useDemoCounterMini()
+  return (
+    <MiniFrame title="Scène « chiffre » — compteur doré">
+      <span className="ms-cycle absolute left-1/2 top-[9%] -translate-x-1/2 rounded-full border border-amber-300/80 px-2.5 py-0.5 text-[9px] font-bold tracking-widest text-amber-300 opacity-0" style={{ animationName: 'msPop' }}>
+        CHIFFRE CLÉ
+      </span>
+      <svg viewBox="0 0 100 70" className="absolute left-1/2 top-[22%] h-[30%] w-[58%] -translate-x-1/2" fill="none" aria-hidden>
+        <path d="M8 62 V10 M8 62 H92" stroke="#fff" strokeWidth="4" strokeLinecap="round"
+          pathLength={100} strokeDasharray={100} className="ms-cycle" style={{ animationName: 'msDraw' }} />
+        <path d="M14 54 L36 38 L52 44 L86 16 M70 16 L86 16 L86 32" stroke="#22d3ee" strokeWidth="4"
+          strokeLinecap="round" strokeLinejoin="round" pathLength={100} strokeDasharray={100}
+          className="ms-cycle" style={{ animationName: 'msDraw', animationDelay: '0.6s' }} />
+      </svg>
+      <div className="ms-cycle absolute left-1/2 top-[58%] -translate-x-1/2 text-center opacity-0" style={{ animationName: 'msPop', animationDelay: '1s' }}>
+        <span className="font-display text-4xl font-bold text-amber-300">×{counter}</span>
+        <p className="mt-1 text-[10px] font-bold tracking-widest text-white/80">TES VENTES</p>
+      </div>
+    </MiniFrame>
+  )
+}
+
+/* ========================================================================== */
+/*  Contenu                                                                   */
+/* ========================================================================== */
+
+const MARQUEE_ITEMS = [
+  'DÉCOUPE INTELLIGENTE', 'MOTION DESIGN ILLUSTRÉ', 'B-ROLL IA', 'SOUS-TITRES KARAOKÉ',
+  'SOUND DESIGN PRO', 'ZOOMS DYNAMIQUES', 'EXPORT 9:16', 'MOTS-CLÉS EN OR',
+]
+
+const FEATURES = [
+  {
+    icon: PenTool,
+    title: 'Motion design illustré',
+    text: "Les moments clés de ton discours deviennent des scènes animées : dessins qui se tracent, flèches, étapes numérotées, compteurs — avec transitions et effets sonores calés.",
+  },
+  {
+    icon: Scissors,
+    title: 'Découpe intelligente',
+    text: "Silences, hésitations, faux départs et phrases répétées disparaissent. CutForge garde la bonne prise, sans jamais couper un mot au milieu.",
+  },
+  {
+    icon: ImageIcon,
+    title: 'B-roll IA sur mesure',
+    text: "Des images générées qui montrent exactement ce que tu dis, au moment où tu le dis. Visages et décors africains par défaut — réglable avant chaque montage.",
+  },
+  {
+    icon: Subtitles,
+    title: 'Sous-titres karaoké',
+    text: "Mot par mot, parfaitement synchronisés, 5 styles viraux au choix. Tes vidéos captivent même en sourdine.",
+  },
+  {
+    icon: Volume2,
+    title: 'Sound design professionnel',
+    text: "27 sons forgés — captures photo, whoosh, risers, pops — variés automatiquement pour ne jamais entendre deux fois le même son.",
+  },
+  {
+    icon: Smartphone,
+    title: 'Prêt pour TikTok & Reels',
+    text: "1080×1920 natif, zooms dynamiques, mots-clés dorés, export optimisé. Tu télécharges, tu publies, c'est tout.",
+  },
+]
+
+const FAQ_ITEMS = [
+  {
+    q: 'Comment ça marche, concrètement ?',
+    a: "Tu filmes une vidéo face caméra (le téléphone suffit), tu l'envoies sur CutForge et tu choisis un style. Le moteur transcrit ton discours mot par mot, coupe les silences et les ratés, illustre les passages importants en motion design, génère des B-rolls IA, ajoute sons et sous-titres, puis exporte un MP4 vertical prêt à publier.",
+  },
+  {
+    q: 'Le montage prend combien de temps ?',
+    a: "Quelques minutes selon la durée de ta vidéo. Tu peux fermer la page : le traitement continue sur nos serveurs et ton montage t'attend dans le dashboard.",
+  },
+  {
+    q: 'Les images générées me ressemblent ?',
+    a: "Par défaut, CutForge génère des visuels avec des personnes et des décors africains modernes (Abidjan, Dakar, Lomé, Douala…). Tu peux changer ce réglage avant chaque montage si tu vises une autre audience.",
+  },
+  {
+    q: "C'est vraiment gratuit ?",
+    a: "Oui : 2 vidéos par mois offertes, sans carte bancaire, avec toutes les fonctions de montage. Le plan Pro débloque plus de vidéos, des durées plus longues et la priorité de rendu.",
+  },
+  {
+    q: 'Quels formats de vidéo sont acceptés ?',
+    a: "MP4, MOV, WebM, MKV, AVI et la plupart des formats mobiles — jusqu'à plusieurs Go. L'upload est optimisé pour les connexions mobiles.",
+  },
+]
+
+/* ========================================================================== */
+/*  Page                                                                      */
+/* ========================================================================== */
+
+export default function Landing() {
+  const heroRef = useRef<HTMLDivElement>(null)
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    const el = heroRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    el.style.setProperty('--mx', (((e.clientX - rect.left) / rect.width - 0.5) * 2).toFixed(3))
+    el.style.setProperty('--my', (((e.clientY - rect.top) / rect.height - 0.5) * 2).toFixed(3))
+  }, [])
+
+  return (
+    <div className="overflow-x-clip">
+      {/* ================= HERO ================= */}
+      <section
+        ref={heroRef}
+        onMouseMove={handleMouseMove}
+        className="relative isolate overflow-hidden"
+      >
+        {/* fond animé */}
+        <div className="absolute inset-0 -z-10" aria-hidden>
+          <div className="cf-aurora left-[-10%] top-[-15%] h-[480px] w-[480px] bg-primary-600/60" />
+          <div className="cf-aurora right-[-12%] top-[10%] h-[420px] w-[420px] bg-fuchsia-600/40" style={{ animationDelay: '-6s' }} />
+          <div className="cf-aurora bottom-[-20%] left-[25%] h-[460px] w-[460px] bg-accent-500/30" style={{ animationDelay: '-11s' }} />
+          <div className="cf-grid-dots absolute inset-0" />
+        </div>
+
+        <div className="mx-auto grid max-w-7xl items-center gap-14 px-4 pb-20 pt-16 sm:px-6 lg:grid-cols-2 lg:gap-8 lg:px-8 lg:pt-24">
+          {/* copy */}
+          <div className="cf-parallax" style={{ '--px': '6px', '--py': '4px' } as React.CSSProperties}>
+            <Reveal>
+              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-dark-200">
+                <Logo size={18} />
+                <span className="font-semibold tracking-wide">{BRAND.name}</span>
+                <span className="h-1 w-1 rounded-full bg-dark-500" />
+                <span className="text-dark-300">Le moteur de montage IA</span>
+              </div>
+            </Reveal>
+
+            <Reveal delay={80}>
+              <h1 className="text-balance text-4xl font-bold leading-[1.05] sm:text-5xl lg:text-6xl">
+                Une vidéo brute entre.
+                <br />
+                <span className="gradient-text">Un montage de pro</span> ressort.
+              </h1>
+            </Reveal>
+
+            <Reveal delay={160}>
+              <p className="mt-6 max-w-xl text-lg leading-relaxed text-dark-300">
+                {BRAND.name} coupe les silences et les ratés, <strong className="text-white">illustre tes propos
+                en motion design</strong>, ajoute B-rolls IA, sous-titres karaoké et sound design —
+                ta vidéo est prête pour TikTok, Reels et Shorts en quelques minutes.
+              </p>
+            </Reveal>
+
+            <Reveal delay={240}>
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                <Link to="/signup" className="btn-accent inline-flex items-center justify-center gap-2 px-7 py-3.5 text-base">
+                  <Zap className="h-5 w-5" />
+                  Créer mon premier montage
+                </Link>
+                <a href="#comment" className="btn-secondary inline-flex items-center justify-center gap-2 px-7 py-3.5 text-base">
+                  Voir comment ça marche
+                  <ArrowRight className="h-4 w-4" />
+                </a>
+              </div>
+            </Reveal>
+
+            <Reveal delay={320}>
+              <ul className="mt-7 flex flex-wrap gap-x-6 gap-y-2 text-sm text-dark-300">
+                {['Sans carte bancaire', '2 vidéos offertes / mois', "Pensé pour l'Afrique francophone"].map((t) => (
+                  <li key={t} className="flex items-center gap-2">
+                    <Check className="h-4 w-4 text-emerald-400" />
+                    {t}
+                  </li>
+                ))}
+              </ul>
+            </Reveal>
+          </div>
+
+          {/* simulation */}
+          <Reveal delay={200}>
+            <div className="cf-parallax" style={{ '--px': '-14px', '--py': '-10px' } as React.CSSProperties}>
+              <PhoneDemo />
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ================= MARQUEE ================= */}
+      <section className="border-y border-white/5 bg-dark-900/40 py-5">
+        <div className="mask-fade-x overflow-hidden">
+          <div className="cf-marquee flex w-max gap-10">
+            {[...MARQUEE_ITEMS, ...MARQUEE_ITEMS].map((item, i) => (
+              <span key={i} className="flex items-center gap-10 whitespace-nowrap text-sm font-bold tracking-[0.2em] text-dark-400">
+                {item}
+                <Sparkles className="h-4 w-4 text-primary-500/70" />
+              </span>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ================= COMMENT ÇA MARCHE ================= */}
+      <section id="comment" className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
+        <Reveal className="text-center">
+          <h2 className="text-3xl font-bold sm:text-4xl">
+            Du brut au viral en <span className="gradient-text">3 étapes</span>
+          </h2>
+          <p className="mx-auto mt-4 max-w-2xl text-dark-300">
+            Pas de timeline, pas de logiciel à apprendre. Tu parles, {BRAND.name} forge.
+          </p>
+        </Reveal>
+
+        <Reveal className="relative mt-16">
+          {/* connecteur dessiné entre les étapes */}
+          <svg className="cf-connector absolute left-0 right-0 top-10 hidden h-8 w-full lg:block" viewBox="0 0 1000 40" fill="none" preserveAspectRatio="none" aria-hidden>
+            <path d="M170 20 C 320 -10, 420 50, 500 20 S 720 -10, 830 20" stroke="url(#cf-line)" strokeWidth="2.5" strokeDasharray="8 7" pathLength={100} />
+            <defs>
+              <linearGradient id="cf-line" x1="0" y1="0" x2="1000" y2="0" gradientUnits="userSpaceOnUse">
+                <stop stopColor="#3f72ff" />
+                <stop offset="1" stopColor="#f97316" />
+              </linearGradient>
+            </defs>
+          </svg>
+
+          <div className="grid gap-10 lg:grid-cols-3">
+            {[
+              {
+                icon: Upload, step: '01', title: 'Envoie ta vidéo parlée',
+                text: 'Filme face caméra avec ton téléphone — lumière correcte, voix claire. Pas besoin de matériel pro.',
+              },
+              {
+                icon: Wand2, step: '02', title: `${BRAND.name} forge le montage`,
+                text: 'Transcription mot par mot, coupes intelligentes, scènes motion design, B-roll IA, sons et sous-titres calés à la milliseconde.',
+              },
+              {
+                icon: Smartphone, step: '03', title: "Publie et capte l'attention",
+                text: 'Télécharge ton MP4 vertical 1080×1920 prêt pour TikTok, Reels et Shorts. En minutes, pas en heures.',
+              },
+            ].map(({ icon: Icon, step, title, text }, i) => (
+              <Reveal key={step} delay={i * 120}>
+                <div className="cf-card card relative z-10 h-full text-center">
+                  <span className="absolute right-5 top-4 font-display text-4xl font-bold text-white/5">{step}</span>
+                  <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-primary-600 to-fuchsia-500 shadow-lg shadow-primary-900/50">
+                    <Icon className="h-7 w-7 text-white" />
+                  </div>
+                  <h3 className="text-lg font-semibold">{title}</h3>
+                  <p className="mt-3 text-sm leading-relaxed text-dark-300">{text}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </Reveal>
+      </section>
+
+      {/* ================= VITRINE MOTION DESIGN ================= */}
+      <section className="relative border-y border-white/5 bg-gradient-to-b from-dark-900/40 to-transparent py-24">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <Reveal className="text-center">
+            <span className="rounded-full border border-amber-300/40 bg-amber-300/10 px-4 py-1 text-xs font-bold tracking-widest text-amber-300">
+              LA SIGNATURE {BRAND.name.toUpperCase()}
+            </span>
+            <h2 className="mt-5 text-3xl font-bold sm:text-4xl">
+              Ton discours, <span className="gradient-text">dessiné à l'écran</span>
+            </h2>
+            <p className="mx-auto mt-4 max-w-2xl text-dark-300">
+              Quand tu expliques un point important, une scène motion design prend l'écran :
+              illustrations qui se tracent, flèches, étapes, compteurs — avec une transition
+              et des effets sonores. Comme chez les monteurs pros, automatiquement.
+            </p>
+          </Reveal>
+
+          <div className="mt-14 grid gap-10 sm:grid-cols-3">
+            <Reveal delay={0}><SceneIdea /></Reveal>
+            <Reveal delay={120}><SceneSteps /></Reveal>
+            <Reveal delay={240}><SceneNumber /></Reveal>
+          </div>
+        </div>
+      </section>
+
+      {/* ================= FEATURES ================= */}
+      <section className="mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
+        <Reveal className="text-center">
+          <h2 className="text-3xl font-bold sm:text-4xl">
+            Tout ce qu'un monteur pro ferait. <span className="gradient-text">Sans le monteur.</span>
+          </h2>
+        </Reveal>
+
+        <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {FEATURES.map(({ icon: Icon, title, text }, i) => (
+            <Reveal key={title} delay={(i % 3) * 100}>
+              <div
+                className="cf-card card h-full"
+                onMouseMove={(e) => {
+                  const r = e.currentTarget.getBoundingClientRect()
+                  e.currentTarget.style.setProperty('--gx', `${e.clientX - r.left}px`)
+                  e.currentTarget.style.setProperty('--gy', `${e.clientY - r.top}px`)
+                }}
+              >
+                <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-primary-600/15 text-primary-400">
+                  <Icon className="h-5 w-5" />
+                </div>
+                <h3 className="font-semibold">{title}</h3>
+                <p className="mt-2.5 text-sm leading-relaxed text-dark-300">{text}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+
+        {/* bande de stats produit */}
+        <Reveal delay={150}>
+          <div className="mt-16 grid grid-cols-2 gap-6 rounded-2xl border border-white/10 bg-dark-900/60 p-8 text-center sm:grid-cols-4">
+            {[
+              ['−80%', 'de temps de montage'],
+              ['1080×1920', 'vertical natif 30 fps'],
+              ['27', 'effets sonores forgés'],
+              ['5', 'styles de sous-titres'],
+            ].map(([big, small]) => (
+              <div key={small}>
+                <p className="gradient-text font-display text-3xl font-bold">{big}</p>
+                <p className="mt-1 text-sm text-dark-400">{small}</p>
+              </div>
+            ))}
+          </div>
+        </Reveal>
+      </section>
+
+      {/* ================= PRICING TEASER ================= */}
+      <section className="mx-auto max-w-5xl px-4 pb-24 sm:px-6 lg:px-8">
+        <Reveal className="text-center">
+          <h2 className="text-3xl font-bold sm:text-4xl">Commence gratuitement</h2>
+          <p className="mt-4 text-dark-300">Paiement en FCFA via Mobile Money, ou en dollars. Annulable à tout moment.</p>
+        </Reveal>
+
+        <div className="mt-12 grid gap-6 sm:grid-cols-2">
+          <Reveal>
+            <div className="card h-full">
+              <h3 className="font-semibold text-dark-200">Découverte</h3>
+              <p className="mt-3 font-display text-4xl font-bold">0 <span className="text-base font-normal text-dark-400">FCFA</span></p>
+              <ul className="mt-6 space-y-2.5 text-sm text-dark-300">
+                {['2 vidéos par mois', '5 min max par vidéo', 'Motion design + B-roll IA inclus', 'Sous-titres karaoké & SFX'].map((f) => (
+                  <li key={f} className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-400" />{f}</li>
+                ))}
+              </ul>
+              <Link to="/signup" className="btn-secondary mt-8 block w-full text-center">Commencer gratuitement</Link>
+            </div>
+          </Reveal>
+          <Reveal delay={120}>
+            <div className="card relative h-full border-primary-500/40 bg-gradient-to-b from-primary-950/40 to-dark-900">
+              <span className="absolute -top-3 left-6 rounded-full bg-accent-500 px-3 py-0.5 text-xs font-bold text-white">POPULAIRE</span>
+              <h3 className="font-semibold text-dark-200">Pro</h3>
+              <p className="mt-3 font-display text-4xl font-bold">5 000 <span className="text-base font-normal text-dark-400">FCFA / mois</span></p>
+              <ul className="mt-6 space-y-2.5 text-sm text-dark-300">
+                {['Plus de vidéos chaque mois', '30 min max par vidéo', 'Priorité de rendu', 'Tous les styles & réglages avancés'].map((f) => (
+                  <li key={f} className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-400" />{f}</li>
+                ))}
+              </ul>
+              <Link to="/pricing" className="btn-primary mt-8 block w-full text-center">Voir tous les tarifs</Link>
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ================= FAQ ================= */}
+      <section className="mx-auto max-w-3xl px-4 pb-24 sm:px-6 lg:px-8">
+        <Reveal className="text-center">
+          <h2 className="text-3xl font-bold">Questions fréquentes</h2>
+        </Reveal>
+        <div className="mt-10 space-y-3">
+          {FAQ_ITEMS.map(({ q, a }, i) => (
+            <Reveal key={q} delay={i * 60}>
+              <details className="group rounded-xl border border-white/10 bg-dark-900/60 px-5 py-4 [&_summary::-webkit-details-marker]:hidden">
+                <summary className="flex cursor-pointer items-center justify-between gap-4 font-medium text-dark-100">
+                  {q}
+                  <ChevronDown className="h-4 w-4 shrink-0 text-dark-400 transition-transform group-open:rotate-180" />
+                </summary>
+                <p className="mt-3 text-sm leading-relaxed text-dark-300">{a}</p>
+              </details>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
+      {/* ================= CTA FINAL ================= */}
+      <section className="mx-auto max-w-7xl px-4 pb-28 sm:px-6 lg:px-8">
+        <Reveal>
+          <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-tr from-primary-950 via-dark-900 to-[#2a1230] px-8 py-16 text-center">
+            <div className="cf-aurora left-[10%] top-[-40%] h-[300px] w-[300px] bg-primary-500/50" aria-hidden />
+            <div className="cf-aurora bottom-[-50%] right-[5%] h-[320px] w-[320px] bg-accent-500/40" style={{ animationDelay: '-7s' }} aria-hidden />
+            <div className="relative">
+              <div className="mx-auto mb-6 w-fit"><Logo size={52} /></div>
+              <h2 className="text-balance text-3xl font-bold sm:text-4xl">
+                Prêt à forger ton prochain montage ?
+              </h2>
+              <p className="mx-auto mt-4 max-w-xl text-dark-300">
+                Envoie ta première vidéo maintenant — dans quelques minutes, tu télécharges
+                un montage avec motion design, B-roll, sons et sous-titres.
+              </p>
+              <Link to="/signup" className="btn-accent mt-8 inline-flex items-center gap-2 px-8 py-4 text-base">
+                <Zap className="h-5 w-5" />
+                Lancer {BRAND.name} gratuitement
+              </Link>
+            </div>
+          </div>
+        </Reveal>
+      </section>
+
+      <Footer />
+    </div>
   )
 }

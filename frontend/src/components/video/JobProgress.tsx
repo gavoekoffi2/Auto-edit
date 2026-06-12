@@ -52,7 +52,7 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
         errorCount++
         if (errorCount >= 5 && !cancelled) {
           setConnectionWarning(
-            "Connexion instable. Ne ferme pas la page : le traitement continue sur le serveur et AutoEdit va reprendre le suivi automatiquement.",
+            "Connexion instable. Ne ferme pas la page : le traitement continue sur le serveur et CutForge va reprendre le suivi automatiquement.",
           )
           if (!warnedAboutConnection) {
             warnedAboutConnection = true

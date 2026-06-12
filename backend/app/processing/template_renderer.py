@@ -158,7 +158,7 @@ class TemplateRenderer:
         duration = max(0.45, float(ov.end) - float(ov.start))
         props = {
             "kind": ov.kind,
-            "title": ov.props.get("title") or ov.props.get("text") or "AutoEdit",
+            "title": ov.props.get("title") or ov.props.get("text") or "CutForge",
             "subtitle": ov.props.get("subtitle") or ov.props.get("role") or "",
             "step": ov.props.get("step") or "•",
             **(ov.props or {}),

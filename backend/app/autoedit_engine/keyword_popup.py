@@ -119,14 +119,58 @@ def find_occurrences(vu: dict, keyword: str, ranges: List[dict]) -> List[float]:
     return out_times
 
 
-def build_popups(edl_path: str, outdir: str) -> dict:
+def _fname_safe(kw: str) -> str:
+    return re.sub(r"[^A-Za-z0-9À-ÿ_-]+", "_", kw) or "kw"
+
+
+def _append_popup_sfx(times: List[float], sfx_cues_path: str) -> int:
+    """Give every popup chip a tiny UI blip (they used to appear in silence)."""
+    if not times or not os.path.exists(sfx_cues_path):
+        return 0
+    with open(sfx_cues_path, "r", encoding="utf-8") as fh:
+        cues = json.load(fh)
+    existing = sorted(float(c["t"]) for c in cues)
+
+    added = 0
+    for i, t in enumerate(times[:config.POPUP_SFX_MAX]):
+        # Skip if another cue already hits within 0.3 s (no SFX pile-ups).
+        if any(abs(t - e) < 0.3 for e in existing):
+            continue
+        cues.append({"sfx": config.POPUP_SFX_POOL[i % len(config.POPUP_SFX_POOL)],
+                     "t": round(t, 3), "src": "popup"})
+        existing.append(t)
+        added += 1
+
+    cues.sort(key=lambda c: c["t"])
+    with open(sfx_cues_path, "w", encoding="utf-8") as fh:
+        json.dump(cues, fh, ensure_ascii=False, indent=2)
+    return added
+
+
+def build_popups(edl_path: str, outdir: str,
+                 sfx_cues_path: Optional[str] = None) -> dict:
     with open(edl_path, "r", encoding="utf-8") as fh:
         edl = json.load(fh)
     vu = json.load(open(edl["transcripts_vu"], encoding="utf-8"))
     ranges = edl["ranges"]
     os.makedirs(outdir, exist_ok=True)
+    if sfx_cues_path is None:
+        sfx_cues_path = os.path.join(os.path.dirname(os.path.abspath(edl_path)),
+                                     "sfx_cues.json")
 
     keywords = content.top_keywords(vu, config.KEYWORD_TOP_N)
+
+    # Full-frame takeovers (motion-design scenes) own their span: a popup chip
+    # must never blink on top of an illustrated scene.
+    takeover_spans = [
+        (float(o["start"]) - 0.2, float(o["end"]) + 0.2)
+        for o in edl.get("overlays", [])
+        if o.get("kind") == "motion"
+    ]
+
+    def _in_takeover(t: float) -> bool:
+        end_t = t + config.KEYWORD_POPUP_DUR
+        return any(t < b and end_t > a for a, b in takeover_spans)
 
     # Gather every candidate occurrence, then de-collide globally so two chips
     # never share the screen (>= popup duration + small gap apart).
@@ -140,7 +184,7 @@ def build_popups(edl_path: str, outdir: str) -> dict:
     kept: List[tuple] = []
     last = -1e9
     for ot, kw in candidates:
-        if ot - last >= min_spacing:
+        if ot - last >= min_spacing and not _in_takeover(ot):
             kept.append((ot, kw))
             last = ot
 
@@ -149,7 +193,7 @@ def build_popups(edl_path: str, outdir: str) -> dict:
     counters: Dict[str, int] = {}
     for ot, kw in kept:
         if kw not in movs:
-            mov = os.path.join(outdir, f"popup_{kw}.mov")
+            mov = os.path.join(outdir, f"popup_{_fname_safe(kw)}.mov")
             render_popup(kw, mov)
             movs[kw] = mov
         k = counters.get(kw, 0)
@@ -168,8 +212,11 @@ def build_popups(edl_path: str, outdir: str) -> dict:
     edl["overlays"] = overlays
     with open(edl_path, "w", encoding="utf-8") as fh:
         json.dump(edl, fh, ensure_ascii=False, indent=2)
-    print(f"[keyword_popup] +{added} popups for {len(movs)} keywords -> {edl_path}")
-    return {"keywords": list(movs), "added": added}
+
+    sfx_added = _append_popup_sfx([ot for ot, _ in kept], sfx_cues_path)
+    print(f"[keyword_popup] +{added} popups for {len(movs)} keywords "
+          f"(+{sfx_added} SFX) -> {edl_path}")
+    return {"keywords": list(movs), "added": added, "sfx_added": sfx_added}
 
 
 def main(argv: Optional[list[str]] = None) -> int:

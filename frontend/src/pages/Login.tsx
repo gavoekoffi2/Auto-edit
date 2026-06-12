@@ -44,7 +44,7 @@ export default function Login() {
         <div className="text-center mb-8">
           <Zap className="w-12 h-12 text-accent-500 mx-auto mb-4" />
           <h1 className="text-2xl font-bold">Welcome back</h1>
-          <p className="text-dark-400 mt-2">Log in to your AutoEdit account</p>
+          <p className="text-dark-400 mt-2">Connecte-toi à ton compte CutForge</p>
         </div>
 
         <form onSubmit={handleSubmit} className="card space-y-4">

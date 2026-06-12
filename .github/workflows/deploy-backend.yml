@@ -1,7 +1,8 @@
 name: Deploy backend to VPS
 
 # Auto-deploys the backend (FastAPI + Celery worker + Postgres + Redis + Caddy)
-# to the production VPS whenever backend-related code lands on main.
+# to the production VPS whenever backend-related code lands on main —
+# AFTER the test suite passes (a red test suite never reaches production).
 #
 # It SSHes in and runs the repo's own idempotent deploy.sh, which pulls the
 # latest main, preserves .env, rebuilds the Docker stack and health-checks it.
@@ -36,7 +37,35 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  test:
+    name: Backend tests (gate)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install ffmpeg + fonts (engine render smoke tests)
+        run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg fonts-dejavu-core
+
+      - name: Install Python deps (skip heavy ML/video libs not needed by tests)
+        working-directory: backend
+        run: |
+          grep -vE '^(openai-whisper|moviepy|scenedetect|auto-editor|psycopg2-binary)' requirements.txt > /tmp/requirements-ci.txt
+          pip install -r /tmp/requirements-ci.txt aiosqlite
+
+      - name: Run test suite
+        working-directory: backend
+        run: python -m pytest tests/ -q
+
   deploy-backend:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Check deploy secrets are configured

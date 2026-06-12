@@ -3,9 +3,10 @@ import logging
 from uuid import UUID
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import FileResponse
+
+from app.services.media import ranged_file_response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
@@ -53,6 +54,7 @@ _MODE_DEFINITIONS: list[dict] = [
         "pipeline": "v2",
         "defaults": {
             "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
+            "motion_design": True,
             "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
             "broll_style": "tiktok_viral", "broll_demographic": "african",
         },
@@ -65,6 +67,7 @@ _MODE_DEFINITIONS: list[dict] = [
         "pipeline": "v2",
         "defaults": {
             "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
+            "motion_design": True,
             "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
             "broll_style": "african_business_premium", "broll_demographic": "african",
         },
@@ -77,6 +80,7 @@ _MODE_DEFINITIONS: list[dict] = [
         "pipeline": "v2",
         "defaults": {
             "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
+            "motion_design": True,
             "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
             "broll_style": "publicite_locale", "broll_demographic": "african",
         },
@@ -89,6 +93,7 @@ _MODE_DEFINITIONS: list[dict] = [
         "pipeline": "v2",
         "defaults": {
             "remove_silence": True, "dynamic_captions": False, "ai_broll": False,
+            "motion_design": False,
             "music": False, "sfx": False, "vertical_9_16": False, "final_cta": False,
             "broll_style": "podcast_propre", "broll_demographic": "african",
         },
@@ -101,6 +106,7 @@ _MODE_DEFINITIONS: list[dict] = [
         "pipeline": "v2",
         "defaults": {
             "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
+            "motion_design": True,
             "music": False, "sfx": False, "vertical_9_16": False, "final_cta": False,
             "broll_style": "formation_educative", "broll_demographic": "african",
         },
@@ -283,6 +289,7 @@ async def cancel_job(
 @router.get("/{job_id}/download")
 async def download_result(
     job_id: UUID,
+    request: Request,
     access_token: str | None = Query(None),
     credentials: HTTPAuthorizationCredentials | None = Depends(optional_security),
     db: AsyncSession = Depends(get_db),
@@ -315,8 +322,11 @@ async def download_result(
             detail="Output file no longer exists on disk",
         )
 
-    return FileResponse(
+    # Range-aware response: resumable downloads + seekable preview playback
+    # (the pinned Starlette FileResponse ignores Range headers).
+    return ranged_file_response(
         absolute_path,
+        request,
         media_type="video/mp4",
-        filename=f"autoedit_{job_id}.mp4",
+        filename=f"cutforge_{job_id}.mp4",
     )

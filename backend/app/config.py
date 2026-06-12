@@ -88,8 +88,8 @@ class Settings(BaseSettings):
     IMAGE_GENERATION_MODEL: str = "google/gemini-2.5-flash-image"
     OPENROUTER_API_KEY: Optional[str] = None
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
-    OPENROUTER_HTTP_REFERER: str = "https://autoedit.app"
-    OPENROUTER_X_TITLE: str = "AutoEdit"
+    OPENROUTER_HTTP_REFERER: str = "https://cutforge.app"
+    OPENROUTER_X_TITLE: str = "CutForge"
 
     # B-roll style & planning
     BROLL_STYLE: str = "african_business_premium"
@@ -107,6 +107,9 @@ class Settings(BaseSettings):
 
     # Feature flags produit
     ENABLE_AI_BROLL: bool = True
+    # Scènes motion design illustrées (dessins animés qui illustrent le
+    # discours). Fonctionne même sans clé API (dessins procéduraux).
+    ENABLE_MOTION_DESIGN: bool = True
     ENABLE_DYNAMIC_CAPTIONS: bool = True
     ENABLE_SFX: bool = True
     ENABLE_MUSIC: bool = True
@@ -116,7 +119,7 @@ class Settings(BaseSettings):
     # le reset password fonctionnel.
     # ---------------------------------------------------------------------
     EMAIL_PROVIDER: str = "console"  # console | smtp | sendgrid
-    EMAIL_FROM: str = "AutoEdit <noreply@autoedit.app>"
+    EMAIL_FROM: str = "CutForge <noreply@cutforge.app>"
     EMAIL_SMTP_HOST: Optional[str] = None
     EMAIL_SMTP_PORT: int = 587
     EMAIL_SMTP_USER: Optional[str] = None
@@ -133,7 +136,7 @@ class Settings(BaseSettings):
     # ---------------------------------------------------------------------
     # Compte ops
     # ---------------------------------------------------------------------
-    SUPPORT_EMAIL: str = "support@autoedit.app"
+    SUPPORT_EMAIL: str = "support@cutforge.app"
     ADMIN_EMAILS: str = ""
 
     @property

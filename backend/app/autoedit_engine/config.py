@@ -33,7 +33,26 @@ SCRIBE_MODEL_ID = "scribe_v1"
 # --------------------------------------------------------------------------- #
 GAP_CUT = 0.65          # seconds: any silence >= this between two words = a cut
 PAD = 0.25              # seconds: kept margin before/after each retained segment
+MICRO_PAD = 0.05        # seconds: tight margin at retake/stutter cuts (word-safe)
 AUDIO_FADE = 0.03       # seconds: 30 ms afade in/out at every cut
+
+# Smart cut — remove retakes / false starts / repeated sentences.
+# A run is dropped when the NEXT run restarts it (the speaker corrected
+# himself); the LAST take is always the one kept.
+REMOVE_RETAKES = os.getenv("ENGINE_REMOVE_RETAKES", "1") not in {"0", "false", "no"}
+RETAKE_SIMILARITY = 0.80        # SequenceMatcher ratio to call two runs "the same"
+RETAKE_MAX_WORDS = 16           # only short runs can be false starts
+RETAKE_MIN_WORDS = 2            # 1-word runs are handled by the stutter pass
+STUTTER_MIN_SPAN = 0.45         # repeated word/bigram shorter than this is left alone
+                                # (cutting it would be eaten by the pads anyway)
+
+# Phrases speakers say when they flub a take — everything from the marker to
+# the end of the run is trimmed (".. la méthode est, non je reprends" -> cut).
+RETAKE_MARKERS = [
+    "je reprends", "on reprend", "je recommence", "on recommence",
+    "je répète", "non attends", "attends je reprends", "coupe ça",
+    "c'est pas ça", "pardon je reprends", "let me start over", "scratch that",
+]
 
 # Segments containing ONLY these tokens are dropped (filler words FR/EN).
 FILLERS = {
@@ -91,20 +110,40 @@ BROLL_STYLE_PREFIX = (
     "vertical composition. Subject: "
 )
 
-# B-roll cadence. Shorts need a denser visual rhythm; longer videos stay more
-# cost-aware because motion-design cards also illustrate key beats. Values can
-# be overridden in production through environment variables without code edits.
-SECONDS_PER_BROLL = float(os.getenv("SECONDS_PER_BROLL", "5.0"))
-SECONDS_PER_BROLL_WITH_MOTION = float(os.getenv("SECONDS_PER_BROLL_WITH_MOTION", "7.0"))
+# B-roll cadence — COST-AWARE: motion-design scenes (cheap or free) carry a
+# larger share of the visual rhythm, so generated images are reserved for the
+# strongest beats. Values can be overridden through environment variables.
+SECONDS_PER_BROLL = float(os.getenv("SECONDS_PER_BROLL", "9.0"))
+SECONDS_PER_BROLL_WITH_MOTION = float(os.getenv("SECONDS_PER_BROLL_WITH_MOTION", "12.0"))
 SHORTS_MAX_DURATION_SECONDS = float(os.getenv("SHORTS_MAX_DURATION_SECONDS", "90.0"))
-SHORTS_SECONDS_PER_BROLL = float(os.getenv("SHORTS_SECONDS_PER_BROLL", "3.5"))
-SHORTS_SECONDS_PER_BROLL_WITH_MOTION = float(os.getenv("SHORTS_SECONDS_PER_BROLL_WITH_MOTION", "4.0"))
+SHORTS_SECONDS_PER_BROLL = float(os.getenv("SHORTS_SECONDS_PER_BROLL", "6.0"))
+SHORTS_SECONDS_PER_BROLL_WITH_MOTION = float(os.getenv("SHORTS_SECONDS_PER_BROLL_WITH_MOTION", "8.0"))
+MAX_BROLL_IMAGES = int(os.getenv("MAX_BROLL_IMAGES", "8"))   # hard API budget cap
+
+# Precise image prompts: a cheap text model rewrites each spoken excerpt into a
+# literal visual scene before image generation (heuristic fallback if it fails).
+PROMPT_REFINER_MODEL = os.getenv("PROMPT_REFINER_MODEL", "google/gemini-2.5-flash-lite")
+PROMPT_REFINER_ENABLED = os.getenv("PROMPT_REFINER_ENABLED", "1") not in {"0", "false", "no"}
 
 # Entrance animations cycled in this exact order (Étape 6).
 BROLL_ENTRANCES = [
     "punch", "slide_r", "slide_l", "rise",
     "glitch", "flash", "transition", "swoosh_up",
 ]
+
+# Exit animations — every B-roll leaves the frame with motion, never a flat
+# fade. Paired with the entrance for a coherent in/out feel.
+BROLL_EXITS = {
+    "punch": "punch_out",       # zooms slightly past the camera
+    "slide_r": "slide_out_l",   # continues its travel to the left
+    "slide_l": "slide_out_r",
+    "rise": "drop",             # falls back down
+    "glitch": "glitch_out",
+    "flash": "punch_out",
+    "transition": "slide_out_l",
+    "swoosh_up": "swoosh_out_up",
+}
+BROLL_EXIT_DUR = 0.45           # seconds of exit motion before the cut
 BROLL_DURATION = 3.0           # standard clip length
 BROLL_DURATION_WIDE = 3.2      # wide images get a touch longer
 BROLL_KB = 0.10                # continuous Ken Burns amount over the whole clip
@@ -113,6 +152,57 @@ BROLL_BLUR_BRIGHTNESS = 0.45   # background plate brightness multiplier
 BROLL_BRACKET_COLOR = (0, 220, 255, 255)   # CYAN cinematic corner brackets
 BROLL_CHIP_COLOR = (212, 175, 55, 255)     # gold chip
 BROLL_CHIP_Y = 250
+
+# --------------------------------------------------------------------------- #
+# STEP 6bis — MOTION DESIGN ILLUSTRÉ
+# Full-frame animated illustration scenes that DRAW what the speaker is
+# explaining (not just text).  Each scene = AI flat-design illustration (or a
+# procedural line-art drawing when no API key) + hand-drawn arrows, circled
+# keywords, numbered steps, counters — all animated, with entrance/exit
+# transitions and per-element SFX cues.
+# --------------------------------------------------------------------------- #
+MOTION_STYLE_PREFIX = (
+    "2D flat vector illustration in premium motion-design style, bold clean "
+    "outlines, vibrant saturated colors (cyan, gold, coral accents), simple "
+    "geometric shapes, friendly cartoon characters performing the action, "
+    "isolated on a very dark navy background, infographic energy, centered "
+    "composition, square format, ABSOLUTELY NO text, NO words, NO letters, "
+    "NO numbers in the image. Scene to illustrate: "
+)
+
+MOTION_EVERY_SHORT = 14.0       # ~1 scene / 14 s on shorts (<= 90 s)
+MOTION_EVERY_LONG = 22.0        # ~1 scene / 22 s on longer videos
+MOTION_MAX_SCENES = 8
+MOTION_MIN_SPACING = 10.0       # seconds between two scene starts
+MOTION_MIN_START = 2.0          # never take over the very first seconds
+MOTION_SCENE_DUR = 4.6          # idea / number scenes
+MOTION_SCENE_DUR_STEPS = 5.4    # step-by-step scenes need a touch longer
+MOTION_LEAD = 0.15              # scene starts slightly before the spoken beat
+
+# API budget: only the top-priority scenes get an AI illustration; the others
+# use the procedural line-art drawings (free). 0 disables AI illustrations.
+MOTION_AI_ILLUSTRATIONS_MAX = int(os.getenv("MOTION_AI_ILLUSTRATIONS_MAX", "3"))
+
+# Scene entrance/exit transition variants, cycled per scene so two consecutive
+# takeovers never use the same move.
+MOTION_ENTRANCES = ["sweep", "iris", "slide_up"]
+MOTION_EXITS = ["scale_fade", "slide_down", "iris_close"]
+
+# Palette (deep navy stage + cyan/gold ink, consistent with the brand).
+MOTION_BG_TOP = (11, 14, 26)
+MOTION_BG_BOTTOM = (26, 19, 46)
+MOTION_ACCENT = (0, 220, 255, 255)      # cyan ink (arrows / doodles)
+MOTION_GOLD = (255, 199, 64, 255)       # gold ink (highlights / counters)
+MOTION_INK = (255, 255, 255, 255)
+
+# SFX vocabulary for motion scenes (rotating pools, mixed by plan_overlays).
+MOTION_RISER_SFX = ["riser", "reverse_swell", "tape_stop"]   # anticipation, -0.45 s
+MOTION_ENTRANCE_SFX = ["transition", "whoosh", "cinematic_hit", "swoosh_up"]
+MOTION_ELEMENT_SFX = ["pop", "bubble", "snap", "data_tick", "ding", "sparkle"]
+MOTION_DRAW_SFX = "pen_scribble"   # plays while a procedural drawing draws itself
+MOTION_EXIT_SFX = ["swoosh_down", "whoosh", "tape_stop"]
+MOTION_RISER_LEAD = 0.45
+MOTION_MAX_ELEMENT_SFX = 4      # cap per scene so SFX stay accents, not noise
 
 # --------------------------------------------------------------------------- #
 # STEP 7 — KEYWORD POPUPS — RÈGLE PRO #2
@@ -129,12 +219,17 @@ STOPWORDS = {
     "le", "la", "les", "un", "une", "des", "de", "du", "et", "ou", "mais",
     "donc", "or", "ni", "car", "que", "qui", "quoi", "dont", "où", "à", "au",
     "aux", "ce", "cet", "cette", "ces", "mon", "ma", "mes", "ton", "ta", "tes",
-    "son", "sa", "ses", "notre", "votre", "leur", "leurs", "je", "tu", "il",
+    "son", "sa", "ses", "nos", "vos", "notre", "votre", "leur", "leurs",
+    "je", "tu", "il",
     "elle", "on", "nous", "vous", "ils", "elles", "se", "me", "te", "lui",
     "y", "en", "pas", "ne", "plus", "moins", "très", "trop", "pour", "par",
     "avec", "sans", "sur", "sous", "dans", "est", "sont", "été", "être",
     "avoir", "fait", "faire", "comme", "aussi", "alors", "bien", "tout",
     "tous", "toute", "toutes", "cela", "ça", "ce", "si", "non", "oui",
+    "va", "vais", "vas", "vont", "allez", "veux", "veut", "peux", "peut",
+    # contractions courantes (le tokenizer garde l'apostrophe)
+    "c'est", "n'est", "s'est", "qu'il", "qu'elle", "qu'on", "j'ai", "t'as",
+    "d'un", "d'une", "l'on", "jusqu'à", "aujourd'hui", "quelqu'un",
     # English
     "the", "a", "an", "and", "or", "but", "of", "to", "in", "on", "at", "for",
     "with", "without", "is", "are", "was", "were", "be", "been", "being",
@@ -153,20 +248,30 @@ GAPFILL_THRESHOLD = 4.0        # gaps > 4 s without a visual get a filler SFX
 
 # Graphic SFX (varied, alternated).
 GRAPHIC_SFX = [
-    "impact", "sub_drop", "boom", "bass_hit",
-    "ding", "chime", "sparkle", "pop",
+    "impact", "sub_drop", "cinematic_hit", "bass_hit",
+    "ding", "chime", "sparkle", "boom",
 ]
 
-# B-roll SFX rotating pool — NEVER the same SFX twice in a row.
-# camera_flash is the signature photo sound and recurs regularly.
+# B-roll SFX rotating pool — photo/camera-centric (the user hears a PHOTO being
+# taken when an image appears). NEVER the same SFX twice in a row;
+# camera_flash is the signature sound and recurs regularly.
 BROLL_SFX_POOL = [
-    "camera_flash", "swoosh_up", "shutter", "glitch",
-    "camera_flash", "transition", "reverse_swell", "swoosh_down",
-    "camera_flash", "digi_blip", "whoosh", "sparkle",
+    "camera_flash", "shutter_burst", "swoosh_up", "shutter",
+    "camera_flash", "camera_focus", "transition", "reverse_swell",
+    "camera_flash", "shutter", "whoosh", "shutter_burst",
 ]
+
+# Keyword popup chips get a tiny UI blip (they used to appear in silence).
+POPUP_SFX_POOL = ["pop", "digi_blip", "snap", "bubble"]
+POPUP_SFX_MAX = 12              # cap per video
 
 # Gap-fill SFX pool (Règle PRO #3).
 GAPFILL_SFX_POOL = ["ding", "transition", "click", "swoosh_up", "chime"]
+
+# Per-cue humanisation: pitch/gain micro-variation cycled across cues so the
+# same sample never plays back twice identically (kills the "static" feel).
+SFX_PITCH_VARIANTS = [1.0, 0.94, 1.07, 0.97, 1.12, 0.90]
+SFX_GAIN_VARIANTS = [1.0, 0.92, 1.06, 0.96, 1.02, 0.9]
 
 # --------------------------------------------------------------------------- #
 # STEP 9 — COMPOSITE
@@ -180,21 +285,25 @@ SFX_SAMPLE_RATE = 48000        # 48 kHz mono WAV
 SFX_OFFSET = -0.060            # -60 ms : anticipate the attack
 SFX_BUS_GAIN = 0.55           # SFX sit as accents under the voice
 
-# The 19 sounds (numpy-generated). Names are the public SFX vocabulary.
+# The 27 sounds (numpy-generated). Names are the public SFX vocabulary.
 SFX_NAMES = [
     "whoosh", "swoosh_up", "swoosh_down", "pop", "boom", "impact", "sub_drop",
     "ding", "sparkle", "shutter", "glitch", "riser", "transition", "click",
     "camera_flash", "chime", "digi_blip", "reverse_swell", "bass_hit",
+    # v4.2 professional additions
+    "shutter_burst", "camera_focus", "pen_scribble", "tape_stop",
+    "bubble", "snap", "cinematic_hit", "data_tick",
 ]
 
 # Per-SFX peak gain (approximate, from spec).
 SFX_GAINS = {
-    "impact": 0.95, "sub_drop": 0.92, "bass_hit": 0.90,
-    "boom": 0.88, "riser": 0.85, "reverse_swell": 0.85,
-    "shutter": 0.84, "swoosh_up": 0.83, "swoosh_down": 0.83,
-    "whoosh": 0.82, "camera_flash": 0.82, "transition": 0.80,
-    "glitch": 0.78, "pop": 0.75, "ding": 0.72,
+    "impact": 0.95, "sub_drop": 0.92, "bass_hit": 0.90, "cinematic_hit": 0.92,
+    "boom": 0.88, "riser": 0.85, "reverse_swell": 0.85, "tape_stop": 0.82,
+    "shutter": 0.84, "shutter_burst": 0.85, "swoosh_up": 0.83, "swoosh_down": 0.83,
+    "whoosh": 0.82, "camera_flash": 0.82, "camera_focus": 0.66, "transition": 0.80,
+    "glitch": 0.78, "pop": 0.75, "ding": 0.72, "snap": 0.74,
     "chime": 0.72, "sparkle": 0.70, "digi_blip": 0.68, "click": 0.60,
+    "bubble": 0.70, "pen_scribble": 0.52, "data_tick": 0.62,
 }
 
 # loudnorm target (broadcast-safe social loudness).

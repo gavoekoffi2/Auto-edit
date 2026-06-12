@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Zap, Mic, VolumeX, Film, Sparkles, Loader2, ArrowLeft,
-  Image as ImageIcon, Music, Subtitles, Smartphone, Megaphone,
+  Image as ImageIcon, Music, Subtitles, Smartphone, Megaphone, PenTool,
 } from 'lucide-react'
 import VideoPlayer from '../components/video/VideoPlayer'
 import Timeline from '../components/video/Timeline'
@@ -39,6 +39,7 @@ const FALLBACK_MODES: ModeDescriptor[] = [
     pipeline: 'v2',
     defaults: {
       remove_silence: true, dynamic_captions: true, ai_broll: true,
+      motion_design: true,
       music: true, sfx: false, vertical_9_16: true, final_cta: true,
       broll_style: 'african_business_premium',
       broll_demographic: 'african',
@@ -332,6 +333,19 @@ export default function Editor() {
               onChange={toggle('ai_broll')}
             />
 
+            <ToggleRow
+              icon={<PenTool className="w-4 h-4 text-primary-400" />}
+              label="Motion design illustré"
+              checked={!!options.motion_design}
+              onChange={toggle('motion_design')}
+            />
+            {options.motion_design && (
+              <p className="text-xs text-dark-500 -mt-1 mb-2 pl-6">
+                Les moments clés du discours sont illustrés par des dessins animés
+                (flèches, étapes, chiffres) avec transitions et effets sonores.
+              </p>
+            )}
+
             {options.ai_broll && (
               <div className="mt-3">
                 <label className="text-xs text-dark-400 block mb-1">Personnes pour les images B-roll</label>
@@ -347,7 +361,7 @@ export default function Editor() {
                   <option value="caucasian">Blancs / caucasiens</option>
                   <option value="global">Mixte international</option>
                 </select>
-                <p className="text-xs text-dark-500 mt-1">Par défaut AutoEdit génère des scènes africaines modernes. Tu peux changer pour une autre audience.</p>
+                <p className="text-xs text-dark-500 mt-1">Par défaut CutForge génère des scènes africaines modernes (personnes et décors). Tu peux changer pour une autre audience.</p>
               </div>
             )}
             <ToggleRow
@@ -410,14 +424,17 @@ export default function Editor() {
               <PipelineStep icon={<Mic className="w-4 h-4 text-primary-400" />} label="Transcription Whisper (mot-par-mot)" />
               <PipelineStep icon={<VolumeX className="w-4 h-4 text-primary-400" />} label="Détection silences & filler words" />
               <PipelineStep icon={<Film className="w-4 h-4 text-primary-400" />} label="EDL — plan de coupes" />
+              {options.motion_design && (
+                <PipelineStep icon={<PenTool className="w-4 h-4 text-primary-400" />} label="Motion design — scènes illustrées animées" />
+              )}
               {options.ai_broll && (
-                <PipelineStep icon={<ImageIcon className="w-4 h-4 text-primary-400" />} label="B-roll IA + illustrations motion design" />
+                <PipelineStep icon={<ImageIcon className="w-4 h-4 text-primary-400" />} label="B-roll IA (images générées)" />
               )}
               <PipelineStep icon={<Sparkles className="w-4 h-4 text-primary-400" />} label="Captions, musique, export FFmpeg" />
             </div>
           </div>
 
-          {/* AutoEdit Button */}
+          {/* Bouton de lancement */}
           <button
             onClick={handleAutoEdit}
             disabled={processing}
@@ -431,7 +448,7 @@ export default function Editor() {
             ) : (
               <>
                 <Zap className="w-5 h-5" />
-                Lancer AutoEdit
+                Forger le montage
               </>
             )}
           </button>

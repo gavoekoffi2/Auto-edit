@@ -40,7 +40,7 @@ export default function Signup() {
     try {
       const data = await signup(email, password, fullName || undefined)
       setTokens(data.access_token, data.refresh_token)
-      toast('success', 'Account created! Welcome to AutoEdit.')
+      toast('success', 'Compte créé ! Bienvenue sur CutForge.')
       navigate('/dashboard')
     } catch (err: unknown) {
       let msg = 'Signup failed'
