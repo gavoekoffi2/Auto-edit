@@ -475,6 +475,16 @@ def derive_motion_scenes(vu: dict, demographic: str = "african") -> List[dict]:
         if _beat_score(tp["text"], counts) <= 0.5:
             continue
         picked.append(tp)
+
+    # GARANTIE PRODUIT: une vidéo assez longue doit TOUJOURS avoir au moins une
+    # scène motion design — même si le scoring ne trouve aucun beat "fort",
+    # on force les meilleurs sujets disponibles.
+    if not picked and total >= 25.0 and ranked:
+        for tp in ranked[:2]:
+            if not any(abs(float(tp["start"]) - float(p["start"])) < config.MOTION_MIN_SPACING
+                       for p in picked):
+                picked.append(tp)
+
     picked.sort(key=lambda tp: float(tp["start"]))
 
     suffix = _demographic_suffix(demographic)

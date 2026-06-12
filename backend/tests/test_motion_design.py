@@ -179,3 +179,12 @@ def test_render_all_writes_manifest(tmp_path, rich_vu):
     manifest = {**rendered[0]}
     assert manifest["events"]["exit"] > 0
     json.dumps(rendered)                             # manifest is serialisable
+
+
+def test_motion_scenes_guaranteed_on_long_videos(rich_vu, monkeypatch):
+    # Même si le scoring ne trouve AUCUN beat fort, une vidéo assez longue
+    # doit toujours recevoir au moins une scène motion design (promesse produit).
+    monkeypatch.setattr(content, "_beat_score", lambda text, counts: 0.0)
+    scenes = content.derive_motion_scenes(rich_vu)
+    assert len(scenes) >= 1
+    assert all(s["source_start"] >= engine_config.MOTION_MIN_START for s in scenes)
