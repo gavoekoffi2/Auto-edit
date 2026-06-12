@@ -6,6 +6,11 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    /* Easing cinéma (skill ui-ux-pro-max : Modern Dark / Cinema) */
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+    --hairline: rgba(255, 255, 255, 0.08);
+  }
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -22,23 +27,51 @@
   h1, h2, h3 {
     @apply font-display tracking-tight;
   }
+  /* Accessibilité : focus visible net sur tous les interactifs */
+  :focus-visible {
+    outline: 2px solid #6593ff;
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: #0a0a10; }
+  ::-webkit-scrollbar-thumb {
+    background: #23232e;
+    border-radius: 8px;
+    border: 2px solid #0a0a10;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: #32323f; }
 }
 
 @layer components {
   .btn-primary {
-    @apply bg-primary-600 hover:bg-primary-500 text-white font-semibold py-2.5 px-6 rounded-lg transition-all duration-200 shadow-lg shadow-primary-600/25 hover:shadow-primary-600/40;
+    @apply bg-primary-600 hover:bg-primary-500 text-white font-semibold py-2.5 px-6 rounded-lg shadow-lg shadow-primary-600/25 hover:shadow-primary-600/40 active:scale-[0.98];
+    transition: all 0.25s var(--ease-out-expo);
   }
   .btn-secondary {
-    @apply bg-dark-800/80 hover:bg-dark-700 text-white font-semibold py-2.5 px-6 rounded-lg border border-white/10 transition-all duration-200;
+    @apply bg-dark-800/80 hover:bg-dark-700 text-white font-semibold py-2.5 px-6 rounded-lg border border-white/10 active:scale-[0.98];
+    transition: all 0.25s var(--ease-out-expo);
   }
   .btn-accent {
-    @apply bg-accent-500 hover:bg-accent-400 text-white font-semibold py-2.5 px-6 rounded-lg transition-all duration-200 shadow-lg shadow-accent-500/25;
+    @apply relative overflow-hidden bg-accent-500 hover:bg-accent-400 text-white font-semibold py-2.5 px-6 rounded-lg shadow-lg shadow-accent-500/30 hover:shadow-accent-500/50 active:scale-[0.98];
+    transition: all 0.25s var(--ease-out-expo);
   }
+  /* reflet qui balaye le bouton accent au survol */
+  .btn-accent::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.35) 50%, transparent 70%);
+    transform: translateX(-120%);
+    transition: transform 0.7s var(--ease-out-expo);
+  }
+  .btn-accent:hover::after { transform: translateX(120%); }
   .input-field {
     @apply w-full bg-dark-800 border border-dark-600 rounded-lg px-4 py-2.5 text-white placeholder-dark-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors;
   }
   .card {
-    @apply bg-dark-900 border border-white/5 rounded-xl p-6;
+    @apply bg-dark-900 rounded-2xl p-6;
+    border: 1px solid var(--hairline);
   }
   .gradient-text {
     @apply bg-gradient-to-r from-primary-300 via-fuchsia-300 to-accent-300 bg-clip-text text-transparent;
@@ -67,6 +100,82 @@
     color: transparent;
     animation: shimmer 5s linear infinite;
   }
+
+  /* ---------- générique app (dashboard, auth, éditeur) ------------------- */
+  .reveal {
+    opacity: 0;
+    transform: translateY(26px);
+    transition: opacity 0.7s var(--ease-out-expo), transform 0.7s var(--ease-out-expo);
+    will-change: opacity, transform;
+  }
+  .reveal.is-visible { opacity: 1; transform: none; }
+
+  .cf-aurora {
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(90px);
+    opacity: 0.5;
+    animation: cfAurora 16s ease-in-out infinite alternate;
+  }
+  .cf-grid-dots {
+    background-image: radial-gradient(rgba(255, 255, 255, 0.10) 1px, transparent 1.4px);
+    background-size: 28px 28px;
+    mask-image: radial-gradient(ellipse 75% 60% at 50% 38%, black 35%, transparent 75%);
+    -webkit-mask-image: radial-gradient(ellipse 75% 60% at 50% 38%, black 35%, transparent 75%);
+  }
+  .cf-card {
+    position: relative;
+    transition: transform 0.35s var(--ease-out-expo), border-color 0.35s, box-shadow 0.35s;
+  }
+  .cf-card::after {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    background: radial-gradient(420px circle at var(--gx, 50%) var(--gy, 0%),
+                rgba(63, 114, 255, 0.16), transparent 65%);
+    opacity: 0;
+    transition: opacity 0.35s;
+    pointer-events: none;
+  }
+  .cf-card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(63, 114, 255, 0.35);
+    box-shadow: 0 18px 40px -18px rgba(63, 114, 255, 0.25);
+  }
+  .cf-card:hover::after { opacity: 1; }
+
+  /* pastille de statut */
+  .status-pill {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold;
+    border: 1px solid var(--hairline);
+  }
+  .status-pill[data-tone="ok"]      { @apply bg-emerald-400/10 text-emerald-300 border-emerald-400/30; }
+  .status-pill[data-tone="busy"]    { @apply bg-primary-500/10 text-primary-300 border-primary-500/30; }
+  .status-pill[data-tone="error"]   { @apply bg-red-500/10 text-red-300 border-red-500/30; }
+  .status-pill[data-tone="neutral"] { @apply bg-white/5 text-dark-300; }
+  .status-pill[data-tone="busy"]::before {
+    content: "";
+    width: 6px; height: 6px; border-radius: 9999px;
+    background: #6593ff;
+    animation: pulseDot 1.2s ease-in-out infinite;
+  }
+
+  /* squelettes de chargement */
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 12px;
+  }
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+    transform: translateX(-100%);
+    animation: skeletonSweep 1.4s infinite;
+  }
 }
 
 @layer utilities {
@@ -79,4 +188,24 @@
     mask-image: linear-gradient(to right, transparent, black 15%, black 85%, transparent);
     -webkit-mask-image: linear-gradient(to right, transparent, black 15%, black 85%, transparent);
   }
+}
+
+@keyframes cfAurora {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  50%  { transform: translate3d(60px, -40px, 0) scale(1.15); }
+  100% { transform: translate3d(-40px, 30px, 0) scale(0.95); }
+}
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(0.7); }
+}
+@keyframes skeletonSweep {
+  to { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cf-aurora { animation: none !important; }
+  .reveal { opacity: 1; transform: none; transition: none; }
+  .skeleton::after { animation: none; }
+  .btn-accent::after { display: none; }
 }
