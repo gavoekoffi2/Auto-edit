@@ -6,6 +6,8 @@ import {
 } from 'lucide-react'
 import Logo from '../components/ui/Logo'
 import Footer from '../components/layout/Footer'
+import Reveal from '../components/ui/Reveal'
+import BeforeAfter from '../components/landing/BeforeAfter'
 import { BRAND } from '../brand'
 import '../styles/landing.css'
 
@@ -23,33 +25,6 @@ function ph(name: string, startSeconds: number): React.CSSProperties {
     animationDelay: `${(startSeconds - CYCLE).toFixed(2)}s`,
     animationTimingFunction: 'linear',
   }
-}
-
-/** La section apparaît (fade + translate) quand elle entre dans le viewport. */
-function Reveal({
-  children, delay = 0, className = '',
-}: { children: React.ReactNode; delay?: number; className?: string }) {
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const io = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          el.classList.add('is-visible')
-          io.disconnect()
-        }
-      },
-      { threshold: 0.15 },
-    )
-    io.observe(el)
-    return () => io.disconnect()
-  }, [])
-  return (
-    <div ref={ref} className={`reveal ${className}`} style={{ transitionDelay: `${delay}ms` }}>
-      {children}
-    </div>
-  )
 }
 
 /* ========================================================================== */
@@ -552,6 +527,9 @@ export default function Landing() {
           </div>
         </div>
       </section>
+
+      {/* ================= AVANT / APRÈS (scroll + curseur) ================= */}
+      <BeforeAfter />
 
       {/* ================= COMMENT ÇA MARCHE ================= */}
       <section id="comment" className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8">

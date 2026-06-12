@@ -95,42 +95,69 @@ export default function UploadZone({ onUploadComplete }: Props) {
   return (
     <div
       {...getRootProps()}
-      className={`border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all duration-200
-        ${isDragActive ? 'border-primary-500 bg-primary-500/10' : 'border-dark-600 hover:border-dark-400 hover:bg-dark-900/50'}
-        ${uploading ? 'pointer-events-none opacity-70' : ''}`}
+      className={`group relative cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed p-10 text-center sm:p-14
+        ${isDragActive
+          ? 'border-primary-400 bg-primary-500/10 scale-[1.01]'
+          : 'border-dark-600 bg-dark-900/40 hover:border-primary-500/60 hover:bg-dark-900/70'}
+        ${uploading ? 'pointer-events-none border-primary-500/40' : ''}`}
+      style={{ transition: 'all 0.3s var(--ease-out-expo)' }}
     >
       <input {...getInputProps()} />
 
+      {/* halo d'ambiance */}
+      <div
+        className={`pointer-events-none absolute left-1/2 top-0 h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary-600/25 blur-3xl transition-opacity duration-500 ${
+          isDragActive || uploading ? 'opacity-100' : 'opacity-0 group-hover:opacity-70'
+        }`}
+        aria-hidden
+      />
+
       {uploading ? (
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-12 h-12 text-primary-500 animate-spin" />
-          <p className="text-lg font-medium">Upload... {progress}%</p>
-          <div className="w-full max-w-xs bg-dark-700 rounded-full h-2">
+        <div className="relative flex flex-col items-center gap-4">
+          <div className="relative">
+            <Loader2 className="h-12 w-12 animate-spin text-primary-400" />
+            <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white">
+              {progress}%
+            </span>
+          </div>
+          <p className="text-lg font-semibold">Envoi de ta vidéo…</p>
+          <div className="h-2 w-full max-w-md overflow-hidden rounded-full bg-dark-700">
             <div
-              className="bg-primary-500 h-2 rounded-full transition-all duration-300"
+              className="h-full rounded-full bg-gradient-to-r from-primary-500 via-fuchsia-400 to-accent-400 transition-all duration-300"
               style={{ width: `${progress}%` }}
             />
           </div>
-          <p className="text-sm text-dark-400 max-w-sm">
+          <p className="max-w-sm text-sm text-dark-400">
             {uploadHelperText(progress)}
             {selectedFileSize ? ` Taille: ${formatFileSize(selectedFileSize)}.` : ''}
           </p>
         </div>
       ) : (
-        <div className="flex flex-col items-center gap-4">
-          {isDragActive ? (
-            <Film className="w-12 h-12 text-primary-500" />
-          ) : (
-            <Upload className="w-12 h-12 text-dark-500" />
-          )}
+        <div className="relative flex flex-col items-center gap-5">
+          <div
+            className={`flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-gradient-to-tr from-primary-600/30 to-fuchsia-500/20 ${
+              isDragActive ? 'scale-110' : 'group-hover:-translate-y-1'
+            }`}
+            style={{ transition: 'transform 0.3s var(--ease-out-expo)' }}
+          >
+            {isDragActive ? (
+              <Film className="h-7 w-7 text-primary-300" />
+            ) : (
+              <Upload className="h-7 w-7 text-primary-300" />
+            )}
+          </div>
           <div>
-            <p className="text-lg font-medium">
-              {isDragActive ? 'Drop your video here' : 'Drag & drop your video'}
+            <p className="text-lg font-semibold">
+              {isDragActive ? 'Lâche ta vidéo ici ✨' : 'Glisse ta vidéo parlée ici'}
             </p>
-            <p className="text-dark-500 mt-1">
-              or click to browse ({ALLOWED_VIDEO_EXTENSIONS.map((ext) => ext.toUpperCase()).join(', ')} - max {MAX_FILE_SIZE_MB}MB)
+            <p className="mt-1.5 text-sm text-dark-400">
+              ou clique pour parcourir — {ALLOWED_VIDEO_EXTENSIONS.slice(0, 4).map((ext) => ext.toUpperCase()).join(', ')}…
+              · max {MAX_FILE_SIZE_MB / 1024} Go
             </p>
           </div>
+          <span className="rounded-full border border-white/10 bg-white/5 px-3.5 py-1 text-xs text-dark-300">
+            ✂️ Coupes · 🎨 Motion design · 📝 Sous-titres · 🔊 SFX — automatiques
+          </span>
         </div>
       )}
     </div>

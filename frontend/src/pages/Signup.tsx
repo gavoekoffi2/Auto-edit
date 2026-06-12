@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Zap, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
+import Logo from '../components/ui/Logo'
 import { signup } from '../api/auth'
 import { useAuthStore } from '../store/authStore'
 import { toast } from '../components/ui/Toast'
@@ -60,15 +61,20 @@ export default function Signup() {
   }
 
   return (
-    <div className="min-h-[80vh] flex items-center justify-center px-4">
+    <div className="relative isolate min-h-[80vh] flex items-center justify-center overflow-hidden px-4">
+      <div className="absolute inset-0 -z-10" aria-hidden>
+        <div className="cf-aurora left-[-10%] top-[-10%] h-[380px] w-[380px] bg-primary-600/40" />
+        <div className="cf-aurora right-[-8%] bottom-[-15%] h-[340px] w-[340px] bg-accent-500/25" style={{ animationDelay: '-8s' }} />
+        <div className="cf-grid-dots absolute inset-0" />
+      </div>
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <Zap className="w-12 h-12 text-accent-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold">Create your account</h1>
-          <p className="text-dark-400 mt-2">Start editing videos with AI</p>
+          <div className="mx-auto mb-4 w-fit"><Logo size={48} /></div>
+          <h1 className="text-2xl font-bold">Crée ton compte</h1>
+          <p className="text-dark-400 mt-2">2 montages offerts par mois — sans carte bancaire</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="card space-y-4">
+        <form onSubmit={handleSubmit} className="card glass space-y-4">
           {error && (
             <div className="bg-red-400/10 border border-red-400/20 rounded-lg p-3 text-red-400 text-sm">
               {error}
