@@ -1,11 +1,26 @@
 name: Deploy frontend to Netlify
 
+# Auto-deploys the CutForge frontend to Netlify production on EVERY push to
+# main that touches the frontend. `npm run build` runs `tsc` first, so a
+# type error blocks the deploy.
+#
+# Required GitHub secrets:
+#   NETLIFY_SITE_ID      Site ID (Netlify > Site settings > General)
+#   NETLIFY_AUTH_TOKEN   Personal access token (Netlify > User settings)
+
 on:
   push:
-    branches:
-      - main
-      - claude/sleepy-brown-Rtjt7
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - "netlify.toml"
+      - ".github/workflows/netlify-frontend.yml"
   workflow_dispatch:
+
+# A newer push supersedes an in-flight frontend deploy.
+concurrency:
+  group: deploy-frontend
+  cancel-in-progress: true
 
 jobs:
   deploy-frontend:
@@ -27,11 +42,24 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Build frontend
+      - name: Build frontend (tsc + vite)
         working-directory: frontend
         run: npm run build
 
+      - name: Check Netlify secrets are configured
+        id: cfg
+        env:
+          SITE: ${{ secrets.NETLIFY_SITE_ID }}
+        run: |
+          if [ -z "$SITE" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Netlify deploy skipped::Set NETLIFY_SITE_ID / NETLIFY_AUTH_TOKEN secrets to enable frontend auto-deploy."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Deploy to Netlify production
+        if: steps.cfg.outputs.configured == 'true'
         run: npx --yes netlify-cli@latest deploy --prod --no-build --dir=frontend/dist --site "$NETLIFY_SITE_ID" --auth "$NETLIFY_AUTH_TOKEN"
         env:
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
