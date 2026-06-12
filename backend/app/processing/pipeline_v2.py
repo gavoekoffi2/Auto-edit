@@ -303,6 +303,7 @@ def run_pipeline_v2(
     from app.autoedit_engine import pipeline as engine_pipeline
 
     engine_ffmpeg.ensure_ffmpeg()  # clear error if ffmpeg is missing in the image
+    montage_report: dict = {}
     final_path = engine_pipeline.run(
         video_path,
         output_dir,
@@ -312,10 +313,26 @@ def run_pipeline_v2(
         do_motion=do_motion,
         broll_demographic=options.get("broll_demographic") or "african",
         progress_callback=progress,
+        report=montage_report,
     )
 
     if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
         raise RuntimeError("Le moteur Auto Edit n'a pas produit de vidéo de sortie.")
+
+    # Preuve de contenu: le résultat du job dit exactement ce que le montage
+    # contient (scènes motion design, B-rolls, popups, SFX) — fini les doutes
+    # "est-ce l'ancien rendu ?".
+    results["montage"] = montage_report
+    if do_motion:
+        if montage_report.get("motion_scenes_rendered", 0) > 0:
+            results["steps_completed"].append("motion_design")
+        else:
+            results["steps_failed"].append("motion_design")
+            logger.warning(
+                "[pipeline_v2] motion design demandé mais 0 scène rendue "
+                "(dérivées=%s) — vérifier les logs moteur",
+                montage_report.get("motion_scenes_derived"),
+            )
 
     results["output_path"] = final_path
     results["output_size_bytes"] = os.path.getsize(final_path)

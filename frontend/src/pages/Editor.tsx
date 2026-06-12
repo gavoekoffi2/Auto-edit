@@ -47,11 +47,6 @@ const FALLBACK_MODES: ModeDescriptor[] = [
   },
 ]
 
-const PIPELINE_LABEL: Record<PipelineVersion, string> = {
-  v1: 'Pipeline classique',
-  v2: 'Pipeline IA V2 (B-roll africain)',
-}
-
 interface Scenes {
   scenes: { start: number; end: number; duration: number }[]
 }
@@ -116,14 +111,18 @@ export default function Editor() {
           (j: { status: string }) => j.status === 'processing' || j.status === 'pending',
         )
         if (activeJob) {
+          // Un NOUVEAU montage est en cours : on le suit, lui — l'ancien
+          // montage terminé ne doit JAMAIS reprendre l'écran (c'était le bug
+          // « c'est l'ancien test qui vient en haut »).
           setActiveJobId(activeJob.id)
           setProcessing(true)
-        }
-        const completed = jobs.find((j: { status: string }) => j.status === 'completed')
-        if (completed?.result) {
-          setCompletedResult(completed.result)
-          setActiveJobId(completed.id)
-          setProcessing(false)
+        } else {
+          const completed = jobs.find((j: { status: string }) => j.status === 'completed')
+          if (completed?.result) {
+            setCompletedResult(completed.result)
+            setActiveJobId(completed.id)
+            setProcessing(false)
+          }
         }
       } catch {
         if (!cancelled) setLoadError('Impossible de charger la vidéo')
@@ -140,6 +139,9 @@ export default function Editor() {
   const handleAutoEdit = useCallback(async () => {
     if (!videoId) return
     setProcessing(true)
+    // CRITIQUE: ne JAMAIS laisser l'ancien montage s'afficher pendant qu'un
+    // nouveau se forge — c'est ce qui faisait croire que rien n'avait changé.
+    setCompletedResult(null)
     try {
       const payloadOptions: JobOptions = {
         ...options,
@@ -237,7 +239,7 @@ export default function Editor() {
         <div className="lg:col-span-2 space-y-4">
           {completedResult && (
             <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
-              Aperçu du montage final généré. Tu peux le lire ici ou utiliser le bouton Download Video.
+              Aperçu du DERNIER montage terminé. Si tu relances un montage, cet aperçu disparaît jusqu'à la fin du nouveau rendu.
             </div>
           )}
           <VideoPlayer src={previewSrc} />
@@ -255,28 +257,10 @@ export default function Editor() {
         </div>
 
         <div className="space-y-4">
-          {/* Pipeline version */}
-          <div className="card">
-            <h3 className="font-semibold mb-3">Moteur</h3>
-            <div className="flex gap-2">
-              {(['v2', 'v1'] as PipelineVersion[]).map((v) => (
-                <button
-                  key={v}
-                  onClick={() => setPipelineVersion(v)}
-                  className={`flex-1 px-3 py-2 rounded-lg border text-sm transition ${
-                    pipelineVersion === v
-                      ? 'border-primary-500 bg-primary-500/10'
-                      : 'border-dark-700 hover:border-dark-500'
-                  }`}
-                >
-                  {PIPELINE_LABEL[v]}
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-dark-400 mt-2">
-              V2 ajoute le B-roll IA orienté Afrique francophone, captions dynamiques et CTA.
-            </p>
-          </div>
+          {/* Le moteur suit le style choisi (les modes "legacy" utilisent
+              l'ancien pipeline v1 SANS motion design — clairement étiquetés).
+              L'ancien sélecteur v1/v2 permettait de lancer l'ancien moteur
+              par erreur et de croire que le motion design avait disparu. */}
 
           {/* Mode */}
           <div className="card">
@@ -301,10 +285,13 @@ export default function Editor() {
                           ? 'bg-primary-500/20 text-primary-300'
                           : 'bg-dark-700 text-dark-300'
                       }`}>
-                        {mode.pipeline}
+                        {mode.pipeline === 'v2' ? 'Moteur CutForge' : 'ancien moteur'}
                       </span>
                     </p>
-                    <p className="text-xs text-dark-400">{mode.description}</p>
+                    <p className="text-xs text-dark-400">
+                      {mode.description}
+                      {mode.pipeline !== 'v2' && ' — sans motion design'}
+                    </p>
                   </div>
                 </button>
               ))}
@@ -461,6 +448,40 @@ export default function Editor() {
                   ? (completedResult.transcription as { text: string }).text
                   : ''}
               </p>
+            </div>
+          )}
+
+          {!!completedResult?.montage && (
+            <div className="card">
+              <h3 className="font-semibold mb-3">Contenu du montage</h3>
+              <div className="grid grid-cols-2 gap-2.5 text-sm">
+                {(() => {
+                  const m = completedResult!.montage as Record<string, unknown>
+                  const n = (k: string) => Number(m[k] ?? 0)
+                  const items: Array<[string, string, boolean]> = [
+                    ['🎨', `${n('motion_scenes_rendered')} scènes motion design`, n('motion_scenes_rendered') > 0],
+                    ['🖼️', `${n('broll_images')} images B-roll IA`, n('broll_images') > 0],
+                    ['🏷️', `${n('keyword_popups')} mots-clés popup`, n('keyword_popups') > 0],
+                    ['🔊', `${n('sfx_cues')} effets sonores`, n('sfx_cues') > 0],
+                  ]
+                  return items.map(([icon, label, ok]) => (
+                    <div
+                      key={label}
+                      className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${
+                        ok ? 'border-white/10 bg-white/5 text-dark-100' : 'border-red-400/20 bg-red-400/5 text-red-300'
+                      }`}
+                    >
+                      <span>{icon}</span>
+                      <span className="text-xs font-medium">{label}</span>
+                    </div>
+                  ))
+                })()}
+              </div>
+              {Number((completedResult!.montage as Record<string, unknown>).motion_scenes_rendered ?? 0) === 0 && (
+                <p className="mt-3 text-xs text-red-300 bg-red-400/10 rounded-lg p-2.5">
+                  ⚠️ Aucune scène motion design dans ce rendu — signale-le, ce n'est pas normal.
+                </p>
+              )}
             </div>
           )}
 

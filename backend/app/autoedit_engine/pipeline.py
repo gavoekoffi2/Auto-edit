@@ -57,10 +57,23 @@ def _log(step: str, msg: str = "") -> None:
 def run(source: str, workdir: str, *, vu: Optional[str] = None,
         template: str = config.DEFAULT_TEMPLATE, do_broll: bool = True,
         do_motion: bool = True, broll_demographic: str = "african",
-        progress_callback=None) -> str:
+        progress_callback=None, report: Optional[dict] = None) -> str:
     os.makedirs(workdir, exist_ok=True)
     stem = Path(source).stem
     p = lambda *a: os.path.join(workdir, *a)  # noqa: E731 - tiny path helper
+    # Observability: every visual decision lands in this report so the job
+    # result can PROVE what the montage contains (scenes, B-roll, popups, SFX).
+    rep = report if report is not None else {}
+    rep.update({
+        "template": template,
+        "motion_enabled": do_motion,
+        "motion_scenes_derived": 0,
+        "motion_scenes_rendered": 0,
+        "motion_ai_illustrations": 0,
+        "broll_images": 0,
+        "keyword_popups": 0,
+        "sfx_cues": 0,
+    })
 
     def _p(pct: int, label: str, msg: str = "") -> None:
         _log(label, msg)
@@ -98,14 +111,22 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
         _p(40, "4 motion_design")
         motion_scenes = content.derive_motion_scenes(
             vu_data, demographic=broll_demographic)
+        rep["motion_scenes_derived"] = len(motion_scenes)
         if motion_scenes:
             if have_key:
                 motion_scenes = genimg.generate_illustrations(motion_scenes, p("motion"))
             rendered_scenes = motion_design.render_all(motion_scenes, p("motion_clips"))
+            rep["motion_scenes_rendered"] = len(rendered_scenes)
+            rep["motion_ai_illustrations"] = sum(
+                1 for s in rendered_scenes if s.get("illustrated"))
             if rendered_scenes:
                 motion_json = p("motion_clips", "_motion_clips.json")
                 json.dump(rendered_scenes, open(motion_json, "w", encoding="utf-8"),
                           ensure_ascii=False, indent=2)
+            else:
+                print("[pipeline] WARN motion_design: scenes derived but none "
+                      "rendered — check ffmpeg/PIL in this environment",
+                      file=sys.stderr)
     else:
         _p(40, "4 motion_design", "skipped (--no-motion)")
 
@@ -118,6 +139,7 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
             avoid_spans=content.motion_scene_spans(motion_scenes),
         )
         images = genimg.generate_brolls(ideas, p("broll"))
+        rep["broll_images"] = len(images)
         if images:
             _p(58, "6 broll_anim")
             clips = broll_anim.render_all(images, p("broll_clips"))
@@ -129,12 +151,15 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
 
     # 7) Plan timeline + SFX cues -------------------------------------------
     _p(62, "7 plan_overlays")
-    plan_overlays.plan(edl_path, overlays_json, broll_json,
-                       motion_json=motion_json, outdir=workdir)
+    planned = plan_overlays.plan(edl_path, overlays_json, broll_json,
+                                 motion_json=motion_json, outdir=workdir)
+    rep["sfx_cues"] = len(planned.get("cues", []))
 
     # 8) Keyword popups ------------------------------------------------------
     _p(66, "8 keyword_popup")
-    keyword_popup.build_popups(edl_path, p("broll_clips"))
+    popup_res = keyword_popup.build_popups(edl_path, p("broll_clips"))
+    rep["keyword_popups"] = int(popup_res.get("added", 0))
+    rep["sfx_cues"] += int(popup_res.get("sfx_added", 0))
 
     # 9) Dynamic zoom --------------------------------------------------------
     _p(74, "9 video_dynamics")
