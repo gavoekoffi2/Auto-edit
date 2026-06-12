@@ -63,6 +63,13 @@ def composite(base_dyn: str, edl_path: str, out_path: str,
     with open(edl_path, "r", encoding="utf-8") as fh:
         overlays = json.load(fh).get("overlays", [])
 
+    # A missing .mov (failed render of one overlay) must not abort the whole
+    # composite — drop it with a warning and keep the montage going.
+    missing = [ov for ov in overlays if not os.path.exists(ov.get("mov", ""))]
+    for ov in missing:
+        print(f"[composite] WARN overlay {ov.get('id')} skipped (missing {ov.get('mov')})")
+    overlays = [ov for ov in overlays if os.path.exists(ov.get("mov", ""))]
+
     if not overlays:
         shutil.copy2(base_dyn, out_path)
         print(f"[composite] no overlays -> copied base to {out_path}")

@@ -42,6 +42,7 @@ V2_MODE_PRESETS: dict[str, dict] = {
         "remove_silence": True,
         "dynamic_captions": True,
         "ai_broll": True,
+        "motion_design": True,
         "music": True,
         "sfx": True,
         "vertical_9_16": True,
@@ -53,6 +54,7 @@ V2_MODE_PRESETS: dict[str, dict] = {
         "remove_silence": True,
         "dynamic_captions": True,
         "ai_broll": True,
+        "motion_design": True,
         "music": False,
         "sfx": False,
         "vertical_9_16": False,
@@ -64,6 +66,7 @@ V2_MODE_PRESETS: dict[str, dict] = {
         "remove_silence": True,
         "dynamic_captions": True,
         "ai_broll": False,
+        "motion_design": False,
         "music": False,
         "sfx": False,
         "vertical_9_16": False,
@@ -76,6 +79,7 @@ V2_MODE_PRESETS: dict[str, dict] = {
         "remove_silence": True,
         "dynamic_captions": True,
         "ai_broll": True,
+        "motion_design": True,
         "music": True,
         "sfx": True,
         "vertical_9_16": True,
@@ -87,6 +91,7 @@ V2_MODE_PRESETS: dict[str, dict] = {
         "remove_silence": True,
         "dynamic_captions": True,
         "ai_broll": True,
+        "motion_design": True,
         "music": True,
         "sfx": True,
         "vertical_9_16": True,
@@ -98,6 +103,7 @@ V2_MODE_PRESETS: dict[str, dict] = {
         "remove_silence": True,
         "dynamic_captions": True,
         "ai_broll": True,
+        "motion_design": True,
         "music": True,
         "sfx": True,
         "vertical_9_16": True,
@@ -109,6 +115,7 @@ V2_MODE_PRESETS: dict[str, dict] = {
         "remove_silence": True,
         "dynamic_captions": False,
         "ai_broll": False,
+        "motion_design": False,
         "music": False,
         "sfx": False,
         "vertical_9_16": False,
@@ -120,6 +127,7 @@ V2_MODE_PRESETS: dict[str, dict] = {
         "remove_silence": True,
         "dynamic_captions": True,
         "ai_broll": True,
+        "motion_design": True,
         "music": False,
         "sfx": False,
         "vertical_9_16": False,
@@ -229,11 +237,24 @@ def run_pipeline_v2(
             if v is not None:
                 options[k] = v
 
-    have_key = bool(getattr(settings, "OPENROUTER_API_KEY", "") or os.environ.get("OPENROUTER_API_KEY"))
+    # The engine reads OPENROUTER_API_KEY from os.environ. Settings may have
+    # loaded it from a .env file (which does NOT export to the process env),
+    # so propagate it explicitly — otherwise B-roll/illustrations silently skip.
+    settings_key = getattr(settings, "OPENROUTER_API_KEY", "") or ""
+    if settings_key and not os.environ.get("OPENROUTER_API_KEY"):
+        os.environ["OPENROUTER_API_KEY"] = settings_key
+
+    have_key = bool(os.environ.get("OPENROUTER_API_KEY"))
     do_broll = (
         bool(settings.ENABLE_AI_BROLL)
         and options.get("ai_broll", True) is not False
         and have_key
+    )
+    # Motion design works WITHOUT an API key (procedural drawings), so it only
+    # follows the product flag and the user toggle.
+    do_motion = (
+        bool(getattr(settings, "ENABLE_MOTION_DESIGN", True))
+        and options.get("motion_design", True) is not False
     )
 
     template = MODE_TO_TEMPLATE.get(mode or "", "tiktok_yellow")
@@ -257,6 +278,7 @@ def run_pipeline_v2(
         "steps_completed": [],
         "steps_failed": [],
         "broll": {"enabled": do_broll},
+        "motion_design": {"enabled": do_motion},
     }
 
     # ---- 1. Transcription (reuse local Whisper) ----------------------------
@@ -287,6 +309,7 @@ def run_pipeline_v2(
         vu=vu_path,
         template=template,
         do_broll=do_broll,
+        do_motion=do_motion,
         broll_demographic=options.get("broll_demographic") or "african",
         progress_callback=progress,
     )
@@ -646,46 +669,17 @@ def _build_overlays(options: dict, params: dict, total_duration: float) -> list:
 
 
 def _build_explainer_motion_overlays(total_duration: float) -> list:
-    """Create motion-design explanatory cards independent from B-rolls.
+    """[LEGACY — disabled] Explainer cards for the old modular pipeline.
 
-    Claude specifically does not want only B-roll images. These overlays explain
-    what the speaker is saying with animated/premium visual language: steps,
-    arrows, pills and mini cards. They are timed away from the lowest area so
-    they do not cover the face, B-roll card, or center captions.
+    The previous implementation displayed HARDCODED, invented content
+    ("ENRÔLER / Dépôts + PDV", "LOCALISER / Google Maps", …) at fixed
+    timestamps on EVERY video — fabricated motion design unrelated to what the
+    speaker actually says. Real illustrated motion design now lives in the
+    active engine (`app.autoedit_engine.motion_design`), which derives its
+    scenes from the transcript. This legacy hook intentionally returns nothing.
     """
-    from app.processing.types import OverlayClip
-
-    if total_duration < 10.0:
-        return []
-
-    anchors = [
-        (6.4, "1", "ENRÔLER", "Dépôts + PDV"),
-        (14.8, "2", "LOCALISER", "Google Maps"),
-        (28.5, "3", "GÉRER", "Fiches & produits"),
-        (43.2, "4", "SUIVRE", "Opérations terrain"),
-        (60.6, "5", "VALIDER", "Formation complète"),
-    ]
-    overlays: list[OverlayClip] = []
-    for i, (start, step, title, subtitle) in enumerate(anchors):
-        if start + 2.6 >= total_duration - 2.0:
-            continue
-        overlays.append(
-            OverlayClip(
-                kind=("explain_card" if i % 2 == 0 else "flow_step"),
-                start=start,
-                end=start + 2.6,
-                props={"step": step, "title": title, "subtitle": subtitle},
-            )
-        )
-        overlays.append(
-            OverlayClip(
-                kind="metric_pill",
-                start=start + 0.42,
-                end=start + 2.05,
-                props={"title": f"ÉTAPE {step}", "subtitle": subtitle},
-            )
-        )
-    return overlays
+    _ = total_duration
+    return []
 
 
 def _build_broll_motion_overlays(cues: list) -> list:

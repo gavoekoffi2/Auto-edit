@@ -38,6 +38,8 @@
    │  5. ImageGenerationService  →  ImageAsset[]    (OpenRouter, africain premium)
    │  6. BrollAnimationService   →  VideoClip[]     (Ken Burns FFmpeg)
    │  7. TemplateRenderer        →  OverlayClip[]   (HyperFrames / Remotion / FFmpeg)
+   │  6bis. MotionDesign (engine) →  motion_clips/*.mov (scènes illustrées
+   │        animées dérivées du transcript — voir app/autoedit_engine/motion_design.py)
    │  8. FFmpegRenderer          →  final.mp4
    │       - concat selon EDL
    │       - captions dynamiques (drawtext / ASS)

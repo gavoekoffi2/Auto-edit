@@ -18,6 +18,7 @@ class JobOptions(BaseModel):
     remove_silence: Optional[bool] = None
     dynamic_captions: Optional[bool] = None
     ai_broll: Optional[bool] = None
+    motion_design: Optional[bool] = None  # scènes illustrées animées
     music: Optional[bool] = None
     sfx: Optional[bool] = None
     vertical_9_16: Optional[bool] = None

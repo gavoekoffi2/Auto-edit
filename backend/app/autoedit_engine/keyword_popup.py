@@ -119,6 +119,10 @@ def find_occurrences(vu: dict, keyword: str, ranges: List[dict]) -> List[float]:
     return out_times
 
 
+def _fname_safe(kw: str) -> str:
+    return re.sub(r"[^A-Za-z0-9À-ÿ_-]+", "_", kw) or "kw"
+
+
 def build_popups(edl_path: str, outdir: str) -> dict:
     with open(edl_path, "r", encoding="utf-8") as fh:
         edl = json.load(fh)
@@ -127,6 +131,18 @@ def build_popups(edl_path: str, outdir: str) -> dict:
     os.makedirs(outdir, exist_ok=True)
 
     keywords = content.top_keywords(vu, config.KEYWORD_TOP_N)
+
+    # Full-frame takeovers (motion-design scenes) own their span: a popup chip
+    # must never blink on top of an illustrated scene.
+    takeover_spans = [
+        (float(o["start"]) - 0.2, float(o["end"]) + 0.2)
+        for o in edl.get("overlays", [])
+        if o.get("kind") == "motion"
+    ]
+
+    def _in_takeover(t: float) -> bool:
+        end_t = t + config.KEYWORD_POPUP_DUR
+        return any(t < b and end_t > a for a, b in takeover_spans)
 
     # Gather every candidate occurrence, then de-collide globally so two chips
     # never share the screen (>= popup duration + small gap apart).
@@ -140,7 +156,7 @@ def build_popups(edl_path: str, outdir: str) -> dict:
     kept: List[tuple] = []
     last = -1e9
     for ot, kw in candidates:
-        if ot - last >= min_spacing:
+        if ot - last >= min_spacing and not _in_takeover(ot):
             kept.append((ot, kw))
             last = ot
 
@@ -149,7 +165,7 @@ def build_popups(edl_path: str, outdir: str) -> dict:
     counters: Dict[str, int] = {}
     for ot, kw in kept:
         if kw not in movs:
-            mov = os.path.join(outdir, f"popup_{kw}.mov")
+            mov = os.path.join(outdir, f"popup_{_fname_safe(kw)}.mov")
             render_popup(kw, mov)
             movs[kw] = mov
         k = counters.get(kw, 0)

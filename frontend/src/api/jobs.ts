@@ -6,6 +6,8 @@ export interface JobOptions {
   remove_silence?: boolean
   dynamic_captions?: boolean
   ai_broll?: boolean
+  /** Scènes motion design illustrées (dessins animés qui illustrent le discours) */
+  motion_design?: boolean
   music?: boolean
   sfx?: boolean
   vertical_9_16?: boolean

@@ -62,15 +62,16 @@ def _extract_image_url(data: dict) -> str:
 
 
 def generate_image(prompt: str, out_path: str, api_key: str,
-                   retries: int = 3) -> str:
+                   retries: int = 3, style_prefix: Optional[str] = None) -> str:
     """Generate one image for *prompt* and save it to *out_path*."""
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
+    prefix = config.BROLL_STYLE_PREFIX if style_prefix is None else style_prefix
     body = {
         "model": config.OPENROUTER_IMAGE_MODEL,
-        "messages": [{"role": "user", "content": config.BROLL_STYLE_PREFIX + prompt}],
+        "messages": [{"role": "user", "content": prefix + prompt}],
         "modalities": ["image", "text"],
     }
 
@@ -107,6 +108,34 @@ def generate_brolls(ideas: List[dict], outdir: str, api_key: Optional[str] = Non
             print(f"[genimg] {idea['id']} '{idea['prompt'][:40]}' -> {png}")
         except Exception as exc:  # noqa: BLE001 - skip a failed idea, keep going
             print(f"[genimg] WARN {idea['id']} failed: {exc}", file=sys.stderr)
+    return out
+
+
+def generate_illustrations(scenes: List[dict], outdir: str,
+                           api_key: Optional[str] = None) -> List[dict]:
+    """Generate one flat-design illustration per motion scene (best effort).
+
+    A failed generation simply leaves the scene without an ``image`` key — the
+    motion_design renderer then falls back to its procedural line-art drawing,
+    so the montage never loses its illustrated beats.
+    """
+    api_key = api_key or os.environ.get("OPENROUTER_API_KEY")
+    if not api_key:
+        return scenes
+    os.makedirs(outdir, exist_ok=True)
+
+    out: List[dict] = []
+    for scene in scenes:
+        png = os.path.join(outdir, f"{scene['id']}.png")
+        try:
+            generate_image(scene["prompt"], png, api_key,
+                           style_prefix=config.MOTION_STYLE_PREFIX)
+            out.append({**scene, "image": png})
+            print(f"[genimg] illustration {scene['id']} -> {png}")
+        except Exception as exc:  # noqa: BLE001 - procedural fallback takes over
+            print(f"[genimg] WARN illustration {scene['id']} failed "
+                  f"(procedural fallback): {exc}", file=sys.stderr)
+            out.append(dict(scene))
     return out
 
 

@@ -107,6 +107,9 @@ class Settings(BaseSettings):
 
     # Feature flags produit
     ENABLE_AI_BROLL: bool = True
+    # Scènes motion design illustrées (dessins animés qui illustrent le
+    # discours). Fonctionne même sans clé API (dessins procéduraux).
+    ENABLE_MOTION_DESIGN: bool = True
     ENABLE_DYNAMIC_CAPTIONS: bool = True
     ENABLE_SFX: bool = True
     ENABLE_MUSIC: bool = True

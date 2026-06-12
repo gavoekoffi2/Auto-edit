@@ -27,6 +27,18 @@ _ENUM_HINTS = re.compile(
     re.IGNORECASE,
 )
 
+# Phrases that mark an IMPORTANT explanatory beat — these are the moments the
+# motion-design scenes must illustrate (RÈGLE: illustrer ce que la personne dit).
+_EMPHASIS_RE = re.compile(
+    r"\b(important|essentiel|cl[ée]|secret|astuce|conseil|strat[ée]gie|"
+    r"m[ée]thode|syst[èe]me|erreur|probl[èe]me|solution|r[ée]sultat|retenez|"
+    r"retiens|attention|jamais|toujours|v[ée]rit[ée]|r[èe]gle|principe|"
+    r"[ée]tape|exemple|preuve|garantie|objectif|but|raison|pourquoi|comment|"
+    r"important|key|secret|tip|mistake|strategy|method|rule|step|because|"
+    r"reason|never|always|truth|goal|result)\b",
+    re.IGNORECASE,
+)
+
 BROLL_DEMOGRAPHIC_SUFFIXES = {
     "african": (
         "modern African people and African environments, francophone West/Central Africa, "
@@ -69,6 +81,35 @@ BROLL_SCENE_RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\b(transport|moto|voiture|taxi|chauffeur)\b", re.I),
      "a clean African urban transport scene with a delivery rider checking a route on a smartphone"),
 ]
+
+
+# Concept -> procedural icon id (motion_design fallback drawings + prompt hints).
+# First match wins, so put the most specific concepts first.
+ICON_RULES: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\b(mobile money|momo|paiement|payer|argent|cash|prix|euro|franc|fcfa|revenu|salaire|money|pay)\b", re.I), "money"),
+    (re.compile(r"\b(croissance|augmenter|progresser|doubler|exploser|grandir|growth|scale|profit|chiffre)\b", re.I), "growth"),
+    (re.compile(r"\b(t[ée]l[ée]phone|whatsapp|smartphone|appel|application|appli|phone|app|tiktok|instagram)\b", re.I), "phone"),
+    (re.compile(r"\b(client|clients|prospect|audience|communaut[ée]|[ée]quipe|gens|personnes|people|team)\b", re.I), "people"),
+    (re.compile(r"\b(vendre|vente|boutique|commande|produit|e[- ]?commerce|panier|achat|magasin|sell|shop)\b", re.I), "cart"),
+    (re.compile(r"\b(id[ée]e|secret|astuce|penser|cr[ée]atif|inspiration|idea|tip|think)\b", re.I), "idea"),
+    (re.compile(r"\b(objectif|but|cible|viser|atteindre|goal|target|focus)\b", re.I), "target"),
+    (re.compile(r"\b(m[ée]thode|syst[èe]me|processus|outil|automatis|machine|process|tool|system)\b", re.I), "gear"),
+    (re.compile(r"\b(formation|apprendre|cours|[ée]tudier|livre|le[çc]on|learn|course|book|teach)\b", re.I), "book"),
+    (re.compile(r"\b(publicit[ée]|annonce|promo|marketing|communiquer|message|parler|announce|ad)\b", re.I), "megaphone"),
+    (re.compile(r"\b(s[ée]curit[ée]|confiance|garantie|prot[ée]ger|fiable|secure|trust|safe)\b", re.I), "shield"),
+    (re.compile(r"\b(temps|heure|minute|jour|semaine|mois|ann[ée]e|rapide|vite|time|fast|deadline)\b", re.I), "clock"),
+    (re.compile(r"\b(lancer|d[ée]marrer|commencer|d[ée]but|launch|start|fus[ée]e|rocket)\b", re.I), "rocket"),
+    (re.compile(r"\b(lieu|localis|adresse|ville|pays|carte|livraison|transport|map|location)\b", re.I), "map"),
+]
+DEFAULT_ICON = "idea"
+
+
+def icon_for_text(text: str) -> str:
+    """Best procedural icon id for a chunk of spoken text."""
+    for pattern, icon in ICON_RULES:
+        if pattern.search(text):
+            return icon
+    return DEFAULT_ICON
 
 
 def _demographic_suffix(style: Optional[str]) -> str:
@@ -284,13 +325,15 @@ def derive_broll_ideas(
     n: Optional[int] = None,
     demographic: str = "african",
     graphic_specs: Optional[List[dict]] = None,
+    avoid_spans: Optional[List[tuple]] = None,
 ) -> List[dict]:
     """
     Build B-roll ideas that match the spoken segment at each timestamp.
 
     The engine mixes two visual systems:
-      * motion-design illustrations/cards for many key points;
-      * generated B-roll images for the strongest spoken beats.
+      * motion-design illustrated scenes for the key explanatory beats
+        (``avoid_spans`` — B-roll never competes with them);
+      * generated B-roll images for the strongest remaining spoken beats.
 
     Shorts get a denser B-roll cadence. Each idea keeps the exact spoken excerpt
     in the prompt so the generated image corresponds to the narration where it
@@ -304,6 +347,7 @@ def derive_broll_ideas(
         (float(g.get("source_start", 0.0)), float(g.get("source_end", 0.0)))
         for g in (graphic_specs or [])
     ]
+    motion_spans = [(float(a), float(b)) for a, b in (avoid_spans or [])]
     is_short = total <= config.SHORTS_MAX_DURATION_SECONDS
     seconds_per = _broll_seconds_per(total, bool(graphic_spans))
     if n is None:
@@ -318,6 +362,9 @@ def derive_broll_ideas(
         if len(ideas) >= n:
             break
         s, e, spoken_text = float(window["start"]), float(window["end"]), window["text"]
+        if motion_spans and _overlaps(s, e, motion_spans):
+            # A motion-design scene already illustrates this beat.
+            continue
         if graphic_spans and not is_short and _overlaps(s, e, graphic_spans) and idx % 2 == 0:
             # For long videos, let some motion-design beats carry the narration.
             # For shorts, do NOT skip: Claude wants more frequent B-roll.
@@ -343,6 +390,147 @@ def derive_broll_ideas(
             "source_end": round(e, 3),
         })
     return ideas
+
+
+# --------------------------------------------------------------------------- #
+# MOTION DESIGN scenes — illustrate what the speaker explains
+# --------------------------------------------------------------------------- #
+def _beat_score(text: str, counts: Counter) -> float:
+    """How much a beat deserves a motion-design illustration."""
+    score = 0.0
+    if _ENUM_HINTS.search(text) or text.count(",") >= 3:
+        score += 3.0
+    if _PERCENT_RE.search(text):
+        score += 3.0
+    elif _NUM_RE.search(text):
+        score += 1.5
+    score += min(3.0, 1.2 * len(_EMPHASIS_RE.findall(text)))
+    if "?" in text:
+        score += 0.8
+    toks = _content_tokens(text)
+    if toks:
+        top = sorted((counts.get(t, 0) for t in set(toks)), reverse=True)[:3]
+        score += min(2.0, 0.25 * sum(top))
+    return score
+
+
+def _steps_from_text(text: str, max_steps: int = 4) -> List[str]:
+    """Short uppercase step labels from an enumeration-style sentence."""
+    parts = re.split(r"[,.;:]|\bpuis\b|\bensuite\b|\bensuite,\b|\bet puis\b|\bthen\b|\bd'abord\b|\benfin\b",
+                     text, flags=re.IGNORECASE)
+    steps: List[str] = []
+    for part in parts:
+        label = _headline(part, 3)
+        if label and label not in steps and len(label) >= 3:
+            steps.append(label)
+        if len(steps) >= max_steps:
+            break
+    return steps
+
+
+def derive_motion_scenes(vu: dict, demographic: str = "african") -> List[dict]:
+    """
+    Pick the most important explanatory beats and turn each into a
+    motion-design scene spec (full-frame illustrated animation).
+
+    Selection is DYNAMIC, driven by what the speaker actually says: scored on
+    enumerations, numbers, emphasis phrases and keyword density; spaced by
+    MOTION_MIN_SPACING; capped at ~1 scene / 18-30 s (MOTION_MAX_SCENES max).
+    Each spec carries the exact spoken excerpt + an illustration prompt + a
+    procedural icon fallback, so the scene ALWAYS renders, with or without an
+    image-generation API key.
+    """
+    topics = topic_segments(vu)
+    if not topics:
+        return []
+    words = _all_words(vu)
+    total = float(vu.get("duration") or (words[-1]["end"] if words else 0.0))
+    if total < 10.0:
+        return []
+
+    every = (config.MOTION_EVERY_SHORT if total <= config.SHORTS_MAX_DURATION_SECONDS
+             else config.MOTION_EVERY_LONG)
+    budget = max(1, min(config.MOTION_MAX_SCENES, round(total / every)))
+
+    counts = keyword_counts(vu)
+    ranked = sorted(
+        (tp for tp in topics if float(tp["start"]) >= config.MOTION_MIN_START),
+        key=lambda tp: _beat_score(tp["text"], counts),
+        reverse=True,
+    )
+
+    picked: List[dict] = []
+    for tp in ranked:
+        if len(picked) >= budget:
+            break
+        start = float(tp["start"])
+        if any(abs(start - float(p["start"])) < config.MOTION_MIN_SPACING for p in picked):
+            continue
+        if _beat_score(tp["text"], counts) <= 0.5:
+            continue
+        picked.append(tp)
+    picked.sort(key=lambda tp: float(tp["start"]))
+
+    suffix = _demographic_suffix(demographic)
+    scenes: List[dict] = []
+    for idx, tp in enumerate(picked):
+        text = tp["text"]
+        toks = _content_tokens(text)
+        ranked_toks = sorted(set(toks), key=lambda t: counts.get(t, 0), reverse=True)
+        focus = ranked_toks[:4]
+        headline = (ranked_toks[0] if ranked_toks else (toks[0] if toks else "POINT CLÉ")).upper()
+        excerpt = _safe_excerpt(text, 170)
+        pct = _PERCENT_RE.search(text)
+        nums = _NUM_RE.findall(text)
+        enum = bool(_ENUM_HINTS.search(text)) or text.count(",") >= 3
+
+        kind = "idea"
+        steps: List[str] = []
+        value: Optional[float] = None
+        raw = ""
+        if enum:
+            steps = _steps_from_text(text)
+            if len(steps) >= 2:
+                kind = "steps"
+        if kind == "idea" and pct:
+            kind, value, raw = "number", _clamp_pct(pct.group(1)), pct.group(0).strip()
+        elif kind == "idea" and nums:
+            parsed = _parse_number(nums[0])
+            if parsed is not None and 0 < parsed < 10_000_000:
+                kind, value, raw = "number", parsed, nums[0].strip()
+
+        scene_desc = _scene_for_broll_text(text, focus)
+        prompt = (
+            f"{scene_desc}, drawn as a simple symbolic illustration of: \"{excerpt}\". "
+            f"Key concepts: {', '.join(focus[:4]) or headline.lower()}. "
+            f"Characters (if any): {suffix}."
+        )
+        dur = config.MOTION_SCENE_DUR_STEPS if kind == "steps" else config.MOTION_SCENE_DUR
+        scenes.append({
+            "id": f"md_{idx:03d}",
+            "kind": kind,
+            "source_start": round(float(tp["start"]), 3),
+            "source_end": round(min(float(tp["end"]), float(tp["start"]) + dur + 2.0), 3),
+            "duration": dur,
+            "headline": headline,
+            "kicker": "ÉTAPES" if kind == "steps" else ("CHIFFRE CLÉ" if kind == "number" else "À RETENIR"),
+            "steps": steps,
+            "value": value,
+            "raw": raw,
+            "concepts": focus,
+            "excerpt": excerpt,
+            "icon": icon_for_text(text),
+            "prompt": prompt,
+        })
+    return scenes
+
+
+def motion_scene_spans(scenes: List[dict]) -> List[tuple]:
+    """(start, end) source-time spans claimed by motion scenes (for B-roll)."""
+    return [
+        (float(s["source_start"]), float(s["source_start"]) + float(s["duration"]))
+        for s in scenes
+    ]
 
 
 # --------------------------------------------------------------------------- #

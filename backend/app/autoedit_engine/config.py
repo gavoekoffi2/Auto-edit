@@ -115,6 +115,47 @@ BROLL_CHIP_COLOR = (212, 175, 55, 255)     # gold chip
 BROLL_CHIP_Y = 250
 
 # --------------------------------------------------------------------------- #
+# STEP 6bis — MOTION DESIGN ILLUSTRÉ
+# Full-frame animated illustration scenes that DRAW what the speaker is
+# explaining (not just text).  Each scene = AI flat-design illustration (or a
+# procedural line-art drawing when no API key) + hand-drawn arrows, circled
+# keywords, numbered steps, counters — all animated, with entrance/exit
+# transitions and per-element SFX cues.
+# --------------------------------------------------------------------------- #
+MOTION_STYLE_PREFIX = (
+    "2D flat vector illustration in premium motion-design style, bold clean "
+    "outlines, vibrant saturated colors (cyan, gold, coral accents), simple "
+    "geometric shapes, friendly cartoon characters performing the action, "
+    "isolated on a very dark navy background, infographic energy, centered "
+    "composition, square format, ABSOLUTELY NO text, NO words, NO letters, "
+    "NO numbers in the image. Scene to illustrate: "
+)
+
+MOTION_EVERY_SHORT = 18.0       # ~1 scene / 18 s on shorts (<= 90 s)
+MOTION_EVERY_LONG = 30.0        # ~1 scene / 30 s on longer videos
+MOTION_MAX_SCENES = 6
+MOTION_MIN_SPACING = 12.0       # seconds between two scene starts
+MOTION_MIN_START = 2.0          # never take over the very first seconds
+MOTION_SCENE_DUR = 4.6          # idea / number scenes
+MOTION_SCENE_DUR_STEPS = 5.4    # step-by-step scenes need a touch longer
+MOTION_LEAD = 0.15              # scene starts slightly before the spoken beat
+
+# Palette (deep navy stage + cyan/gold ink, consistent with the brand).
+MOTION_BG_TOP = (11, 14, 26)
+MOTION_BG_BOTTOM = (26, 19, 46)
+MOTION_ACCENT = (0, 220, 255, 255)      # cyan ink (arrows / doodles)
+MOTION_GOLD = (255, 199, 64, 255)       # gold ink (highlights / counters)
+MOTION_INK = (255, 255, 255, 255)
+
+# SFX vocabulary for motion scenes (rotating pools, mixed by plan_overlays).
+MOTION_RISER_SFX = ["riser", "reverse_swell"]          # anticipation, -0.45 s
+MOTION_ENTRANCE_SFX = ["transition", "whoosh", "swoosh_up"]
+MOTION_ELEMENT_SFX = ["pop", "click", "digi_blip", "ding", "sparkle"]
+MOTION_EXIT_SFX = ["swoosh_down", "whoosh"]
+MOTION_RISER_LEAD = 0.45
+MOTION_MAX_ELEMENT_SFX = 4      # cap per scene so SFX stay accents, not noise
+
+# --------------------------------------------------------------------------- #
 # STEP 7 — KEYWORD POPUPS — RÈGLE PRO #2
 # --------------------------------------------------------------------------- #
 KEYWORD_TOP_N = 8
@@ -129,12 +170,14 @@ STOPWORDS = {
     "le", "la", "les", "un", "une", "des", "de", "du", "et", "ou", "mais",
     "donc", "or", "ni", "car", "que", "qui", "quoi", "dont", "où", "à", "au",
     "aux", "ce", "cet", "cette", "ces", "mon", "ma", "mes", "ton", "ta", "tes",
-    "son", "sa", "ses", "notre", "votre", "leur", "leurs", "je", "tu", "il",
+    "son", "sa", "ses", "nos", "vos", "notre", "votre", "leur", "leurs",
+    "je", "tu", "il",
     "elle", "on", "nous", "vous", "ils", "elles", "se", "me", "te", "lui",
     "y", "en", "pas", "ne", "plus", "moins", "très", "trop", "pour", "par",
     "avec", "sans", "sur", "sous", "dans", "est", "sont", "été", "être",
     "avoir", "fait", "faire", "comme", "aussi", "alors", "bien", "tout",
     "tous", "toute", "toutes", "cela", "ça", "ce", "si", "non", "oui",
+    "va", "vais", "vas", "vont", "allez", "veux", "veut", "peux", "peut",
     # English
     "the", "a", "an", "and", "or", "but", "of", "to", "in", "on", "at", "for",
     "with", "without", "is", "are", "was", "were", "be", "been", "being",
