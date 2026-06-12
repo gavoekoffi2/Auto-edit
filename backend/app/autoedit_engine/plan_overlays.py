@@ -140,6 +140,10 @@ def _motion_cues(motions: List[dict]) -> List[dict]:
                      "src": "motion"})
         entr = config.MOTION_ENTRANCE_SFX[i % len(config.MOTION_ENTRANCE_SFX)]
         cues.append({"sfx": entr, "t": round(start, 3), "src": "motion"})
+        if events.get("draw") is not None:
+            # Procedural scene: the line-art draws itself -> pencil sound.
+            cues.append({"sfx": config.MOTION_DRAW_SFX,
+                         "t": round(start + float(events["draw"]), 3), "src": "motion"})
         for j, et in enumerate((events.get("elements") or [])[:config.MOTION_MAX_ELEMENT_SFX]):
             t = start + float(et)
             if t >= end - 0.3:

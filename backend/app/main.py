@@ -38,7 +38,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 
 
 app = FastAPI(
-    title="AutoEdit API",
+    title="CutForge API",
     description="AI-powered automatic video editing SaaS platform",
     version="1.0.0",
     docs_url="/api/docs",

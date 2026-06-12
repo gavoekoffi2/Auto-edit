@@ -93,11 +93,72 @@ def generate_image(prompt: str, out_path: str, api_key: str,
     raise RuntimeError(f"image generation failed for '{prompt[:40]}': {last_err}")
 
 
+# --------------------------------------------------------------------------- #
+# prompt precision — a cheap text model turns each spoken excerpt into a
+# LITERAL visual scene before image generation, so the picture shows exactly
+# what is being said at that timestamp (heuristic prompt kept as fallback).
+# --------------------------------------------------------------------------- #
+def refine_prompts(items: List[dict], api_key: str, *,
+                   kind: str = "photo") -> List[dict]:
+    if not config.PROMPT_REFINER_ENABLED or not items:
+        return items
+    style = ("realistic editorial photograph" if kind == "photo"
+             else "flat vector illustration, no text in the image")
+    numbered = "\n".join(
+        f'{i}. "{it.get("excerpt") or it["prompt"][:180]}"' for i, it in enumerate(items)
+    )
+    instruction = (
+        "You write image-generation scene descriptions for a video editor.\n"
+        f"For EACH spoken excerpt below (French), describe ONE {style} that shows "
+        "LITERALLY and CONCRETELY what the speaker is saying at that moment — the "
+        "exact objects, actions and people mentioned, never a generic stock scene. "
+        "One line per item, 25-45 English words, no camera jargon, no quotes.\n"
+        "Answer ONLY with a JSON array of strings, same order and count as the "
+        f"{len(items)} items.\n\nExcerpts:\n{numbered}"
+    )
+    try:
+        resp = requests.post(
+            config.OPENROUTER_URL,
+            headers={"Authorization": f"Bearer {api_key}",
+                     "Content-Type": "application/json"},
+            json={"model": config.PROMPT_REFINER_MODEL,
+                  "messages": [{"role": "user", "content": instruction}]},
+            timeout=60,
+        )
+        if resp.status_code != 200:
+            raise RuntimeError(f"refiner {resp.status_code}")
+        text = resp.json()["choices"][0]["message"]["content"] or ""
+        start, end = text.find("["), text.rfind("]")
+        scenes = json.loads(text[start:end + 1])
+        if not isinstance(scenes, list) or len(scenes) != len(items):
+            raise RuntimeError("refiner shape mismatch")
+        refined: List[dict] = []
+        for it, scene in zip(items, scenes):
+            if isinstance(scene, str) and len(scene.split()) >= 8:
+                suffix = it["prompt"].split("Visual direction:")[-1] if "Visual direction:" in it["prompt"] else ""
+                new_prompt = scene.strip().rstrip(".") + "."
+                if suffix:
+                    new_prompt += f" Visual direction: {suffix.strip()}"
+                refined.append({**it, "prompt": new_prompt, "prompt_refined": True})
+            else:
+                refined.append(it)
+        n_ok = sum(1 for r in refined if r.get("prompt_refined"))
+        print(f"[genimg] prompt refiner: {n_ok}/{len(items)} prompts upgraded "
+              f"({config.PROMPT_REFINER_MODEL})")
+        return refined
+    except Exception as exc:  # noqa: BLE001 - heuristic prompts still work
+        print(f"[genimg] WARN prompt refiner skipped: {exc}", file=sys.stderr)
+        return items
+
+
 def generate_brolls(ideas: List[dict], outdir: str, api_key: Optional[str] = None) -> List[dict]:
     api_key = api_key or os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
         raise RuntimeError("OPENROUTER_API_KEY is required for image generation")
     os.makedirs(outdir, exist_ok=True)
+
+    ideas = ideas[: config.MAX_BROLL_IMAGES]      # hard API budget cap
+    ideas = refine_prompts(ideas, api_key, kind="photo")
 
     out: List[dict] = []
     for idea in ideas:
@@ -113,19 +174,29 @@ def generate_brolls(ideas: List[dict], outdir: str, api_key: Optional[str] = Non
 
 def generate_illustrations(scenes: List[dict], outdir: str,
                            api_key: Optional[str] = None) -> List[dict]:
-    """Generate one flat-design illustration per motion scene (best effort).
+    """Generate flat-design illustrations for the TOP-priority motion scenes.
 
-    A failed generation simply leaves the scene without an ``image`` key — the
-    motion_design renderer then falls back to its procedural line-art drawing,
-    so the montage never loses its illustrated beats.
+    API budget: only the MOTION_AI_ILLUSTRATIONS_MAX most important beats get
+    an AI image — every other scene uses the free procedural line-art drawing.
+    A failed generation simply leaves the scene without an ``image`` key, so
+    the montage never loses its illustrated beats.
     """
     api_key = api_key or os.environ.get("OPENROUTER_API_KEY")
-    if not api_key:
+    if not api_key or config.MOTION_AI_ILLUSTRATIONS_MAX <= 0:
         return scenes
     os.makedirs(outdir, exist_ok=True)
 
+    ranked = sorted(scenes, key=lambda s: float(s.get("priority", 0.0)), reverse=True)
+    chosen = {s["id"] for s in ranked[: config.MOTION_AI_ILLUSTRATIONS_MAX]}
+    to_generate = [s for s in scenes if s["id"] in chosen]
+    refined = {s["id"]: s for s in refine_prompts(to_generate, api_key, kind="illustration")}
+
     out: List[dict] = []
     for scene in scenes:
+        if scene["id"] not in chosen:
+            out.append(dict(scene))
+            continue
+        scene = refined.get(scene["id"], scene)
         png = os.path.join(outdir, f"{scene['id']}.png")
         try:
             generate_image(scene["prompt"], png, api_key,

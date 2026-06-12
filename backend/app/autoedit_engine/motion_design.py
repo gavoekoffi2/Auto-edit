@@ -31,7 +31,7 @@ import os
 import sys
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 # Pillow-version-robust LANCZOS (Resampling moved in 9.1; constants vary by version).
 try:
@@ -540,6 +540,79 @@ def _draw_counter(draw: ImageDraw.ImageDraw, value: float, raw: str, t: float) -
     return [t0]
 
 
+# --------------------------------------------------------------------------- #
+# scene entrance / exit transitions (variants cycled per scene)
+# --------------------------------------------------------------------------- #
+ENTRANCE_DUR = 0.5
+EXIT_MOTION_DUR = 0.38
+
+
+def _iris(canvas: Image.Image, p: float, closing: bool = False) -> Image.Image:
+    """Circular reveal (or close) of the whole scene, with an accent ring."""
+    p = clamp(p)
+    radius = (1.0 - p if closing else p) * math.hypot(W, H) * 0.62
+    mask = Image.new("L", (W, H), 0)
+    dm = ImageDraw.Draw(mask)
+    cx, cy = W // 2, H // 2 - 140
+    dm.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), fill=255)
+    r, g, b, a = canvas.split()
+    out = Image.merge("RGBA", (r, g, b, ImageChops.multiply(a, mask)))
+    if 0.02 < p < 0.98 and radius > 4:
+        do = ImageDraw.Draw(out)
+        do.ellipse((cx - radius, cy - radius, cx + radius, cy + radius),
+                   outline=ACCENT, width=10)
+    return out
+
+
+def _translate(canvas: Image.Image, dx: int, dy: int) -> Image.Image:
+    if dx == 0 and dy == 0:
+        return canvas
+    out = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    out.paste(canvas, (dx, dy))
+    return out
+
+
+def _scale_center(canvas: Image.Image, s: float) -> Image.Image:
+    if abs(s - 1.0) < 1e-3:
+        return canvas
+    nw, nh = max(1, int(W * s)), max(1, int(H * s))
+    img = canvas.resize((nw, nh), _RESAMPLE)
+    out = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    out.paste(img, ((W - nw) // 2, (H - nh) // 2))
+    return out
+
+
+def _apply_scene_transitions(canvas: Image.Image, scene: dict,
+                             t: float, dur: float) -> Image.Image:
+    variant_in = scene.get("variant_in", "sweep")
+    variant_out = scene.get("variant_out", "scale_fade")
+
+    ep = clamp(t / ENTRANCE_DUR)
+    if ep < 1.0:
+        if variant_in == "iris":
+            canvas = _iris(canvas, ease_out_cube(ep))
+            flash = Image.new("RGBA", (W, H), (255, 255, 255, int((1 - ep) * 70)))
+            canvas.alpha_composite(flash)
+        elif variant_in == "slide_up":
+            off = int((1.0 - ease_out_back(ep)) * H)
+            canvas = _translate(canvas, 0, off)
+        else:  # "sweep" — signature diagonal light sweep + flash
+            canvas.alpha_composite(_light_sweep(ep))
+            flash = Image.new("RGBA", (W, H), (255, 255, 255, int((1 - ep) * 130)))
+            canvas.alpha_composite(flash)
+
+    xq = 1.0 - clamp((dur - t) / EXIT_MOTION_DUR)
+    if xq > 0:
+        x2 = xq * xq
+        if variant_out == "slide_down":
+            canvas = _translate(canvas, 0, int(x2 * H))
+        elif variant_out == "iris_close":
+            canvas = _iris(canvas, x2, closing=True)
+        else:  # "scale_fade"
+            canvas = _scale_center(canvas, 1.0 - 0.10 * x2)
+    return canvas
+
+
 def _compose_frame(scene: dict, illu: Optional[Image.Image], stage: Image.Image,
                    t: float, dur: float) -> Image.Image:
     canvas = stage.copy()
@@ -577,13 +650,7 @@ def _compose_frame(scene: dict, illu: Optional[Image.Image], stage: Image.Image,
     _draw_sparkles(draw, t, box)
     canvas.alpha_composite(fg)
 
-    # entrance transition: light sweep + white flash
-    ep = clamp(t / 0.5)
-    if ep < 1.0:
-        canvas.alpha_composite(_light_sweep(ep))
-        flash = Image.new("RGBA", (W, H), (255, 255, 255, int((1 - ep) * 130)))
-        canvas.alpha_composite(flash)
-
+    canvas = _apply_scene_transitions(canvas, scene, t, dur)
     return _apply_alpha(canvas, alpha_fade(t, dur, fin=0.18, fout=EXIT_FADE))
 
 
@@ -623,14 +690,24 @@ def render_scene(scene: dict, out_path: str, fps: int = config.FPS) -> dict:
         for fi in range(n_frames):
             pipe.write(_compose_frame(scene, illu, stage, fi / fps, dur))
 
+    events = scene_events(scene)
+    if illu is None:
+        events["draw"] = T_ILLU       # the drawing draws itself -> pencil SFX
     return {**scene, "mov": out_path, "duration": round(dur, 3),
-            "illustrated": illu is not None, "events": scene_events(scene)}
+            "illustrated": illu is not None, "events": events}
 
 
 def render_all(scenes: List[dict], outdir: str) -> List[dict]:
     os.makedirs(outdir, exist_ok=True)
     out: List[dict] = []
-    for scene in scenes:
+    for i, scene in enumerate(scenes):
+        # Cycle the entrance/exit transition variants so two consecutive
+        # takeovers never use the same move (belles transitions variées).
+        scene = {
+            **scene,
+            "variant_in": config.MOTION_ENTRANCES[i % len(config.MOTION_ENTRANCES)],
+            "variant_out": config.MOTION_EXITS[i % len(config.MOTION_EXITS)],
+        }
         path = os.path.join(outdir, f"{scene['id']}.mov")
         try:
             rendered = render_scene(scene, path)

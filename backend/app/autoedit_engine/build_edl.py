@@ -7,6 +7,19 @@ Cut rules (RÈGLE PRO #1 RYTHME):
   * FILLERS : runs containing ONLY filler words are dropped.
   * 30 ms afade in/out at every cut.
 
+SMART CUT (v4.2) — the montage keeps only the GOOD take:
+  * false starts : a short run immediately re-spoken by the next run
+    ("aujourd'hui je vais…" → "aujourd'hui je vais vous montrer la méthode")
+    is dropped — the LAST take always wins;
+  * repeated sentences : when the speaker says the same thing twice in a row,
+    the first occurrence is dropped;
+  * retake markers : "je reprends / on recommence / coupe ça…" trims the run
+    from the marker to its end;
+  * stutters : immediate word/bigram repeats ("je je", "il faut il faut")
+    are cut out when the repeat is long enough to survive the pads.
+  Every smart cut lands ON WORD BOUNDARIES (+ MICRO_PAD margin) so speech is
+  never chopped mid-word and the result stays coherent.
+
 Color grade (STEP 3): the warm_cinematic preset is baked into each segment at
 encode time, together with a cover-crop to the mandated 1080x1920.
 
@@ -16,18 +29,19 @@ before -i) — never output-side + afade (that bug makes the fade cover the whol
 segment).
 
 Usage:
-    python -m engine.build_edl source.mp4 transcripts/source_vu.json \
+    python -m app.autoedit_engine.build_edl source.mp4 transcripts/source_vu.json \
         [--outdir .] [--no-encode]
 """
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import os
 import re
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from . import config
 from . import ffmpeg_utils
@@ -67,6 +81,99 @@ def _is_filler_run(words: List[dict]) -> bool:
     return all(t in config.FILLERS for t in toks)
 
 
+# --------------------------------------------------------------------------- #
+# SMART CUT — retakes / repetitions / stutters
+# --------------------------------------------------------------------------- #
+def _run_tokens(run: List[dict]) -> List[str]:
+    toks = [_norm(w["word"]) for w in run]
+    return [t for t in toks if t]
+
+
+def _similar(a: List[str], b: List[str]) -> float:
+    if not a or not b:
+        return 0.0
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+
+def trim_trailing_marker(run: List[dict]) -> List[dict]:
+    """Cut a run at a retake marker ("… non je reprends") — marker included."""
+    toks = [_norm(w["word"]) for w in run]
+    joined = " ".join(toks)
+    best: Optional[int] = None
+    for marker in config.RETAKE_MARKERS:
+        m_toks = marker.split()
+        n = len(m_toks)
+        for i in range(len(toks) - n, -1, -1):
+            if toks[i:i + n] == m_toks:
+                # Only trim TAIL markers — a marker mid-sentence is ambiguous.
+                if len(toks) - (i + n) <= 4:
+                    best = i if best is None else min(best, i)
+                break
+    return run[:best] if best is not None else run
+
+
+def drop_false_starts(runs: List[List[dict]]) -> List[List[dict]]:
+    """Drop run A when run B (the next one) restarts or repeats it.
+
+    The LAST take always wins — exactly what a human editor does with retakes.
+    Chains ("a… / a… / a b c") collapse naturally since each run is compared
+    to its immediate successor.
+    """
+    kept: List[List[dict]] = []
+    for i, run in enumerate(runs):
+        nxt = runs[i + 1] if i + 1 < len(runs) else None
+        if nxt is not None:
+            a, b = _run_tokens(run), _run_tokens(nxt)
+            if config.RETAKE_MIN_WORDS <= len(a) <= config.RETAKE_MAX_WORDS and b:
+                is_false_start = (len(b) > len(a)
+                                  and _similar(a, b[:len(a)]) >= config.RETAKE_SIMILARITY)
+                is_duplicate = (abs(len(a) - len(b)) <= 2
+                                and _similar(a, b) >= config.RETAKE_SIMILARITY)
+                if is_false_start or is_duplicate:
+                    continue                      # the next take replaces this one
+        kept.append(run)
+    return kept
+
+
+def split_stutters(run: List[dict]) -> List[Tuple[List[dict], bool, bool]]:
+    """Remove immediate word/bigram/trigram repeats inside a run.
+
+    Returns [(subrun, micro_start, micro_end)] — the flags mark boundaries
+    created by a stutter cut (tight MICRO_PAD) as opposed to natural silence
+    (full PAD). Both sides of a cut must be tight, otherwise the pads would
+    re-include the audio that was just removed. Repeats shorter than
+    STUTTER_MIN_SPAN are left alone: the pads would swallow the cut anyway.
+    """
+    toks = [_norm(w["word"]) for w in run]
+    subruns: List[Tuple[List[dict], bool, bool]] = []
+    cur: List[dict] = []
+    cur_micro_start = False
+    i = 0
+    while i < len(run):
+        cut_k = 0
+        for k in (3, 2, 1):
+            if i + 2 * k > len(run):
+                continue
+            first, second = toks[i:i + k], toks[i + k:i + 2 * k]
+            if first != second or not all(first):
+                continue
+            span = float(run[i + k]["start"]) - float(run[i]["start"])
+            if span >= config.STUTTER_MIN_SPAN:
+                cut_k = k
+                break
+        if cut_k:
+            if cur:
+                subruns.append((cur, cur_micro_start, True))   # ends at a micro cut
+            cur, cur_micro_start = [], True       # next subrun starts at a micro cut
+            i += cut_k                            # skip the FIRST occurrence
+        else:
+            cur.append(run[i])
+            i += 1
+    if cur:
+        subruns.append((cur, cur_micro_start, False))
+    return subruns
+
+
 def build_ranges(vu: dict) -> List[dict]:
     """Apply the cut rules and return the list of kept source ranges."""
     words = _flatten_words(vu)
@@ -90,11 +197,29 @@ def build_ranges(vu: dict) -> List[dict]:
     # 2) Drop filler-only runs.
     runs = [r for r in runs if not _is_filler_run(r)]
 
-    # 3) Pad each run and clamp to media bounds.
+    # 3) SMART CUT: markers -> false starts/duplicates -> stutters.
+    pieces: List[Tuple[List[dict], bool, bool]] = []
+    if config.REMOVE_RETAKES:
+        runs = [trim_trailing_marker(r) for r in runs]
+        runs = [r for r in runs if r and not _is_filler_run(r)]
+        runs = drop_false_starts(runs)
+        for run in runs:
+            pieces.extend(split_stutters(run))
+    else:
+        pieces = [(r, False, False) for r in runs]
+
+    # 4) Pad each piece (PAD at silence boundaries, MICRO_PAD at smart cuts)
+    #    and clamp to media bounds. Boundaries always sit on word edges.
     ranges: List[dict] = []
-    for run in runs:
-        start = max(0.0, float(run[0]["start"]) - config.PAD)
-        end = min(duration, float(run[-1]["end"]) + config.PAD) if duration else float(run[-1]["end"]) + config.PAD
+    for piece, micro_start, micro_end in pieces:
+        if not piece:
+            continue
+        lead = config.MICRO_PAD if micro_start else config.PAD
+        tail = config.MICRO_PAD if micro_end else config.PAD
+        start = max(0.0, float(piece[0]["start"]) - lead)
+        end = float(piece[-1]["end"]) + tail
+        if duration:
+            end = min(duration, end)
         # Prevent overlap with the previous padded range.
         if ranges and start < ranges[-1]["end"]:
             start = ranges[-1]["end"]

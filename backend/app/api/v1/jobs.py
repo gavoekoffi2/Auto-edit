@@ -3,9 +3,10 @@ import logging
 from uuid import UUID
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import FileResponse
+
+from app.services.media import ranged_file_response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
@@ -288,6 +289,7 @@ async def cancel_job(
 @router.get("/{job_id}/download")
 async def download_result(
     job_id: UUID,
+    request: Request,
     access_token: str | None = Query(None),
     credentials: HTTPAuthorizationCredentials | None = Depends(optional_security),
     db: AsyncSession = Depends(get_db),
@@ -320,8 +322,11 @@ async def download_result(
             detail="Output file no longer exists on disk",
         )
 
-    return FileResponse(
+    # Range-aware response: resumable downloads + seekable preview playback
+    # (the pinned Starlette FileResponse ignores Range headers).
+    return ranged_file_response(
         absolute_path,
+        request,
         media_type="video/mp4",
-        filename=f"autoedit_{job_id}.mp4",
+        filename=f"cutforge_{job_id}.mp4",
     )

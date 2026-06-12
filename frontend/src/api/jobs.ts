@@ -70,8 +70,36 @@ export function getJobDownloadUrl(jobId: string) {
   return withAccessToken(`${base}/v1/jobs/${jobId}/download`)
 }
 
+/**
+ * Download the rendered montage.
+ *
+ * Strategy: refresh the session first (a 15-min access token can expire during
+ * a long render — the old code then hit a silent 401 and "le téléchargement ne
+ * fonctionnait pas"), then trigger a NATIVE browser download via a direct
+ * link. Native downloads stream straight to disk (no blob in RAM — large
+ * videos crashed mobile tabs) and support resume thanks to the range-aware
+ * backend. The blob fetch stays as a last-resort fallback.
+ */
 export async function downloadJobResult(jobId: string) {
-  await downloadWithAuth(`/jobs/${jobId}/download`, `autoedit_${jobId}.mp4`)
+  try {
+    // Any authenticated call refreshes an expired token via the interceptor.
+    await client.get('/auth/me', { timeout: 15000 })
+  } catch {
+    /* if this fails the interceptor already redirected to /login */
+  }
+
+  const url = getJobDownloadUrl(jobId)
+  try {
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `cutforge_${jobId}.mp4`
+    link.rel = 'noopener'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  } catch {
+    await downloadWithAuth(`/jobs/${jobId}/download`, `cutforge_${jobId}.mp4`)
+  }
 }
 
 export async function cancelJob(jobId: string) {

@@ -31,11 +31,19 @@ def _delay_ms(t: float) -> int:
 
 
 def _build_filter(cues: List[dict], sfx_index: Dict[str, str]) -> tuple[str, list]:
-    """Return (filter_complex, ordered list of input paths after the video)."""
+    """Return (filter_complex, ordered list of input paths after the video).
+
+    Humanisation: each cue gets a deterministic micro pitch/gain variation
+    (asetrate resample + volume) so a sound that recurs — camera_flash, pops —
+    never plays back twice exactly the same. This is what separates a "static"
+    SFX pass from a professional one.
+    """
     inputs: List[str] = []
     parts: List[str] = []
     mix_labels = ["[0:a]"]
 
+    sr = config.SFX_SAMPLE_RATE
+    seen_count: Dict[str, int] = {}
     for ci, cue in enumerate(cues, start=1):
         path = sfx_index.get(cue["sfx"])
         if path is None:
@@ -44,9 +52,19 @@ def _build_filter(cues: List[dict], sfx_index: Dict[str, str]) -> tuple[str, lis
         idx = len(inputs)                       # ffmpeg input index (0 is video)
         ms = _delay_ms(float(cue["t"]))
         label = f"[s{ci}]"
-        parts.append(
-            f"[{idx}:a]adelay={ms}|{ms},volume={config.SFX_BUS_GAIN:.2f}{label}"
-        )
+
+        # Variation index advances per occurrence OF THE SAME sound, so the
+        # first hit of every sound stays at its designed pitch.
+        k = seen_count.get(cue["sfx"], 0)
+        seen_count[cue["sfx"]] = k + 1
+        pitch = config.SFX_PITCH_VARIANTS[k % len(config.SFX_PITCH_VARIANTS)]
+        gain = config.SFX_BUS_GAIN * config.SFX_GAIN_VARIANTS[k % len(config.SFX_GAIN_VARIANTS)]
+
+        chain = f"[{idx}:a]"
+        if abs(pitch - 1.0) > 1e-3:
+            chain += f"asetrate={int(round(sr * pitch))},aresample={sr},"
+        chain += f"adelay={ms}|{ms},volume={gain:.3f}{label}"
+        parts.append(chain)
         mix_labels.append(label)
 
     if len(mix_labels) == 1:                     # no SFX -> just loudnorm voice

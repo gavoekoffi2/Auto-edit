@@ -361,7 +361,7 @@ export default function Editor() {
                   <option value="caucasian">Blancs / caucasiens</option>
                   <option value="global">Mixte international</option>
                 </select>
-                <p className="text-xs text-dark-500 mt-1">Par défaut AutoEdit génère des scènes africaines modernes. Tu peux changer pour une autre audience.</p>
+                <p className="text-xs text-dark-500 mt-1">Par défaut CutForge génère des scènes africaines modernes (personnes et décors). Tu peux changer pour une autre audience.</p>
               </div>
             )}
             <ToggleRow
@@ -434,7 +434,7 @@ export default function Editor() {
             </div>
           </div>
 
-          {/* AutoEdit Button */}
+          {/* Bouton de lancement */}
           <button
             onClick={handleAutoEdit}
             disabled={processing}
@@ -448,7 +448,7 @@ export default function Editor() {
             ) : (
               <>
                 <Zap className="w-5 h-5" />
-                Lancer AutoEdit
+                Forger le montage
               </>
             )}
           </button>

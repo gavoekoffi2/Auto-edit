@@ -624,7 +624,7 @@ def _build_overlays(options: dict, params: dict, total_duration: float) -> list:
     # légère pour rendre le montage visible dès le début (style Captions/Reels).
     intro_title = p.get("intro_title") or opts.get("logo_text")
     if not intro_title and opts.get("dynamic_captions", True):
-        intro_title = "AutoEdit Premium"
+        intro_title = "CutForge"
     if intro_title:
         overlays.append(
             OverlayClip(

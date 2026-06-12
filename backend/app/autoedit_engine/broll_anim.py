@@ -175,6 +175,26 @@ def _compose_frame(main: Image.Image, plate: Image.Image, label: str,
         off_x = int((1 - e) * 0.4 * W)
         scale = (0.9 + 0.1 * e) * kb
 
+    # Exit motion — the clip LEAVES with energy (paired with its entrance),
+    # layered on top of the 0.20 s alpha fade-out.
+    xq = 1.0 - clamp((dur - t) / config.BROLL_EXIT_DUR)
+    if xq > 0:
+        x2 = xq * xq                              # accelerating ease-in
+        exit_name = config.BROLL_EXITS.get(entrance, "punch_out")
+        if exit_name == "slide_out_l":
+            off_x -= int(x2 * 0.9 * W)
+        elif exit_name == "slide_out_r":
+            off_x += int(x2 * 0.9 * W)
+        elif exit_name == "drop":
+            off_y += int(x2 * 0.8 * H)
+        elif exit_name == "swoosh_out_up":
+            off_y -= int(x2 * 0.8 * H)
+        elif exit_name == "glitch_out":
+            shift = max(shift, int(x2 * 30))
+        else:                                     # punch_out
+            scale *= 1.0 + 0.45 * x2
+            flash = max(flash, x2 * 0.35)
+
     canvas = plate.copy()
 
     # scale the (pre-fit) main image

@@ -8,7 +8,7 @@ const plans = [
     id: 'free',
     name: 'Free',
     price: { XOF: 0, USD: 0 },
-    description: 'Découvre AutoEdit gratuitement',
+    description: 'Découvre CutForge gratuitement',
     features: [
       '2 vidéos / mois',
       '5 min max par vidéo',
@@ -159,7 +159,7 @@ export default function Pricing() {
         <div className="mt-20">
           <h2 className="text-2xl font-bold text-center mb-2">Modes inclus avec le plan Pro</h2>
           <p className="text-dark-400 text-center mb-8 text-sm max-w-xl mx-auto">
-            Le pipeline V2 d&apos;AutoEdit est pensé pour le marché africain francophone — Togo, Bénin, Côte d&apos;Ivoire, Sénégal, Cameroun, RDC.
+            Le moteur CutForge est pensé pour le marché africain francophone — Togo, Bénin, Côte d&apos;Ivoire, Sénégal, Cameroun, RDC.
           </p>
           <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-3 max-w-5xl mx-auto">
             {[

@@ -99,7 +99,8 @@ def test_engine_broll_ideas_default_to_african_and_match_spoken_excerpt():
     graphics = [{"source_start": 0.0, "source_end": 8.0}, {"source_start": 18.0, "source_end": 26.0}]
     ideas = derive_broll_ideas(vu, demographic="african", graphic_specs=graphics)
     assert ideas
-    assert all("modern African people" in idea["prompt"] for idea in ideas)
+    # Default promise: African imagery ONLY (strengthened wording).
+    assert all("Black African" in idea["prompt"] for idea in ideas)
     assert all("Must directly illustrate this exact spoken excerpt" in idea["prompt"] for idea in ideas)
     assert any("mobile-money payment" in idea["prompt"] for idea in ideas)
 
@@ -130,7 +131,9 @@ def test_engine_broll_ideas_are_more_dense_for_shorts_even_with_graphics():
     short_ideas = derive_broll_ideas(make_vu(60.0, 20), demographic="african", graphic_specs=graphics)
     long_ideas = derive_broll_ideas(make_vu(180.0, 60), demographic="african", graphic_specs=graphics)
 
-    assert len(short_ideas) >= 12  # ~1 B-roll every 4s on shorts
+    # Cost-aware cadence: shorts stay denser than long videos, but the
+    # motion-design scenes now carry part of the rhythm (API savings).
+    assert len(short_ideas) >= 6
     assert len(short_ideas) / 60.0 > len(long_ideas) / 180.0
 
 
@@ -147,4 +150,4 @@ def test_engine_broll_ideas_can_target_caucasian_casting():
         }],
     }
     ideas = derive_broll_ideas(vu, n=1, demographic="caucasian")
-    assert "caucasian / white people" in ideas[0]["prompt"]
+    assert "caucasian / white" in ideas[0]["prompt"]

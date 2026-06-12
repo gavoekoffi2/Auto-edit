@@ -28,7 +28,7 @@ async def create_checkout(
     }
 
     payload = {
-        "description": f"AutoEdit {plan.title()} Plan",
+        "description": f"CutForge {plan.title()} Plan",
         "amount": amount,
         "currency": {"iso": currency},
         "callback_url": callback_url or "",

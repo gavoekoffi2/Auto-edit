@@ -1,6 +1,6 @@
-# AutoEdit - AI Video Editing SaaS Platform
+# CutForge (ex-AutoEdit) - AI Video Editing SaaS Platform
 
-AI-powered automatic video editing platform. Upload your video, choose a mode, and let AutoEdit handle the rest.
+AI-powered automatic video editing platform. Upload your talking-head video, choose a style, and CutForge forges the montage: smart cuts, illustrated motion design, AI B-roll, karaoke captions and pro sound design.
 
 ## Architecture
 

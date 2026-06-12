@@ -1,4 +1,69 @@
-# Audit technique — AutoEdit
+# Audit technique — CutForge (ex-AutoEdit)
+
+---
+
+## ⭐ Itération v4 — juin 2026 (rebranding CutForge + production-ready)
+
+> Suite de l'audit v3, sur demande produit : rebranding complet, landing
+> premium animée, fixes download/upload, smart cut, sound design pro,
+> transitions, économie d'API et précision des images.
+
+### A. Rebranding « CutForge » + landing premium
+
+- Marque centralisée (`frontend/src/brand.ts`), nouveau logo SVG (lame de
+  coupe + play forgé), favicon, meta/OG, Navbar/Footer/Login/Signup/Pricing/
+  Editor, emails et API backend renommés.
+- **Landing page réécrite** : simulation de montage animée dans un téléphone
+  (captions karaoké, popup mot-clé, B-roll avec flash photo, scène motion
+  design avec dessin qui se trace + compteur + cercle marqueur + flèche,
+  pastilles SFX — boucle de 12 s synchronisée), aurora + grille de points +
+  parallaxe curseur, marquee, 3 étapes avec connecteur dessiné, vitrine des
+  3 types de scènes motion design, features, stats produit, pricing, FAQ, CTA.
+  Le tout en CSS pur (Landing : 173 KB → 31 KB de JS) avec
+  `prefers-reduced-motion` respecté. Les faux témoignages (photos Unsplash +
+  noms inventés) de l'ancienne landing ont été SUPPRIMÉS.
+
+### B. Bugs corrigés
+
+| # | Zone | Problème → correction |
+| --- | --- | --- |
+| 1 | Téléchargement | Le bouton « Download » récupérait la vidéo en blob XHR (RAM mobile + CORS Netlify→VPS + token 15 min expiré pendant les longs rendus → 401 silencieux). → Refresh de session avant, **téléchargement natif par lien direct** (streaming disque, pas de CORS), blob en dernier recours. |
+| 2 | Téléchargement | Starlette épinglé ignore les en-têtes `Range` (pas de reprise, seek impossible). → `app/services/media.py::ranged_file_response` (206 Partial Content) sur `/jobs/{id}/download` et `/videos/{id}/stream` + `proxy_force_ranges` nginx. |
+| 3 | Upload lent | nginx bufferisait TOUT le body sur disque avant de le rejouer vers FastAPI (barre à 100 % puis longue attente). → `proxy_request_buffering off` sur la route d'upload : streaming direct, une seule écriture. |
+| 4 | Mots-clés | Contractions françaises (« c'est », « j'ai »…) absentes des stopwords → devenaient mots-clés/headlines. → Liste complétée. |
+
+### C. Moteur v4.2
+
+1. **Smart cut** (`build_edl`) : suppression des faux départs (la dernière
+   prise gagne), des phrases répétées, des marqueurs « je reprends / on
+   recommence / coupe ça » et des bégaiements — coupes toujours sur frontière
+   de mot (MICRO_PAD), la parole n'est jamais hachée. Flag
+   `ENGINE_REMOVE_RETAKES`.
+2. **Sound design pro** : 27 sons (8 nouveaux dont rafale photo, autofocus,
+   crayon qui dessine, tape-stop, hit cinématique), pools distincts par type
+   de visuel (B-roll = sons photo/caméra), **variation pitch/gain par
+   occurrence** (jamais deux fois le même son à l'identique), son de crayon
+   pendant les dessins procéduraux, blips sur les popups (avant : muets).
+3. **Belles transitions** : sorties animées des B-rolls appariées à leur
+   entrée (slide-out, punch-out, drop, glitch-out…) ; entrées/sorties variées
+   des scènes motion (sweep lumineux / iris circulaire / slide avec rebond —
+   scale-fade / slide-down / iris-close), cyclées pour ne jamais répéter.
+4. **Économie d'API** : cadence B-roll réduite (1/6 s shorts, 1/9-12 s long),
+   cap `MAX_BROLL_IMAGES=8`, scènes motion plus fréquentes (gratuites), cap
+   `MOTION_AI_ILLUSTRATIONS_MAX=3` (les scènes les plus importantes seulement,
+   par priorité ; les autres en dessin procédural).
+5. **Précision des images** : raffineur de prompts LLM (modèle texte bon
+   marché, lot unique, fallback heuristique) qui réécrit chaque extrait parlé
+   en scène visuelle littérale ; démographie **africaine uniquement par
+   défaut** (formulation renforcée), réglable dans l'éditeur avant le
+   traitement.
+
+### D. Vérifications
+
+- **72 tests pytest** (16 nouveaux : smart cut, design SFX) ; build frontend
+  `tsc` + Vite OK ; rendu de bout en bout validé sur vidéo synthétique
+  (bégaiement coupé mot-safe, 3 scènes motion dont une « étapes », 31 SFX
+  variés, frames inspectées).
 
 ---
 

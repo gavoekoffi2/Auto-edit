@@ -40,12 +40,18 @@ _EMPHASIS_RE = re.compile(
 )
 
 BROLL_DEMOGRAPHIC_SUFFIXES = {
+    # Default product promise: African imagery ONLY, unless the user explicitly
+    # switches the setting before launching the job.
     "african": (
-        "modern African people and African environments, francophone West/Central Africa, "
-        "premium realistic look, no stereotypes, no clichés"
+        "EVERY person in the image MUST be Black African with dark skin — no "
+        "white or non-African people. Modern francophone West/Central African "
+        "setting (Abidjan, Dakar, Lomé, Cotonou, Douala), contemporary "
+        "clothing and clean modern environments, premium realistic look, "
+        "no stereotypes, no clichés"
     ),
     "caucasian": (
-        "caucasian / white people in modern professional environments, premium realistic look"
+        "every person in the image must be caucasian / white, in modern "
+        "professional environments, premium realistic look"
     ),
     "global": (
         "diverse international people, inclusive casting, premium realistic modern environments"
@@ -228,7 +234,7 @@ def derive_overlay_specs(vu: dict) -> List[dict]:
         if idx == 0:
             toks = _content_tokens(text)
             specs.append({**base, "type": "lower_third",
-                          "title": " ".join(toks[:3]).upper() or "AUTO EDIT",
+                          "title": " ".join(toks[:3]).upper() or "CUTFORGE",
                           "subtitle": " ".join(toks[3:7]).upper()})
         elif pct:
             specs.append({**base, "type": "progress",
@@ -509,6 +515,7 @@ def derive_motion_scenes(vu: dict, demographic: str = "african") -> List[dict]:
         scenes.append({
             "id": f"md_{idx:03d}",
             "kind": kind,
+            "priority": round(_beat_score(text, counts), 3),
             "source_start": round(float(tp["start"]), 3),
             "source_end": round(min(float(tp["end"]), float(tp["start"]) + dur + 2.0), 3),
             "duration": dur,
