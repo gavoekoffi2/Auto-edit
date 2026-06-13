@@ -133,16 +133,21 @@ echo "[deploy] Building and starting AutoEdit production stack..."
 echo "[deploy] Services:"
 "${COMPOSE[@]}" ps
 
-echo "[deploy] Waiting for API health..."
+# Health-check DIRECTEMENT le conteneur backend (port 8000 interne), pas via le
+# proxy: sur ce VPS, Traefik possède 80/443 et redirige localhost HTTP->HTTPS
+# (301), ce qui faisait lire un faux "Moved Permanently". On interroge donc le
+# backend lui-même — c'est la vraie santé applicative.
+echo "[deploy] Waiting for API health (backend container)..."
 for i in {1..30}; do
-  if curl -fsS --max-time 5 -H "Host: ${BACKEND_DOMAIN:-localhost}" http://localhost/api/health >/tmp/autoedit-health.json 2>/dev/null; then
-    echo "[deploy] Local health OK: $(cat /tmp/autoedit-health.json)"
+  if "${COMPOSE[@]}" exec -T backend \
+       curl -fsS --max-time 5 http://localhost:8000/api/health >/tmp/autoedit-health.json 2>/dev/null; then
+    echo "[deploy] Backend health OK: $(cat /tmp/autoedit-health.json)"
     break
   fi
   sleep 2
   if [ "$i" = "30" ]; then
-    echo "[deploy] ERROR: API health did not become reachable on http://localhost/api/health" >&2
-    "${COMPOSE[@]}" logs --tail=120 backend worker caddy >&2 || true
+    echo "[deploy] ERROR: backend /api/health never became healthy" >&2
+    "${COMPOSE[@]}" logs --tail=120 backend worker >&2 || true
     exit 1
   fi
 done
@@ -168,12 +173,16 @@ echo "[deploy] Cleaning render intermediates in uploads volume..."
 ' || echo "[deploy] WARNING: uploads janitor skipped (backend not ready?)"
 
 if [ -n "${BACKEND_DOMAIN:-}" ] && [ "$BACKEND_DOMAIN" != "localhost" ]; then
-  echo "[deploy] Checking public HTTPS endpoint..."
+  echo "[deploy] Checking public HTTPS endpoint (info only)..."
   if curl -fsS --max-time 15 "https://${BACKEND_DOMAIN}/api/health" >/tmp/autoedit-public-health.json 2>/dev/null; then
     echo "[deploy] Public HTTPS health OK: https://${BACKEND_DOMAIN}/api/health"
   else
-    echo "[deploy] WARNING: public HTTPS health not reachable yet. Check DNS A record, ports 80/443, and Caddy logs:"
-    echo "         ${COMPOSE[*]} logs -f caddy"
+    # Depuis le VPS lui-même, joindre son propre domaine public peut échouer
+    # (hairpin NAT) MÊME quand le site est parfaitement accessible de l'extérieur.
+    # C'est purement informatif: la santé applicative réelle est validée
+    # ci-dessus sur le conteneur backend.
+    echo "[deploy] INFO: auto-test HTTPS interne non concluant (hairpin NAT possible)."
+    echo "         Vérifie depuis l'extérieur: curl https://${BACKEND_DOMAIN}/api/health"
   fi
 fi
 
