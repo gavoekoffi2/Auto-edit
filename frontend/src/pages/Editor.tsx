@@ -454,6 +454,20 @@ export default function Editor() {
           {!!completedResult?.montage && (
             <div className="card">
               <h3 className="font-semibold mb-3">Contenu du montage</h3>
+              {(() => {
+                const m = completedResult!.montage as Record<string, unknown>
+                const removed = Number(m.removed_duration_s ?? 0)
+                const src = Number(m.source_duration_s ?? 0)
+                if (src <= 0) return null
+                const pct = Math.round((removed / src) * 100)
+                return (
+                  <p className="mb-3 text-sm text-dark-200">
+                    ✂️ Découpe : <strong>{removed.toFixed(0)}s</strong> retirés
+                    (silences, hésitations, répétitions) sur {src.toFixed(0)}s
+                    {pct > 0 ? ` — vidéo ${pct}% plus courte` : ''}.
+                  </p>
+                )
+              })()}
               <div className="grid grid-cols-2 gap-2.5 text-sm">
                 {(() => {
                   const m = completedResult!.montage as Record<string, unknown>
