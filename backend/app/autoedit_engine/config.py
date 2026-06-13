@@ -386,11 +386,11 @@ ASS_TEMPLATES = {
 DEFAULT_TEMPLATE = "tiktok_yellow"
 
 # --------------------------------------------------------------------------- #
-# FINAL RENDER
+# FINAL RENDER — qualité visible (master net pour TikTok/Reels)
 # --------------------------------------------------------------------------- #
-FINAL_CRF = 26
-FINAL_PRESET = "slow"
-FINAL_AUDIO_BITRATE = "128k"
+FINAL_CRF = int(os.getenv("FINAL_CRF", "20"))      # 26 -> 20 : nettement plus net
+FINAL_PRESET = os.getenv("FINAL_PRESET", "slow")
+FINAL_AUDIO_BITRATE = "192k"                        # 128k -> 192k : voix plus propre
 
 # Fonts (Linux system DejaVu fallback + Google Fonts in ~/.fonts).
 FONT_FALLBACK = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
