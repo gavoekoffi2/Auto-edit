@@ -1,5 +1,7 @@
 import os
 import uuid
+import errno
+import shutil
 import aiofiles
 import subprocess
 import logging
@@ -9,6 +11,14 @@ from fastapi import UploadFile, HTTPException, status
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _min_free_bytes() -> int:
+    """Marge disque exigée avant d'accepter un upload (source: settings).
+
+    Le rendu écrit ensuite des Go d'intermédiaires, donc on garde du mou.
+    """
+    return int(float(getattr(settings, "UPLOAD_MIN_FREE_GB", 3.0)) * 1024**3)
 
 
 # Magic bytes des conteneurs video supportes. La detection se fait en lisant
@@ -57,14 +67,72 @@ def _validate_path(relative_path: str) -> None:
         raise ValueError("Invalid file path")
 
 
+def free_bytes(path: str) -> int:
+    """Octets libres sur le système de fichiers de *path* (0 si introuvable)."""
+    try:
+        target = path
+        while target and not os.path.exists(target):
+            target = os.path.dirname(target)
+        return shutil.disk_usage(target or "/").free
+    except OSError:
+        return 0
+
+
+def emergency_cleanup(upload_root: str) -> int:
+    """Purge en urgence les intermédiaires de rendu de TOUS les jobs.
+
+    Appelé quand le disque est presque plein avant d'accepter un upload. Ne
+    touche QUE les fichiers intermédiaires connus — jamais les vidéos sources
+    ni les montages finaux.
+    """
+    try:
+        from app.autoedit_engine.pipeline import cleanup_intermediates
+    except Exception:  # pragma: no cover - engine import guard
+        return 0
+    freed = 0
+    root = Path(upload_root)
+    if not root.exists():
+        return 0
+    # uploads/<user>/output/<job>/
+    for output_dir in root.glob("*/output/*"):
+        if output_dir.is_dir():
+            try:
+                freed += cleanup_intermediates(str(output_dir))
+            except Exception as exc:  # noqa: BLE001 - best effort
+                logger.warning("emergency_cleanup skipped %s: %s", output_dir, exc)
+    if freed:
+        logger.info("emergency_cleanup freed %.0f MB", freed / 1e6)
+    return freed
+
+
 async def save_upload(
-    file: UploadFile, user_id: str, max_size_mb: int = None
+    file: UploadFile, user_id: str, max_size_mb: int = None,
+    expected_size: int | None = None,
 ) -> tuple[str, int]:
-    """Save uploaded file with size validation. Returns (relative_path, size_bytes)."""
+    """Save uploaded file with size + disk validation. Returns (relative_path, size_bytes)."""
     max_size = (max_size_mb or settings.MAX_UPLOAD_SIZE_MB) * 1024 * 1024
 
+    upload_root = os.path.abspath(settings.UPLOAD_DIR)
     upload_dir = Path(settings.UPLOAD_DIR) / user_id
     upload_dir.mkdir(parents=True, exist_ok=True)
+
+    # --- préflight disque ----------------------------------------------------
+    # Sans place, l'écriture échouait en plein milieu avec un OSError générique
+    # (l'upload "s'arrête en chemin"). On refuse TÔT avec un message clair, après
+    # avoir tenté de récupérer de l'espace en purgeant les intermédiaires.
+    needed = (expected_size or 0) + _min_free_bytes()
+    if free_bytes(str(upload_dir)) < needed:
+        freed = emergency_cleanup(upload_root)
+        logger.warning("Low disk before upload (user=%s): freed %.0f MB", user_id, freed / 1e6)
+    if free_bytes(str(upload_dir)) < needed:
+        free_gb = free_bytes(str(upload_dir)) / 1e9
+        raise HTTPException(
+            status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
+            detail=(
+                f"Espace disque serveur insuffisant ({free_gb:.1f} Go libres). "
+                "Réessaie dans quelques minutes, le temps que le serveur se libère."
+            ),
+        )
 
     ext = Path(file.filename).suffix.lower() if file.filename else ".mp4"
     filename = f"{uuid.uuid4()}{ext}"
@@ -72,35 +140,66 @@ async def save_upload(
 
     size = 0
     first_chunk: bytes = b""
-    async with aiofiles.open(file_path, "wb") as f:
-        chunk_size = 8 * 1024 * 1024  # 8MB chunks: fewer syscalls for large mobile uploads
-        while chunk := await file.read(chunk_size):
-            if not first_chunk:
-                first_chunk = chunk[:32]
-            size += len(chunk)
-            if size > max_size:
-                # Clean up partial file
-                await f.close()
-                os.unlink(file_path)
-                raise HTTPException(
-                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                    detail=f"File too large. Maximum size: {settings.MAX_UPLOAD_SIZE_MB}MB",
-                )
-            await f.write(chunk)
+    try:
+        async with aiofiles.open(file_path, "wb") as f:
+            chunk_size = 8 * 1024 * 1024  # 8MB chunks: fewer syscalls for large mobile uploads
+            while chunk := await file.read(chunk_size):
+                if not first_chunk:
+                    first_chunk = chunk[:32]
+                size += len(chunk)
+                if size > max_size:
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail=f"Fichier trop lourd. Maximum: {settings.MAX_UPLOAD_SIZE_MB}MB",
+                    )
+                await f.write(chunk)
+    except HTTPException:
+        _safe_unlink(file_path)
+        raise
+    except OSError as exc:
+        _safe_unlink(file_path)
+        if exc.errno == errno.ENOSPC:
+            raise HTTPException(
+                status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
+                detail=(
+                    "Le serveur n'a plus d'espace disque pendant l'envoi. "
+                    "Réessaie dans quelques minutes."
+                ),
+            ) from exc
+        logger.error("Disk write failed during upload (user=%s): %s", user_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Échec d'écriture du fichier sur le serveur. Réessaie.",
+        ) from exc
+    except Exception:
+        _safe_unlink(file_path)
+        raise
+
+    # Fichier vide (connexion coupée tout de suite) -> message clair.
+    if size == 0:
+        _safe_unlink(file_path)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Fichier vide reçu (connexion interrompue ?). Réessaie.",
+        )
 
     # Validation magic bytes: l'extension ne suffit pas en sécurité.
     if not _looks_like_video(first_chunk):
-        try:
-            os.unlink(file_path)
-        except OSError:
-            pass
+        _safe_unlink(file_path)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File does not look like a valid video (magic bytes check failed).",
+            detail="Le fichier ne ressemble pas à une vidéo valide.",
         )
 
     relative_path = f"{user_id}/{filename}"
     return relative_path, size
+
+
+def _safe_unlink(path) -> None:
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
 
 
 def get_absolute_path(relative_path: str) -> str:

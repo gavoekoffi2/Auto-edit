@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     # Storage
     UPLOAD_DIR: str = "./uploads"
     MAX_UPLOAD_SIZE_MB: int = 5120
+    # Marge disque exigée avant d'accepter un upload (le rendu écrit des Go
+    # d'intermédiaires ensuite). Le proxy Caddy doit accepter un body >= ceci.
+    UPLOAD_MIN_FREE_GB: float = 3.0
     MAX_VIDEO_DURATION_FREE: int = 900  # 15 min in seconds
     MAX_VIDEO_DURATION_PRO: int = 3600  # 60 min
     MAX_VIDEOS_PER_MONTH_FREE: int = 2

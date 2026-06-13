@@ -77,6 +77,8 @@ services:
     environment:
       BACKEND_DOMAIN: ${BACKEND_DOMAIN:-localhost}
       TLS_EMAIL: ${TLS_EMAIL:-}
+      # Doit rester >= MAX_UPLOAD_SIZE_MB du backend (défaut 5120 Mo).
+      MAX_UPLOAD_BODY: ${MAX_UPLOAD_BODY:-5200MB}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

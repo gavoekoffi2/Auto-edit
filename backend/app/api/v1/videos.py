@@ -60,6 +60,7 @@ async def get_stream_user(
 
 @router.post("/upload", response_model=VideoResponse, status_code=status.HTTP_201_CREATED)
 async def upload_video(
+    request: Request,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -96,8 +97,19 @@ async def upload_video(
                 detail=f"Free plan limited to {settings.MAX_VIDEOS_PER_MONTH_FREE} videos/month. Upgrade to Pro.",
             )
 
-    # Save file with size validation
-    relative_path, size_bytes = await save_upload(file, str(current_user.id))
+    # Taille attendue (Content-Length) pour le préflight disque. Le body
+    # multipart ajoute un petit overhead, donc c'est une borne haute utile.
+    expected_size = None
+    try:
+        cl = request.headers.get("content-length")
+        expected_size = int(cl) if cl else None
+    except (TypeError, ValueError):
+        expected_size = None
+
+    # Save file with size + disk validation
+    relative_path, size_bytes = await save_upload(
+        file, str(current_user.id), expected_size=expected_size
+    )
 
     # Get video duration
     abs_path = get_absolute_path(relative_path)
