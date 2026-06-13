@@ -98,7 +98,7 @@ jobs:
           command_timeout: 40m
           script: |
             set -euo pipefail
-            APP_DIR="${{ vars.VPS_APP_DIR || '/opt/Auto-edit' }}"
+            APP_DIR="${{ vars.VPS_APP_DIR || '/root/projects/Auto-edit' }}"
             echo "[ci-deploy] Updating $APP_DIR to origin/main"
             cd "$APP_DIR"
             git fetch origin main

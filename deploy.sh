@@ -3,16 +3,30 @@ set -euo pipefail
 
 # AutoEdit production deploy script.
 # Usage on the VPS:
-#   cd /opt/Auto-edit
-#   BACKEND_DOMAIN=api.example.com TLS_EMAIL=admin@example.com FRONTEND_ORIGIN=https://your-site.netlify.app ./deploy.sh
+#   cd /root/projects/Auto-edit
+#   BACKEND_DOMAIN=autoedit.srv1305401.hstgr.cloud FRONTEND_ORIGIN=https://your-netlify-site.netlify.app ./deploy.sh
 #
-# Requirements: Docker + Docker Compose plugin, DNS A record pointing BACKEND_DOMAIN to this VPS,
-# ports 80/443 open. Caddy obtains/renews Let's Encrypt certificates automatically.
+# Requirements: Docker + Docker Compose plugin. On this VPS, the global Traefik
+# reverse proxy owns ports 80/443, so deploy.sh automatically layers
+# docker-compose.traefik.yml when it exists and does NOT start the legacy Caddy
+# service unless explicitly profiled.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
-COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.prod.yml)
+# Stable project name preserves existing production volumes/containers
+# (autoeditprod_postgres_data, autoeditprod_uploads_data). Without this,
+# Docker derives "auto-edit" from the directory and creates a fresh duplicate
+# stack that can race the old Traefik route and hide the deployed code.
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-autoeditprod}"
+COMPOSE=(docker compose -p "$COMPOSE_PROJECT_NAME" -f docker-compose.yml -f docker-compose.prod.yml)
+# Production on this VPS is behind the already-running global Traefik proxy.
+# Without this override, docker-compose.prod.yml still leaves nginx/caddy active
+# while frontend is profiled out, causing: service "nginx" depends on undefined
+# service "frontend": invalid compose project.
+if [ -f docker-compose.traefik.yml ]; then
+  COMPOSE+=( -f docker-compose.traefik.yml )
+fi
 ENV_FILE="$ROOT_DIR/.env"
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -103,6 +117,14 @@ if [ -z "${BACKEND_DOMAIN:-}" ] || [ "$BACKEND_DOMAIN" = "localhost" ]; then
   echo "[deploy] WARNING: BACKEND_DOMAIN is not set. HTTPS certificates need a real DNS name."
   echo "[deploy] Example: BACKEND_DOMAIN=srv1305401.hstgr.cloud TLS_EMAIL=you@example.com ./deploy.sh"
 fi
+
+# Build sequentially. Docker Compose/BuildKit on this VPS can fail parallel builds
+# with "image ... already exists" when backend and worker share the same Dockerfile/context.
+export COMPOSE_PARALLEL_LIMIT="${COMPOSE_PARALLEL_LIMIT:-1}"
+
+# Old failed deploys can leave backend/worker containers detached from the current
+# Compose state; remove only stateless app containers before recreating them.
+docker rm -f "${COMPOSE_PROJECT_NAME}-backend-1" "${COMPOSE_PROJECT_NAME}-worker-1" >/dev/null 2>&1 || true
 
 # Build and start all services.
 echo "[deploy] Building and starting AutoEdit production stack..."
