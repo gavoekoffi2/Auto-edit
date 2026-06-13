@@ -34,15 +34,17 @@ from . import content
 from .fonts import load_font
 from .render_utils import ProResPipe, alpha_fade, clamp, ease_out_back, ease_out_cube
 
-# Palette
+# Palette — panneau volontairement DISCRET (ne masque pas le visage).
 WHITE = (255, 255, 255, 255)
 GOLD = (212, 175, 55, 255)
-PANEL = (12, 14, 22, 205)
-PANEL_BORDER = (212, 175, 55, 230)
+PANEL = (12, 14, 22, config.OVERLAY_PANEL_ALPHA)
+PANEL_BORDER = (212, 175, 55, 210)
 ACCENT = (0, 220, 255, 255)
 
-# Horizontal panel bounds (centred, inside the safe zone).
-PANEL_X0, PANEL_X1 = 80, 1000
+# Bandeau bas, plus compact et centré (laisse le visage libre au-dessus).
+PANEL_X0, PANEL_X1 = 140, 940
+# Ancre verticale commune: bas du cadre, sous la zone visage, au-dessus des subs.
+PANEL_CY = (config.ZONE_OVERLAY_TOP + config.ZONE_OVERLAY_BOTTOM) // 2  # ~1210
 
 
 # --------------------------------------------------------------------------- #
@@ -107,25 +109,25 @@ def _count_time(dur: float) -> float:
 
 def _draw_lower_third(img, draw, t, dur, spec):
     p = ease_out_back(clamp(t / _intro(dur)))
-    slide = int((1 - p) * 420)                       # slide in from the left
-    y0 = 1100
-    box = (PANEL_X0 - slide, y0, PANEL_X1 - slide, y0 + 190)
+    rise = int((1 - p) * 60)                          # entrée VERTICALE douce (pas de travers)
+    y0 = config.ZONE_OVERLAY_TOP + 10 + rise          # bandeau bas, sous le visage
+    box = (PANEL_X0, y0, PANEL_X1, y0 + 170)
     _panel(draw, box, radius=28)
     # gold accent bar
-    draw.rounded_rectangle((box[0] + 22, y0 + 28, box[0] + 34, y0 + 162), radius=6, fill=GOLD)
+    draw.rounded_rectangle((box[0] + 22, y0 + 26, box[0] + 34, y0 + 144), radius=6, fill=GOLD)
     max_w = (box[2] - box[0]) - 86
     title = spec.get("title", "")
-    f_title = _fit_font("Montserrat", 60, title, max_w)
-    f_sub = _fit_font("Montserrat", 34, spec.get("subtitle", ""), max_w)
-    _text(draw, (box[0] + 56, y0 + 46), title, f_title, fill=WHITE, anchor="la")
+    f_title = _fit_font("Montserrat", 54, title, max_w)
+    f_sub = _fit_font("Montserrat", 32, spec.get("subtitle", ""), max_w)
+    _text(draw, (box[0] + 56, y0 + 40), title, f_title, fill=WHITE, anchor="la")
     if spec.get("subtitle"):
-        _text(draw, (box[0] + 58, y0 + 120), spec["subtitle"], f_sub, fill=GOLD, anchor="la", stroke=3)
+        _text(draw, (box[0] + 58, y0 + 108), spec["subtitle"], f_sub, fill=GOLD, anchor="la", stroke=3)
 
 
 def _draw_stat(img, draw, t, dur, spec):
     p = ease_out_cube(clamp(t / _intro(dur)))
-    cy = 1075
-    box = (PANEL_X0, cy - 170, PANEL_X1, cy + 170)
+    cy = PANEL_CY
+    box = (PANEL_X0, cy - 150, PANEL_X1, cy + 150)
     _panel(draw, box)
     value = spec.get("value")
     if value is not None:
@@ -145,8 +147,8 @@ def _draw_stat(img, draw, t, dur, spec):
 
 
 def _draw_progress(img, draw, t, dur, spec):
-    cy = 1075
-    box = (PANEL_X0, cy - 130, PANEL_X1, cy + 130)
+    cy = PANEL_CY
+    box = (PANEL_X0, cy - 120, PANEL_X1, cy + 120)
     _panel(draw, box)
     target = float(spec.get("percent", 0))
     shown = target * ease_out_cube(clamp(t / _count_time(dur)))

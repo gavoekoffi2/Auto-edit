@@ -13,7 +13,9 @@
 # =============================================================================
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-/opt/Auto-edit}"
+# Auto-détection du dossier projet depuis l'emplacement du script.
+_SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+APP_DIR="${APP_DIR:-$_SELF}"
 INTERVAL_MIN="${INTERVAL_MIN:-2}"
 SCRIPT="$APP_DIR/scripts/vps-autodeploy.sh"
 

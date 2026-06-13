@@ -142,3 +142,39 @@ def test_remove_retakes_flag_can_disable_smart_cut(monkeypatch):
     vu = _vu("aujourd'hui je vais | aujourd'hui je vais vous montrer la méthode complète")
     text = _kept_text(vu, build_ranges(vu))
     assert text.count("aujourd'hui") == 2
+
+
+# --------------------------------------------------------------------------- #
+# repeated sentences (non-adjacent)
+# --------------------------------------------------------------------------- #
+from app.autoedit_engine.build_edl import drop_repeated_sentences
+
+
+def test_repeated_sentence_non_adjacent_keeps_last():
+    runs = [
+        _words("la stratégie marketing change tout pour ton business"),
+        _words("euh attends", start=20.0),
+        _words("la stratégie marketing change tout pour ton business", start=30.0),
+        _words("et voilà la conclusion finale de la vidéo", start=50.0),
+    ]
+    kept = drop_repeated_sentences(runs)
+    texts = [" ".join(w["word"] for w in r) for r in kept]
+    # the first occurrence is dropped, the later identical one is kept
+    assert sum("stratégie marketing change" in t for t in texts) == 1
+    assert any("conclusion finale" in t for t in texts)
+    # the kept repeat is the LATER one (start 30)
+    rep = [r for r in kept if "stratégie" in " ".join(w["word"] for w in r)][0]
+    assert rep[0]["start"] >= 30.0
+
+
+def test_distinct_sentences_not_dropped_as_repeats():
+    runs = [
+        _words("voici la première grande idée du jour"),
+        _words("et maintenant un point complètement différent ici", start=20.0),
+    ]
+    assert len(drop_repeated_sentences(runs)) == 2
+
+
+def test_short_runs_ignored_by_repeat_filter():
+    runs = [_words("ok"), _words("ok", start=10.0), _words("ok", start=20.0)]
+    assert len(drop_repeated_sentences(runs)) == 3

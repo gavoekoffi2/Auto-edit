@@ -135,6 +135,31 @@ def drop_false_starts(runs: List[List[dict]]) -> List[List[dict]]:
     return kept
 
 
+def drop_repeated_sentences(runs: List[List[dict]]) -> List[List[dict]]:
+    """Remove a run when a LATER run (within a window) says almost the same thing.
+
+    Catches repeated/re-recorded sentences that are NOT back-to-back (the
+    speaker flubbed a take, said other things, then re-did it). The last
+    occurrence is the clean one and is kept. Short runs (greetings, "ok") are
+    ignored to avoid nuking legitimately recurring short phrases.
+    """
+    if not config.REMOVE_REPEATED_SENTENCES:
+        return runs
+    n = len(runs)
+    drop = [False] * n
+    toks = [_run_tokens(r) for r in runs]
+    for i in range(n):
+        if drop[i] or len(toks[i]) < config.REPEAT_MIN_WORDS:
+            continue
+        for j in range(i + 1, min(n, i + 1 + config.REPEAT_WINDOW)):
+            if drop[j] or len(toks[j]) < config.REPEAT_MIN_WORDS:
+                continue
+            if _similar(toks[i], toks[j]) >= config.REPEAT_SIMILARITY:
+                drop[i] = True               # keep the LATER take (j)
+                break
+    return [r for k, r in enumerate(runs) if not drop[k]]
+
+
 def split_stutters(run: List[dict]) -> List[Tuple[List[dict], bool, bool]]:
     """Remove immediate word/bigram/trigram repeats inside a run.
 
@@ -197,12 +222,13 @@ def build_ranges(vu: dict) -> List[dict]:
     # 2) Drop filler-only runs.
     runs = [r for r in runs if not _is_filler_run(r)]
 
-    # 3) SMART CUT: markers -> false starts/duplicates -> stutters.
+    # 3) SMART CUT: markers -> false starts -> repeated sentences -> stutters.
     pieces: List[Tuple[List[dict], bool, bool]] = []
     if config.REMOVE_RETAKES:
         runs = [trim_trailing_marker(r) for r in runs]
         runs = [r for r in runs if r and not _is_filler_run(r)]
         runs = drop_false_starts(runs)
+        runs = drop_repeated_sentences(runs)
         for run in runs:
             pieces.extend(split_stutters(run))
     else:

@@ -15,7 +15,10 @@
 # =============================================================================
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-/opt/Auto-edit}"
+# Auto-détection du dossier projet depuis l'emplacement du script (scripts/..),
+# pour que le chemin ne soit JAMAIS faux quel que soit l'endroit du clone.
+_SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+APP_DIR="${APP_DIR:-$_SELF}"
 BRANCH="${DEPLOY_BRANCH:-main}"
 LOG="${AUTODEPLOY_LOG:-/var/log/cutforge-autodeploy.log}"
 LOCK="/tmp/cutforge-autodeploy.lock"

@@ -48,15 +48,22 @@ def _load(path: Optional[str]) -> list:
     return []
 
 
-def _place_graphics(graphics: List[dict], ranges: List[dict]) -> List[dict]:
+def _place_graphics(graphics: List[dict], ranges: List[dict],
+                    motion_spans: Optional[List[Tuple[float, float]]] = None) -> List[dict]:
+    motion_spans = motion_spans or []
     placed = []
     for g in graphics:
         start = max(0.0, s2o_clamped(float(g["source_start"]), ranges) - config.GRAPHIC_LEAD)
+        end = round(start + float(g["duration"]), 3)
+        # Une scène motion plein écran illustre déjà ce beat: pas de carton
+        # graphique caché dessous (ni son en double).
+        if any(start < me and end > ms for ms, me in motion_spans):
+            continue
         placed.append({
             "id": g["id"],
             "mov": g["mov"],
             "start": round(start, 3),
-            "end": round(start + float(g["duration"]), 3),
+            "end": end,
             "kind": "graphic",
         })
     placed.sort(key=lambda o: o["start"])
@@ -105,7 +112,9 @@ def _place_broll(brolls: List[dict], ranges: List[dict], total: float,
     raw.sort(key=lambda o: o["start"])
 
     def _hits_motion(s: float, e: float) -> bool:
-        margin = 0.3
+        # Marge de respiration: un B-roll ne colle pas une scène motion, il
+        # attend que celle-ci soit finie (et inversement).
+        margin = config.VISUAL_MIN_GAP
         return any(s < me + margin and e > ms - margin for ms, me in motion_spans)
 
     placed = []
@@ -194,9 +203,10 @@ def plan(edl_path: str, overlays_json: Optional[str], broll_json: Optional[str],
     ranges = edl["ranges"]
     total = output_duration(ranges)
 
-    graphics = _place_graphics(_load(overlays_json), ranges)
+    # Motion scenes first (they own their beats), then graphics/B-roll avoid them.
     motions = _place_motion(_load(motion_json), ranges, total)
     motion_spans = [(m["start"], m["end"]) for m in motions]
+    graphics = _place_graphics(_load(overlays_json), ranges, motion_spans)
     brolls = _place_broll(_load(broll_json), ranges, total, motion_spans)
 
     # Z-order = list order: graphics, then B-roll, then motion scenes on top.

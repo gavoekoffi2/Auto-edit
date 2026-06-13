@@ -31,8 +31,8 @@ SCRIBE_MODEL_ID = "scribe_v1"
 # --------------------------------------------------------------------------- #
 # STEP 2 — EDL (cut rules) — RÈGLE PRO #1 RYTHME
 # --------------------------------------------------------------------------- #
-GAP_CUT = 0.65          # seconds: any silence >= this between two words = a cut
-PAD = 0.25              # seconds: kept margin before/after each retained segment
+GAP_CUT = float(os.getenv("ENGINE_GAP_CUT", "0.5"))   # silence >= this between two words = a cut (tighter = punchier)
+PAD = 0.18              # seconds: kept margin before/after each retained segment
 MICRO_PAD = 0.05        # seconds: tight margin at retake/stutter cuts (word-safe)
 AUDIO_FADE = 0.03       # seconds: 30 ms afade in/out at every cut
 
@@ -40,11 +40,17 @@ AUDIO_FADE = 0.03       # seconds: 30 ms afade in/out at every cut
 # A run is dropped when the NEXT run restarts it (the speaker corrected
 # himself); the LAST take is always the one kept.
 REMOVE_RETAKES = os.getenv("ENGINE_REMOVE_RETAKES", "1") not in {"0", "false", "no"}
-RETAKE_SIMILARITY = 0.80        # SequenceMatcher ratio to call two runs "the same"
-RETAKE_MAX_WORDS = 16           # only short runs can be false starts
+RETAKE_SIMILARITY = 0.78        # SequenceMatcher ratio to call two runs "the same"
+RETAKE_MAX_WORDS = 24           # only short-ish runs can be false starts
 RETAKE_MIN_WORDS = 2            # 1-word runs are handled by the stutter pass
-STUTTER_MIN_SPAN = 0.45         # repeated word/bigram shorter than this is left alone
+STUTTER_MIN_SPAN = 0.40         # repeated word/bigram shorter than this is left alone
                                 # (cutting it would be eaten by the pads anyway)
+# Repeated SENTENCES (not necessarily adjacent): when the speaker says nearly
+# the same thing twice (a botched take re-done later), keep only the LAST one.
+REMOVE_REPEATED_SENTENCES = os.getenv("ENGINE_REMOVE_REPEATS", "1") not in {"0", "false", "no"}
+REPEAT_SIMILARITY = 0.86        # how close two runs must be to count as a repeat
+REPEAT_MIN_WORDS = 4            # ignore tiny runs (greetings, "ok", ...)
+REPEAT_WINDOW = 6               # only compare a run to the next N runs
 
 # Phrases speakers say when they flub a take — everything from the marker to
 # the end of the run is trimmed (".. la méthode est, non je reprends" -> cut).
@@ -81,17 +87,32 @@ PUNCH_SIGMA = 0.30 / 2.5  # = 0.12
 
 # --------------------------------------------------------------------------- #
 # STEP 5 — OVERLAYS (anti-collision safe zones, in px)
+#
+# RÈGLE PRODUIT: les overlays graphiques (stat / lower-third / liste) ne doivent
+# JAMAIS couvrir le visage. Ils sont LÉGERS, OCCASIONNELS et BREFS — ils vivent
+# dans le bas du cadre (sous le visage, au-dessus des sous-titres), apparaissent
+# quelques secondes puis repartent. Le plein écran "qui illustre" reste réservé
+# aux scènes motion_design.
 # --------------------------------------------------------------------------- #
-ZONE_FACE_MAX_Y = 800          # y < 800 : keep free (face)
-ZONE_OVERLAY_TOP = 800         # graphic overlays live higher, clear of captions
-ZONE_OVERLAY_BOTTOM = 1340
-ZONE_SUBS_Y = 1425             # TikTok-safe: higher than bottom UI, below overlays
-ZONE_OVERLAY_SUBS_GAP = 50     # >= 50 px between overlay bottom and subtitles
+ZONE_FACE_MAX_Y = 1000         # y < 1000 : visage — toujours libre
+ZONE_OVERLAY_TOP = 1040        # overlays cantonnés au tiers bas
+ZONE_OVERLAY_BOTTOM = 1380
+ZONE_SUBS_Y = 1500             # sous-titres encore plus bas
+ZONE_OVERLAY_SUBS_GAP = 40
 
-OVERLAY_FADE_IN = 0.13         # seconds
-OVERLAY_FADE_OUT = 0.20        # seconds
-OVERLAY_MIN_DUR = 5.0          # an overlay lasts as long as the topic (5-17 s)
-OVERLAY_MAX_DUR = 17.0
+OVERLAY_FADE_IN = 0.22         # entrée douce
+OVERLAY_FADE_OUT = 0.30        # sortie douce
+OVERLAY_MIN_DUR = 2.2          # bref — n'occupe pas l'écran en permanence
+OVERLAY_MAX_DUR = 3.2
+OVERLAY_PANEL_ALPHA = 165      # panneau plus discret (sur 255)
+
+# Regroupement SÉMANTIQUE du transcript en "sujets" (un beat = une idée). Sépare
+# du temps d'AFFICHAGE des overlays (court) : un sujet fait 5-14 s, ce qui donne
+# aux scènes motion design un propos cohérent à illustrer.
+TOPIC_MIN_DUR = 5.0
+TOPIC_MAX_DUR = 14.0
+OVERLAY_MAX_PER_VIDEO = int(os.getenv("OVERLAY_MAX_PER_VIDEO", "4"))  # occasionnels
+OVERLAY_MIN_GAP = 9.0          # >= 9 s entre deux overlays graphiques
 
 # ProRes 4444 RGBA output (alpha channel preserved)
 PRORES_PIX_FMT = "yuva444p10le"
@@ -103,11 +124,14 @@ PRORES_PROFILE = "4444"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_IMAGE_MODEL = "google/gemini-2.5-flash-image"
 
-# Cinematic prompt prefix injected before each B-roll idea.
+# Cinematic prompt prefix injected before each B-roll idea. The image MUST
+# literally depict what the speaker says at that moment (no off-topic stock).
 BROLL_STYLE_PREFIX = (
-    "Cinematic editorial photograph, dramatic rim lighting, shallow depth of "
-    "field, rich teal-and-orange color grade, high detail, 35mm film look, "
-    "vertical composition. Subject: "
+    "Photoréalisme éditorial cinématographique, lumière naturelle douce, faible "
+    "profondeur de champ, cadrage vertical 9:16 plein cadre. L'image doit "
+    "montrer EXACTEMENT et LITTÉRALEMENT la scène décrite (objets, action et "
+    "personnes réellement mentionnés), jamais une image générique hors-sujet. "
+    "Scène à représenter : "
 )
 
 # B-roll cadence — COST-AWARE: motion-design scenes (cheap or free) carry a
@@ -125,25 +149,21 @@ MAX_BROLL_IMAGES = int(os.getenv("MAX_BROLL_IMAGES", "8"))   # hard API budget c
 PROMPT_REFINER_MODEL = os.getenv("PROMPT_REFINER_MODEL", "google/gemini-2.5-flash-lite")
 PROMPT_REFINER_ENABLED = os.getenv("PROMPT_REFINER_ENABLED", "1") not in {"0", "false", "no"}
 
-# Entrance animations cycled in this exact order (Étape 6).
+# Entrance animations — VOLONTAIREMENT SOBRES & COHÉRENTES (pas de glissements
+# gauche/droite désordonnés). Une entrée se fait par un léger zoom + fondu
+# (punch doux) ou une montée verticale ("ça glisse"), jamais en travers.
 BROLL_ENTRANCES = [
-    "punch", "slide_r", "slide_l", "rise",
-    "glitch", "flash", "transition", "swoosh_up",
+    "rise", "punch", "rise", "punch",
 ]
 
-# Exit animations — every B-roll leaves the frame with motion, never a flat
-# fade. Paired with the entrance for a coherent in/out feel.
+# Exit animations — sortie douce et cohérente (descente verticale ou léger
+# zoom), appariée à l'entrée. Plus de départs latéraux qui partent "n'importe
+# comment".
 BROLL_EXITS = {
-    "punch": "punch_out",       # zooms slightly past the camera
-    "slide_r": "slide_out_l",   # continues its travel to the left
-    "slide_l": "slide_out_r",
-    "rise": "drop",             # falls back down
-    "glitch": "glitch_out",
-    "flash": "punch_out",
-    "transition": "slide_out_l",
-    "swoosh_up": "swoosh_out_up",
+    "punch": "scale_out",       # léger zoom + fondu
+    "rise": "drop",             # redescend doucement (vertical)
 }
-BROLL_EXIT_DUR = 0.45           # seconds of exit motion before the cut
+BROLL_EXIT_DUR = 0.5            # seconds of exit motion before the cut
 BROLL_DURATION = 3.0           # standard clip length
 BROLL_DURATION_WIDE = 3.2      # wide images get a touch longer
 BROLL_KB = 0.10                # continuous Ken Burns amount over the whole clip
@@ -175,18 +195,24 @@ MOTION_EVERY_LONG = 22.0        # ~1 scene / 22 s on longer videos
 MOTION_MAX_SCENES = 8
 MOTION_MIN_SPACING = 10.0       # seconds between two scene starts
 MOTION_MIN_START = 2.0          # never take over the very first seconds
-MOTION_SCENE_DUR = 4.6          # idea / number scenes
-MOTION_SCENE_DUR_STEPS = 5.4    # step-by-step scenes need a touch longer
+# Une scène dure le TEMPS DU PROPOS qu'elle illustre (bornée), pas une durée
+# fixe: elle glisse quand la personne commence à parler du point, et repart
+# quand elle a fini. Ces bornes évitent les extrêmes.
+MOTION_SCENE_DUR = 4.6          # défaut idée / chiffre (si pas de span fourni)
+MOTION_SCENE_DUR_STEPS = 5.4    # défaut étapes
+MOTION_SCENE_MIN_DUR = 3.2      # une scène ne reste jamais moins de ça
+MOTION_SCENE_MAX_DUR = 6.0      # ni plus longtemps (le visage revient vite)
 MOTION_LEAD = 0.15              # scene starts slightly before the spoken beat
 
 # API budget: only the top-priority scenes get an AI illustration; the others
 # use the procedural line-art drawings (free). 0 disables AI illustrations.
 MOTION_AI_ILLUSTRATIONS_MAX = int(os.getenv("MOTION_AI_ILLUSTRATIONS_MAX", "3"))
 
-# Scene entrance/exit transition variants, cycled per scene so two consecutive
-# takeovers never use the same move.
-MOTION_ENTRANCES = ["sweep", "iris", "slide_up"]
-MOTION_EXITS = ["scale_fade", "slide_down", "iris_close"]
+# Transition UNIQUE et COHÉRENTE pour toutes les scènes (demande produit: pas
+# de mouvements désordonnés). La scène GLISSE vers le haut en entrant, redescend
+# en sortant, avec un fondu — propre et professionnel, jamais en travers.
+MOTION_ENTRANCES = ["slide_up"]
+MOTION_EXITS = ["slide_down"]
 
 # Palette (deep navy stage + cyan/gold ink, consistent with the brand).
 MOTION_BG_TOP = (11, 14, 26)
@@ -243,7 +269,11 @@ STOPWORDS = {
 # STEP 8 — PLAN TIMELINE & SFX cues
 # --------------------------------------------------------------------------- #
 GRAPHIC_LEAD = 0.2             # graphics placed -0.2 s before the topic starts
-BROLL_MIN_GAP = 0.4            # >= 0.4 s gap between two B-roll clips
+# Respiration entre deux visuels: on laisse le cadre "parlant" revenir un
+# moment avant qu'un autre visuel passe (demande produit: "quand l'autre passe,
+# ça attend un peu avant que le suivant vienne"). Vaut pour B-roll ET motion.
+BROLL_MIN_GAP = 1.2            # >= 1.2 s de respiration entre deux visuels
+VISUAL_MIN_GAP = 1.0          # marge mini entre une scène motion et un B-roll
 GAPFILL_THRESHOLD = 4.0        # gaps > 4 s without a visual get a filler SFX
 
 # Graphic SFX (varied, alternated).

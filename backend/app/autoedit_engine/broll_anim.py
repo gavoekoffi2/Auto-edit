@@ -191,6 +191,8 @@ def _compose_frame(main: Image.Image, plate: Image.Image, label: str,
             off_y -= int(x2 * 0.8 * H)
         elif exit_name == "glitch_out":
             shift = max(shift, int(x2 * 30))
+        elif exit_name == "scale_out":           # léger zoom + fondu, sobre
+            scale *= 1.0 + 0.22 * x2
         else:                                     # punch_out
             scale *= 1.0 + 0.45 * x2
             flash = max(flash, x2 * 0.35)
