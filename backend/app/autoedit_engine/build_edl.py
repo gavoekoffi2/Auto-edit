@@ -236,12 +236,15 @@ def build_ranges(vu: dict) -> List[dict]:
 
     # 4) Pad each piece (PAD at silence boundaries, MICRO_PAD at smart cuts)
     #    and clamp to media bounds. Boundaries always sit on word edges.
+    #    The kept silence between two pieces is hard-capped at MAX_SILENCE_KEPT
+    #    so a generous pad can NEVER re-introduce dead air at a cut.
+    side_cap = config.MAX_SILENCE_KEPT / 2.0
     ranges: List[dict] = []
     for piece, micro_start, micro_end in pieces:
         if not piece:
             continue
-        lead = config.MICRO_PAD if micro_start else config.PAD
-        tail = config.MICRO_PAD if micro_end else config.PAD
+        lead = min(config.MICRO_PAD if micro_start else config.PAD, side_cap)
+        tail = min(config.MICRO_PAD if micro_end else config.PAD, side_cap)
         start = max(0.0, float(piece[0]["start"]) - lead)
         end = float(piece[-1]["end"]) + tail
         if duration:

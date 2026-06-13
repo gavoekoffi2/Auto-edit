@@ -490,12 +490,20 @@ def derive_motion_scenes(vu: dict, demographic: str = "african") -> List[dict]:
 
     suffix = _demographic_suffix(demographic)
     scenes: List[dict] = []
+    used_headlines: set = set()      # VARIÉTÉ: jamais deux scènes avec le même mot-clé
+    used_icons: List[str] = []       # ni la même icône deux fois de suite
     for idx, tp in enumerate(picked):
         text = tp["text"]
         toks = _content_tokens(text)
         ranked_toks = sorted(set(toks), key=lambda t: counts.get(t, 0), reverse=True)
         focus = ranked_toks[:4]
-        headline = (ranked_toks[0] if ranked_toks else (toks[0] if toks else "POINT CLÉ")).upper()
+        # Choisir un titre DIFFÉRENT des scènes précédentes (évite
+        # "confiance / confiance / confiance"). On prend le 1er mot-clé non
+        # encore utilisé; sinon on retombe sur le meilleur disponible.
+        headline = next((t.upper() for t in ranked_toks if t.upper() not in used_headlines), "")
+        if not headline:
+            headline = (ranked_toks[0] if ranked_toks else (toks[0] if toks else "POINT CLÉ")).upper()
+        used_headlines.add(headline)
         excerpt = _safe_excerpt(text, 170)
         pct = _PERCENT_RE.search(text)
         nums = _NUM_RE.findall(text)
@@ -515,6 +523,17 @@ def derive_motion_scenes(vu: dict, demographic: str = "african") -> List[dict]:
             parsed = _parse_number(nums[0])
             if parsed is not None and 0 < parsed < 10_000_000:
                 kind, value, raw = "number", parsed, nums[0].strip()
+
+        # Icône VARIÉE: si le texte mappe sur la même icône que la scène
+        # précédente, on tente une icône liée à un autre mot-clé du focus.
+        icon = icon_for_text(text)
+        if used_icons and icon == used_icons[-1]:
+            for alt_tok in focus[1:]:
+                alt = icon_for_text(alt_tok)
+                if alt != icon:
+                    icon = alt
+                    break
+        used_icons.append(icon)
 
         scene_desc = _scene_for_broll_text(text, focus)
         prompt = (
@@ -542,7 +561,7 @@ def derive_motion_scenes(vu: dict, demographic: str = "african") -> List[dict]:
             "raw": raw,
             "concepts": focus,
             "excerpt": excerpt,
-            "icon": icon_for_text(text),
+            "icon": icon,
             "prompt": prompt,
         })
     return scenes

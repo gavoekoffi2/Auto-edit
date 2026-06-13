@@ -31,9 +31,11 @@ SCRIBE_MODEL_ID = "scribe_v1"
 # --------------------------------------------------------------------------- #
 # STEP 2 — EDL (cut rules) — RÈGLE PRO #1 RYTHME
 # --------------------------------------------------------------------------- #
-GAP_CUT = float(os.getenv("ENGINE_GAP_CUT", "0.5"))   # silence >= this between two words = a cut (tighter = punchier)
-PAD = 0.18              # seconds: kept margin before/after each retained segment
-MICRO_PAD = 0.05        # seconds: tight margin at retake/stutter cuts (word-safe)
+GAP_CUT = float(os.getenv("ENGINE_GAP_CUT", "0.4"))   # silence >= this between two words = a cut (tighter = punchier)
+PAD = 0.10              # seconds: SMALL margin around a run — un pad large ré-ajoutait
+                        # du silence à chaque coupe (0.18 -> 0.36 s gardés par coupe !)
+MICRO_PAD = 0.04        # seconds: tight margin at retake/stutter cuts (word-safe)
+MAX_SILENCE_KEPT = 0.18 # jamais garder plus que ça de silence entre deux passages
 AUDIO_FADE = 0.03       # seconds: 30 ms afade in/out at every cut
 
 # Smart cut — remove retakes / false starts / repeated sentences.
@@ -46,11 +48,12 @@ RETAKE_MIN_WORDS = 2            # 1-word runs are handled by the stutter pass
 STUTTER_MIN_SPAN = 0.40         # repeated word/bigram shorter than this is left alone
                                 # (cutting it would be eaten by the pads anyway)
 # Repeated SENTENCES (not necessarily adjacent): when the speaker says nearly
-# the same thing twice (a botched take re-done later), keep only the LAST one.
+# the same thing again (a botched take re-done later), keep only the LAST one.
+# Plus agressif: attrape les quasi-doublons et reformulations proches.
 REMOVE_REPEATED_SENTENCES = os.getenv("ENGINE_REMOVE_REPEATS", "1") not in {"0", "false", "no"}
-REPEAT_SIMILARITY = 0.86        # how close two runs must be to count as a repeat
-REPEAT_MIN_WORDS = 4            # ignore tiny runs (greetings, "ok", ...)
-REPEAT_WINDOW = 6               # only compare a run to the next N runs
+REPEAT_SIMILARITY = 0.78        # how close two runs must be to count as a repeat
+REPEAT_MIN_WORDS = 3            # ignore tiny runs (greetings, "ok", ...)
+REPEAT_WINDOW = 14              # compare a run to the next N runs (large = catch distant repeats)
 
 # Phrases speakers say when they flub a take — everything from the marker to
 # the end of the run is trimmed (".. la méthode est, non je reprends" -> cut).
