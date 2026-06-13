@@ -64,7 +64,7 @@ RUN mkdir -p /app/uploads /home/app/.cache \
 
 # Pre-cache du modele Whisper "base" pour eviter le download au 1er job.
 # Geree par une variable d'env pour permettre de skip en local si besoin.
-ARG PREDOWNLOAD_WHISPER=base
+ARG PREDOWNLOAD_WHISPER=small
 ENV XDG_CACHE_HOME=/home/app/.cache
 RUN if [ -n "$PREDOWNLOAD_WHISPER" ] && [ "$PREDOWNLOAD_WHISPER" != "skip" ]; then \
         python -c "import whisper; whisper.load_model('$PREDOWNLOAD_WHISPER')" \

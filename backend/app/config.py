@@ -72,8 +72,9 @@ class Settings(BaseSettings):
     FEDAPAY_PUBLIC_KEY: Optional[str] = None
     FEDAPAY_ENV: str = "sandbox"
 
-    # Whisper
-    WHISPER_MODEL: str = "base"
+    # Whisper — "small" est nettement plus précis que "base" en français
+    # (réduit les erreurs type tech->tête). Surchargeable via WHISPER_MODEL.
+    WHISPER_MODEL: str = "small"
 
     # Rate limiting
     LOGIN_RATE_LIMIT: int = 5  # max attempts per window
