@@ -120,8 +120,11 @@ Après modification : **Trigger deploy / Redeploy site**. Ajoute aussi l'URL Net
 | **Frontend** (Netlify) | `.github/workflows/netlify-frontend.yml` | push sur `main` | `NETLIFY_AUTH_TOKEN`, `NETLIFY_SITE_ID` |
 | **Backend** (VPS) | `.github/workflows/deploy-backend.yml` | push sur `main` touchant `backend/`, `renderers/`, `templates/`, `docker-compose*.yml`, `deploy.sh`, `Caddyfile`, `nginx/` | `VPS_SSH_HOST`, `VPS_SSH_USER`, `VPS_SSH_KEY` (+ option `VPS_SSH_PORT`) |
 
-> Tant que les secrets ne sont pas renseignés, le job correspondant **se saute
-> proprement** (warning, pas d'erreur rouge). Aucun risque pour le live.
+> ⚠️ **Depuis la v4.2, le job de déploiement backend ÉCHOUE (rouge) si les
+> secrets manquent** — l'ancien comportement (saut silencieux, job vert) a
+> masqué pendant des jours le fait que le VPS ne recevait AUCUN code.
+> Renseigne les 3 secrets ci-dessous puis relance le workflow
+> (`Actions > Deploy backend to VPS > Run workflow`).
 
 ### Mettre en place les secrets (une seule fois)
 

@@ -68,20 +68,20 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
+      # ÉCHEC EXPLICITE si les secrets manquent. L'ancien comportement
+      # (skip + warning, job vert) a caché pendant des jours que RIEN
+      # n'était déployé sur le VPS — interface neuve, moteur ancien.
       - name: Check deploy secrets are configured
-        id: cfg
         env:
           HOST: ${{ secrets.VPS_SSH_HOST }}
         run: |
           if [ -z "$HOST" ]; then
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning title=Backend deploy skipped::Set VPS_SSH_HOST / VPS_SSH_USER / VPS_SSH_KEY secrets to enable backend auto-deploy (see DEPLOYMENT.md)."
-          else
-            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "::error title=Backend deploy IMPOSSIBLE::Les secrets VPS_SSH_HOST / VPS_SSH_USER / VPS_SSH_KEY ne sont pas configurés (Settings > Secrets and variables > Actions). Le VPS n'a PAS reçu ce code. Voir DEPLOYMENT.md §Auto-déploiement."
+            exit 1
           fi
+          echo "Secrets OK — déploiement vers le VPS."
 
       - name: Deploy over SSH
-        if: steps.cfg.outputs.configured == 'true'
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_SSH_HOST }}
