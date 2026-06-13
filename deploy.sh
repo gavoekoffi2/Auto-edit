@@ -14,7 +14,12 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
-COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.prod.yml)
+# Stable project name preserves existing production volumes/containers
+# (autoeditprod_postgres_data, autoeditprod_uploads_data). Without this,
+# Docker derives "auto-edit" from the directory and creates a fresh duplicate
+# stack that can race the old Traefik route and hide the deployed code.
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-autoeditprod}"
+COMPOSE=(docker compose -p "$COMPOSE_PROJECT_NAME" -f docker-compose.yml -f docker-compose.prod.yml)
 # Production on this VPS is behind the already-running global Traefik proxy.
 # Without this override, docker-compose.prod.yml still leaves nginx/caddy active
 # while frontend is profiled out, causing: service "nginx" depends on undefined
