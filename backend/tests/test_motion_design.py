@@ -78,10 +78,37 @@ def test_derive_motion_scenes_detects_steps_and_numbers(rich_vu):
     by_kind = {s["kind"]: s for s in scenes}
     if "steps" in by_kind:
         assert len(by_kind["steps"]["steps"]) >= 2
-        assert by_kind["steps"]["duration"] == engine_config.MOTION_SCENE_DUR_STEPS
+        # duration tracks the spoken span, clamped to [floor, MAX]
+        assert (engine_config.MOTION_SCENE_DUR_STEPS - 0.01
+                <= by_kind["steps"]["duration"]
+                <= engine_config.MOTION_SCENE_MAX_DUR + 0.01)
     if "number" in by_kind:
         assert by_kind["number"]["value"] == 80.0
         assert "%" in by_kind["number"]["raw"]
+
+
+def test_motion_scenes_avoid_repeated_headlines_and_icons():
+    """Same dominant word must NOT headline every scene (no CONFIANCE x6)."""
+    def _seg2(s, e, t):
+        toks = t.split(); step = (e - s) / max(1, len(toks))
+        return {"start": s, "end": e, "text": t,
+                "words": [{"word": w, "start": round(s + i * step, 3),
+                           "end": round(s + (i + 1) * step, 3)} for i, w in enumerate(toks)]}
+    vu = {"language": "fr", "duration": 90.0, "segments": [
+        _seg2(3, 11, "la confiance est la base de toute vente en ligne réussie"),
+        _seg2(13, 21, "sans confiance le client ne va jamais acheter ton produit"),
+        _seg2(23, 31, "pour créer la confiance tu dois livrer rapidement tes commandes"),
+        _seg2(33, 41, "la confiance se gagne avec un bon service client au téléphone"),
+        _seg2(43, 51, "le paiement mobile money rassure et renforce la confiance"),
+        _seg2(53, 61, "enfin la confiance fidélise et fait grandir ton chiffre"),
+    ]}
+    scenes = content.derive_motion_scenes(vu)
+    headlines = [s["headline"] for s in scenes]
+    assert len(set(headlines)) == len(headlines), f"duplicate headlines: {headlines}"
+    # consecutive scenes never share the same icon
+    icons = [s["icon"] for s in scenes]
+    for a, b in zip(icons, icons[1:]):
+        assert a != b, f"consecutive identical icon: {icons}"
 
 
 def test_derive_motion_scenes_short_video_returns_empty():

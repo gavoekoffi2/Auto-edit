@@ -38,11 +38,38 @@ class TranscriptionService:
         model = v1._get_model(self.model_name)
 
         logger.info(f"[transcription_service] transcribing {video_path} (model={self.model_name})")
-        result = model.transcribe(
-            video_path,
+        # Anti-hallucination / anti-répétition + meilleure précision :
+        #  - condition_on_previous_text=False : empêche Whisper de boucler et de
+        #    REPÉTER des phrases (cause classique des passages répétés fantômes).
+        #  - temperature fallback + seuils : rejette les segments incohérents.
+        #  - language/initial_prompt : biaise le vocabulaire (réduit tech->tête).
+        import os as _os
+        lang = (_os.getenv("WHISPER_LANGUAGE", "") or "").strip() or None
+        initial_prompt = _os.getenv(
+            "WHISPER_INITIAL_PROMPT",
+            "Transcription en français correct, ponctuée. Sujets: business, "
+            "vente en ligne, marketing, mobile money, entrepreneuriat.",
+        ) or None
+        decode_kwargs = dict(
             verbose=False,
             word_timestamps=self.word_timestamps,
+            condition_on_previous_text=False,
+            temperature=(0.0, 0.2, 0.4, 0.6),
+            compression_ratio_threshold=2.4,
+            no_speech_threshold=0.6,
+            initial_prompt=initial_prompt,
         )
+        if lang:
+            decode_kwargs["language"] = lang
+        try:
+            result = model.transcribe(video_path, **decode_kwargs)
+        except TypeError:
+            # Older/newer whisper signatures: retry with the safe core subset.
+            result = model.transcribe(
+                video_path, verbose=False,
+                word_timestamps=self.word_timestamps,
+                condition_on_previous_text=False,
+            )
 
         segments: list[TranscriptSegment] = []
         for seg in result.get("segments", []):
