@@ -188,3 +188,30 @@ def test_motion_scenes_guaranteed_on_long_videos(rich_vu, monkeypatch):
     scenes = content.derive_motion_scenes(rich_vu)
     assert len(scenes) >= 1
     assert all(s["source_start"] >= engine_config.MOTION_MIN_START for s in scenes)
+
+
+def test_overlays_are_light_and_capped(rich_vu):
+    """Overlays must be few, brief and live BELOW the face zone (never cover it)."""
+    specs = content.derive_motion_scenes  # noqa: ensure module imported
+    overlays = content.derive_overlay_specs(rich_vu)
+    assert len(overlays) <= engine_config.OVERLAY_MAX_PER_VIDEO
+    for o in overlays:
+        assert o["duration"] <= engine_config.OVERLAY_MAX_DUR + 0.01
+        assert o["type"] in {"stat", "progress", "lower_third"}  # no invasive lists
+    # spacing between overlays
+    starts = sorted(o["source_start"] for o in overlays)
+    for a, b in zip(starts, starts[1:]):
+        assert b - a >= engine_config.OVERLAY_MIN_GAP - 0.01
+
+
+def test_motion_scene_duration_tracks_spoken_span(rich_vu):
+    for s in content.derive_motion_scenes(rich_vu):
+        assert engine_config.MOTION_SCENE_MIN_DUR <= s["duration"] <= engine_config.MOTION_SCENE_MAX_DUR + 0.01
+        # scene window equals start + duration (leaves when the point ends)
+        assert abs((s["source_end"] - s["source_start"]) - s["duration"]) < 0.05
+
+
+def test_motion_transitions_are_consistent_not_random():
+    # Product rule: one coherent slide, never random left/right directions.
+    assert engine_config.MOTION_ENTRANCES == ["slide_up"]
+    assert engine_config.MOTION_EXITS == ["slide_down"]

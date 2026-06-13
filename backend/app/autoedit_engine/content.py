@@ -156,10 +156,10 @@ def _all_words(vu: dict) -> List[dict]:
 
 def topic_segments(vu: dict) -> List[dict]:
     """
-    Group transcript segments into topics of roughly OVERLAY_MIN_DUR..MAX_DUR.
-
-    A topic accumulates consecutive segments until it reaches >= MIN_DUR, then
-    closes (without exceeding MAX_DUR).  Returns {start, end, text}.
+    Group transcript segments into TOPICS (semantic beats) of roughly
+    TOPIC_MIN_DUR..TOPIC_MAX_DUR. A topic carries a coherent idea — that's what
+    a motion-design scene illustrates — independent of how long an overlay is
+    actually displayed on screen.
     """
     topics: List[dict] = []
     cur_text: List[str] = []
@@ -172,21 +172,21 @@ def topic_segments(vu: dict) -> List[dict]:
         cur_text.append(seg.get("text", "").strip())
         cur_end = float(seg["end"])
         dur = cur_end - cur_start
-        if dur >= config.OVERLAY_MIN_DUR:
+        if dur >= config.TOPIC_MIN_DUR:
             topics.append({"start": cur_start, "end": cur_end, "text": " ".join(cur_text).strip()})
             cur_text, cur_start = [], None
 
     if cur_text and cur_start is not None:
         # Fold a tiny trailing remainder into the previous topic.
-        if topics and (cur_end - cur_start) < config.OVERLAY_MIN_DUR / 2:
+        if topics and (cur_end - cur_start) < config.TOPIC_MIN_DUR / 2:
             topics[-1]["end"] = cur_end
             topics[-1]["text"] = (topics[-1]["text"] + " " + " ".join(cur_text)).strip()
         else:
             topics.append({"start": cur_start, "end": cur_end, "text": " ".join(cur_text).strip()})
 
-    # Clamp each topic length to the overlay window.
+    # Clamp each topic length to the semantic window.
     for tp in topics:
-        tp["end"] = min(tp["end"], tp["start"] + config.OVERLAY_MAX_DUR)
+        tp["end"] = min(tp["end"], tp["start"] + config.TOPIC_MAX_DUR)
     return topics
 
 
@@ -207,53 +207,54 @@ def derive_overlay_specs(vu: dict) -> List[dict]:
     """
     Decide which graphic overlays to render and over which topic span.
 
-    Heuristics (content-driven, never a fixed set):
-      * numbers / percentages  -> stat or progress
-      * enumerations           -> list
-      * the opening topic       -> lower_third title card
-      * otherwise              -> a keyword stat card now and then
+    RÈGLE PRODUIT: ces overlays graphiques sont LÉGERS, BREFS et OCCASIONNELS —
+    ils ne couvrent jamais le visage (zone basse) et n'apparaissent que sur un
+    signal FORT (un chiffre, un pourcentage). On a retiré les cartes "à retenir"
+    génériques et les listes envahissantes: l'illustration du propos passe par
+    les scènes motion_design, pas par des cartons de texte permanents.
     """
     topics = topic_segments(vu)
     specs: List[dict] = []
-    kw = top_keywords(vu, 6)
 
+    def _short(tp: dict) -> float:
+        return round(max(config.OVERLAY_MIN_DUR,
+                         min(config.OVERLAY_MAX_DUR, tp["end"] - tp["start"])), 3)
+
+    last_start = -1e9
     for idx, tp in enumerate(topics):
+        if len(specs) >= config.OVERLAY_MAX_PER_VIDEO:
+            break
+        if float(tp["start"]) - last_start < config.OVERLAY_MIN_GAP:
+            continue                              # espacer: pas deux overlays collés
         text = tp["text"]
-        dur = max(config.OVERLAY_MIN_DUR, min(config.OVERLAY_MAX_DUR, tp["end"] - tp["start"]))
+        dur = _short(tp)
         base = {
             "id": f"gfx_{idx:03d}",
             "source_start": tp["start"],
             "source_end": tp["start"] + dur,
-            "duration": round(dur, 3),
+            "duration": dur,
             "title": _headline(text),
         }
 
         pct = _PERCENT_RE.search(text)
         nums = _NUM_RE.findall(text)
 
-        if idx == 0:
-            toks = _content_tokens(text)
-            specs.append({**base, "type": "lower_third",
-                          "title": " ".join(toks[:3]).upper() or "CUTFORGE",
-                          "subtitle": " ".join(toks[3:7]).upper()})
-        elif pct:
-            specs.append({**base, "type": "progress",
-                          "percent": _clamp_pct(pct.group(1)),
-                          "label": base["title"] or "PROGRESSION"})
+        spec = None
+        if pct:
+            spec = {**base, "type": "progress", "percent": _clamp_pct(pct.group(1)),
+                    "label": base["title"] or "PROGRESSION"}
         elif nums:
             value = _parse_number(nums[0])
-            specs.append({**base, "type": "stat",
-                          "value": value, "raw": nums[0].strip(),
-                          "label": base["title"] or "CHIFFRE CLÉ"})
-        elif _ENUM_HINTS.search(text) or text.count(",") >= 2:
-            specs.append({**base, "type": "list",
-                          "items": _list_items(text),
-                          "label": base["title"] or "POINTS CLÉS"})
-        elif idx % 3 == 1 and kw:
-            specs.append({**base, "type": "stat",
-                          "value": None, "raw": kw[idx % len(kw)].upper(),
-                          "label": "À RETENIR"})
-        # else: this topic carries B-roll instead of a graphic.
+            if value is not None and 0 < value < 10_000_000:
+                spec = {**base, "type": "stat", "value": value,
+                        "raw": nums[0].strip(), "label": base["title"] or "CHIFFRE CLÉ"}
+        # Plus de cartes "liste"/"à retenir" génériques: elles encombraient le
+        # cadre. Les énumérations sont désormais illustrées par les scènes
+        # motion_design (kind="steps").
+
+        if spec is not None:
+            specs.append(spec)
+            last_start = float(tp["start"])
 
     return specs
 
@@ -521,13 +522,18 @@ def derive_motion_scenes(vu: dict, demographic: str = "african") -> List[dict]:
             f"Key concepts: {', '.join(focus[:4]) or headline.lower()}. "
             f"Characters (if any): {suffix}."
         )
-        dur = config.MOTION_SCENE_DUR_STEPS if kind == "steps" else config.MOTION_SCENE_DUR
+        # La scène dure le TEMPS DU PROPOS qu'elle illustre (glisse à l'entrée
+        # du point, repart quand la personne a fini), borné par MIN/MAX pour
+        # rester pro. Les "steps" ont un plancher un peu plus haut (cascade).
+        span = float(tp["end"]) - float(tp["start"])
+        floor = config.MOTION_SCENE_DUR_STEPS if kind == "steps" else config.MOTION_SCENE_MIN_DUR
+        dur = round(max(floor, min(config.MOTION_SCENE_MAX_DUR, span)), 3)
         scenes.append({
             "id": f"md_{idx:03d}",
             "kind": kind,
             "priority": round(_beat_score(text, counts), 3),
             "source_start": round(float(tp["start"]), 3),
-            "source_end": round(min(float(tp["end"]), float(tp["start"]) + dur + 2.0), 3),
+            "source_end": round(float(tp["start"]) + dur, 3),
             "duration": dur,
             "headline": headline,
             "kicker": "ÉTAPES" if kind == "steps" else ("CHIFFRE CLÉ" if kind == "number" else "À RETENIR"),
