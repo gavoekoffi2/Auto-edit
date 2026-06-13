@@ -72,8 +72,14 @@ class Settings(BaseSettings):
     FEDAPAY_PUBLIC_KEY: Optional[str] = None
     FEDAPAY_ENV: str = "sandbox"
 
-    # Whisper — "small" est nettement plus précis que "base" en français
-    # (réduit les erreurs type tech->tête). Surchargeable via WHISPER_MODEL.
+    # Transcription
+    # Provider: auto (ElevenLabs Scribe si clé dispo, sinon Whisper) | elevenlabs | whisper.
+    # Scribe = plus rapide (déchargé du VPS) + plus précis + timestamps natifs.
+    TRANSCRIPTION_PROVIDER: str = "auto"
+    TRANSCRIPTION_LANGUAGE: str = "fr"   # code langue (Scribe + Whisper). "" = auto-détection
+    ELEVENLABS_API_KEY: Optional[str] = None
+
+    # Whisper (repli local) — "small" plus précis que "base" en français.
     WHISPER_MODEL: str = "small"
 
     # Rate limiting
