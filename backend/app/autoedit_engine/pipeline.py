@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 from typing import Optional
@@ -54,10 +55,52 @@ def _log(step: str, msg: str = "") -> None:
     print(f"\n=== {step} === {msg}")
 
 
+# Heavy intermediates left in the workdir after a render. A single job can
+# write SEVERAL GB of ProRes .mov + mp4 passes — on a small VPS the disk fills
+# after a handful of jobs and ffmpeg dies mid-encode ("[Errno 32] Broken
+# pipe"). Light artifacts (final video, transcript, edl, .ass, B-roll PNGs)
+# are kept.
+_INTERMEDIATE_DIRS = ("clips_graded", "animations", "motion_clips", "broll_clips", "sfx")
+_INTERMEDIATE_FILES = ("base_only.mp4", "base_dyn.mp4",
+                       "composite_nosfx.mp4", "composite_withsfx.mp4")
+
+
+def cleanup_intermediates(workdir: str) -> int:
+    """Delete heavy render intermediates from *workdir*; returns bytes freed."""
+    freed = 0
+    for name in _INTERMEDIATE_DIRS:
+        path = os.path.join(workdir, name)
+        if os.path.isdir(path):
+            for root, _, files in os.walk(path):
+                for f in files:
+                    try:
+                        freed += os.path.getsize(os.path.join(root, f))
+                    except OSError:
+                        pass
+            shutil.rmtree(path, ignore_errors=True)
+    patterns = list(_INTERMEDIATE_FILES)
+    try:
+        patterns += [f for f in os.listdir(workdir) if f.startswith("_composite_pass")]
+    except OSError:
+        pass
+    for name in patterns:
+        path = os.path.join(workdir, name)
+        try:
+            if os.path.isfile(path):
+                freed += os.path.getsize(path)
+                os.remove(path)
+        except OSError:
+            pass
+    if freed:
+        print(f"[pipeline] cleanup: {freed / 1e6:.0f} MB d'intermédiaires libérés")
+    return freed
+
+
 def run(source: str, workdir: str, *, vu: Optional[str] = None,
         template: str = config.DEFAULT_TEMPLATE, do_broll: bool = True,
         do_motion: bool = True, broll_demographic: str = "african",
-        progress_callback=None, report: Optional[dict] = None) -> str:
+        progress_callback=None, report: Optional[dict] = None,
+        cleanup: bool = True) -> str:
     os.makedirs(workdir, exist_ok=True)
     stem = Path(source).stem
     p = lambda *a: os.path.join(workdir, *a)  # noqa: E731 - tiny path helper
@@ -181,6 +224,9 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     # 13) Final burn ---------------------------------------------------------
     _p(97, "13 finalize")
     final = finalize.burn_subs(withsfx, ass_path, p("final_montage_web.mp4"))
+
+    if cleanup and os.environ.get("ENGINE_KEEP_INTERMEDIATES") not in {"1", "true"}:
+        cleanup_intermediates(workdir)
 
     if progress_callback:
         progress_callback(100, "done")

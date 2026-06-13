@@ -228,6 +228,20 @@ def run_pipeline_v2(
         raise ValueError("Input video file is empty")
     os.makedirs(output_dir, exist_ok=True)
 
+    # ---- préflight disque ----------------------------------------------------
+    # Un rendu écrit plusieurs Go d'intermédiaires; sans espace, ffmpeg meurt en
+    # plein encodage avec un cryptique "[Errno 32] Broken pipe". On échoue TÔT
+    # avec un message actionnable à la place.
+    free_gb = shutil.disk_usage(output_dir).free / 1e9
+    src_gb = os.path.getsize(video_path) / 1e9
+    needed_gb = max(3.0, src_gb * 4)
+    if free_gb < needed_gb:
+        raise RuntimeError(
+            f"Espace disque insuffisant sur le serveur ({free_gb:.1f} Go libres, "
+            f"~{needed_gb:.0f} Go requis pour ce rendu). Réessaie dans quelques "
+            "minutes ou contacte le support."
+        )
+
     # ---- options & flags ---------------------------------------------------
     preset = V2_MODE_PRESETS.get(mode or "", {}) if mode else {}
     options = dict(preset)

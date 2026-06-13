@@ -58,6 +58,7 @@ def process_video_task(self, job_id: str):
     from app.processing.pipeline import run_pipeline
 
     session = SyncSessionLocal()
+    output_dir = None
     try:
         job = session.query(Job).filter(Job.id == job_id).first()
         if not job:
@@ -141,6 +142,14 @@ def process_video_task(self, job_id: str):
     except Exception as e:
         logger.error(f"Job {job_id} failed: {e}", exc_info=True)
         error_msg = str(e)[:1900]  # Truncate to fit DB column
+        # Un job échoué ne doit pas laisser ses Go d'intermédiaires sur le
+        # disque (c'est ce qui finissait par tuer les rendus suivants).
+        if output_dir:
+            try:
+                from app.autoedit_engine.pipeline import cleanup_intermediates
+                cleanup_intermediates(output_dir)
+            except Exception as cleanup_err:  # noqa: BLE001 - best effort
+                logger.warning(f"Cleanup after failure skipped: {cleanup_err}")
         _update_job(
             job_id,
             status="failed",
