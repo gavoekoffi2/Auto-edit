@@ -141,6 +141,22 @@ V2_MODE_PRESETS: dict[str, dict] = {
 ProgressFn = Callable[[int, str], None]
 
 
+def _choose_transcription_provider(provider: Optional[str], has_elevenlabs_key: bool) -> str:
+    """Decide which STT backend to use.
+
+    - "whisper"     -> always local Whisper
+    - "elevenlabs"  -> Scribe IF a key exists, else Whisper (can't do otherwise)
+    - "auto"/other  -> Scribe when a key exists, else Whisper
+    The caller still falls back to Whisper if a live Scribe call fails.
+    """
+    p = (provider or "auto").lower()
+    if p == "whisper":
+        return "whisper"
+    if p == "elevenlabs":
+        return "elevenlabs" if has_elevenlabs_key else "whisper"
+    return "elevenlabs" if has_elevenlabs_key else "whisper"
+
+
 # Mode -> ASS subtitle template of the Auto Edit engine.
 MODE_TO_TEMPLATE: dict[str, str] = {
     "tiktok": "tiktok_yellow",
@@ -295,21 +311,64 @@ def run_pipeline_v2(
         "motion_design": {"enabled": do_motion},
     }
 
-    # ---- 1. Transcription (reuse local Whisper) ----------------------------
+    # ---- 1. Transcription (ElevenLabs Scribe si dispo, sinon Whisper) ------
     progress(5, "Transcription…")
-    from app.processing.transcription_service import TranscriptionService
+    # La clé ElevenLabs vit peut-être seulement dans settings/.env: le moteur
+    # lit os.environ, donc on la propage (comme OPENROUTER_API_KEY).
+    el_key = getattr(settings, "ELEVENLABS_API_KEY", "") or ""
+    if el_key and not os.environ.get("ELEVENLABS_API_KEY"):
+        os.environ["ELEVENLABS_API_KEY"] = el_key
 
-    ts = TranscriptionService(model_name=settings.WHISPER_MODEL, word_timestamps=True)
-    transcript = ts.transcribe(video_path, output_dir)
-    vu_path = _transcript_to_vu(transcript, output_dir, video_path)
-    results["transcription"] = {
-        "language": transcript.language,
-        "segments_count": len(transcript.segments),
-        "words_count": len(transcript.words),
-    }
-    results["steps_completed"].append("transcription")
-    if len(transcript.words) < 3:
-        raise RuntimeError("Transcription quasi vide — pas de parole exploitable pour le montage.")
+    provider = getattr(settings, "TRANSCRIPTION_PROVIDER", "auto")
+    use_elevenlabs = _choose_transcription_provider(
+        provider, bool(os.environ.get("ELEVENLABS_API_KEY"))
+    ) == "elevenlabs"
+    lang = (getattr(settings, "TRANSCRIPTION_LANGUAGE", "") or "").strip() or None
+
+    vu_path = None
+    if use_elevenlabs:
+        # Scribe: plus rapide (déchargé du VPS), plus précis, timestamps natifs.
+        try:
+            from app.autoedit_engine import transcribe as el_transcribe
+            vu_path = el_transcribe.transcribe(
+                video_path,
+                out_path=os.path.join(output_dir, "engine_vu.json"),
+                language=lang,
+            )
+            vu = json.load(open(vu_path, encoding="utf-8"))
+            n_words = sum(len(s.get("words", [])) for s in vu.get("segments", []))
+            results["transcription"] = {
+                "provider": "elevenlabs",
+                "language": vu.get("language"),
+                "text": " ".join(s.get("text", "") for s in vu.get("segments", [])).strip(),
+                "segments_count": len(vu.get("segments", [])),
+                "words_count": n_words,
+            }
+            if n_words < 3:
+                raise RuntimeError("Scribe: transcription quasi vide")
+            results["steps_completed"].append("transcription")
+        except Exception as e:
+            logger.warning("[pipeline_v2] ElevenLabs Scribe failed (%s) — fallback Whisper", e)
+            results.setdefault("transcription_warnings", []).append(f"elevenlabs: {str(e)[:200]}")
+            vu_path = None
+
+    if vu_path is None:
+        # Repli local Whisper (gratuit, hors-ligne).
+        from app.processing.transcription_service import TranscriptionService
+        ts = TranscriptionService(model_name=settings.WHISPER_MODEL, word_timestamps=True)
+        transcript = ts.transcribe(video_path, output_dir)
+        vu_path = _transcript_to_vu(transcript, output_dir, video_path)
+        results["transcription"] = {
+            "provider": "whisper",
+            "language": transcript.language,
+            "text": transcript.text,
+            "segments_count": len(transcript.segments),
+            "words_count": len(transcript.words),
+        }
+        if "transcription" not in results["steps_completed"]:
+            results["steps_completed"].append("transcription")
+        if len(transcript.words) < 3:
+            raise RuntimeError("Transcription quasi vide — pas de parole exploitable pour le montage.")
 
     # ---- 2. Auto Edit engine render ---------------------------------------
     progress(10, "Montage Auto Edit…")
