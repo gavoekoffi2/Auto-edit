@@ -10,7 +10,7 @@ version: "3.9"
 #   - pas de --reload uvicorn
 #   - pas de bind-mount ./backend (le code est dans l'image)
 #   - postgres/redis ne sont PLUS exposes sur l'host
-#   - workers concurrency par defaut = 4 (override via CELERY_CONCURRENCY)
+#   - workers concurrency par defaut = 2 (override via CELERY_CONCURRENCY)
 #   - logging json + log-level info
 # =========================================================================
 
@@ -43,7 +43,9 @@ services:
       APP_ENV: production
 
   worker:
-    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-4} --prefetch-multiplier=1
+    # Concurrence 2 par défaut: chaque job est lourd (Whisper small ~2 Go +
+    # ffmpeg), 2 en parallèle borne la RAM et évite l'OOM. Override possible.
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-2} --prefetch-multiplier=1
     volumes: !override
       - uploads_data:/app/uploads
     environment:
