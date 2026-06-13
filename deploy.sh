@@ -118,6 +118,10 @@ if [ -z "${BACKEND_DOMAIN:-}" ] || [ "$BACKEND_DOMAIN" = "localhost" ]; then
   echo "[deploy] Example: BACKEND_DOMAIN=srv1305401.hstgr.cloud TLS_EMAIL=you@example.com ./deploy.sh"
 fi
 
+# Build sequentially. Docker Compose/BuildKit on this VPS can fail parallel builds
+# with "image ... already exists" when backend and worker share the same Dockerfile/context.
+export COMPOSE_PARALLEL_LIMIT="${COMPOSE_PARALLEL_LIMIT:-1}"
+
 # Build and start all services.
 echo "[deploy] Building and starting AutoEdit production stack..."
 "${COMPOSE[@]}" up -d --build
