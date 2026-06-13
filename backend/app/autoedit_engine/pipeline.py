@@ -110,6 +110,10 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     rep.update({
         "template": template,
         "motion_enabled": do_motion,
+        "source_duration_s": 0.0,
+        "kept_duration_s": 0.0,
+        "removed_duration_s": 0.0,
+        "segments_kept": 0,
         "motion_scenes_derived": 0,
         "motion_scenes_rendered": 0,
         "motion_ai_illustrations": 0,
@@ -134,6 +138,13 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     edl_path = p("edl.json")
     build_res = build_edl.build(source, vu_path, outdir=workdir, encode=True)
     base_only = build_res["base_only"]
+    # Preuve de découpe: durée d'origine vs gardée (silences/répétitions retirés).
+    orig = float(vu_data.get("duration") or 0.0)
+    kept = float(build_res.get("output_duration") or 0.0)
+    rep["source_duration_s"] = round(orig, 2)
+    rep["kept_duration_s"] = round(kept, 2)
+    rep["removed_duration_s"] = round(max(0.0, orig - kept), 2)
+    rep["segments_kept"] = len(build_res.get("ranges") or [])
 
     # 3) Graphic overlays ----------------------------------------------------
     _p(34, "3 overlays")
