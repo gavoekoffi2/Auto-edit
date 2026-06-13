@@ -122,6 +122,10 @@ fi
 # with "image ... already exists" when backend and worker share the same Dockerfile/context.
 export COMPOSE_PARALLEL_LIMIT="${COMPOSE_PARALLEL_LIMIT:-1}"
 
+# Old failed deploys can leave backend/worker containers detached from the current
+# Compose state; remove only stateless app containers before recreating them.
+docker rm -f "${COMPOSE_PROJECT_NAME}-backend-1" "${COMPOSE_PROJECT_NAME}-worker-1" >/dev/null 2>&1 || true
+
 # Build and start all services.
 echo "[deploy] Building and starting AutoEdit production stack..."
 "${COMPOSE[@]}" up -d --build
