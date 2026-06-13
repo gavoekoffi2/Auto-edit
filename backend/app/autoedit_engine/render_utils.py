@@ -59,6 +59,11 @@ class ProResPipe:
         with ProResPipe(out, w, h, fps) as pipe:
             for ...:
                 pipe.write(pil_rgba_image)
+
+    If ffmpeg dies mid-encode (disk full, OOM-kill, bad build), a raw pipe
+    write raises BrokenPipeError ("[Errno 32]") with ZERO context. This class
+    converts that into a RuntimeError carrying ffmpeg's stderr tail so the job
+    error actually says WHY (e.g. "No space left on device").
     """
 
     def __init__(self, out_path: str,
@@ -70,7 +75,7 @@ class ProResPipe:
         self.height = height
         self.proc: Optional[subprocess.Popen] = subprocess.Popen(
             [
-                ffmpeg_utils.FFMPEG, "-y",
+                ffmpeg_utils.FFMPEG, "-y", "-v", "error",
                 "-f", "rawvideo", "-pix_fmt", "rgba",
                 "-s", f"{width}x{height}", "-r", str(fps),
                 "-i", "pipe:0",
@@ -83,24 +88,55 @@ class ProResPipe:
             stderr=subprocess.PIPE,
         )
 
+    def _stderr_tail(self) -> str:
+        if not self.proc or not self.proc.stderr:
+            return ""
+        try:
+            return self.proc.stderr.read().decode("utf-8", "ignore")[-1200:]
+        except OSError:
+            return ""
+
+    def _raise_encode_failure(self, cause: str) -> None:
+        err = self._stderr_tail()
+        ret = None
+        if self.proc:
+            try:
+                ret = self.proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+        self.proc = None
+        detail = err.strip() or cause
+        raise RuntimeError(
+            f"Encodage ProRes interrompu pour {self.out_path} "
+            f"(ffmpeg code={ret}): {detail}"
+        )
+
     def write(self, img: Image.Image) -> None:
         if img.mode != "RGBA":
             img = img.convert("RGBA")
         if img.size != (self.width, self.height):
             img = img.resize((self.width, self.height))
         assert self.proc and self.proc.stdin
-        self.proc.stdin.write(img.tobytes())
+        try:
+            self.proc.stdin.write(img.tobytes())
+        except (BrokenPipeError, OSError):
+            self._raise_encode_failure("ffmpeg s'est arrêté pendant l'encodage")
 
     def close(self) -> None:
         if not self.proc:
             return
-        assert self.proc.stdin
-        self.proc.stdin.close()
-        err = self.proc.stderr.read().decode("utf-8", "ignore") if self.proc.stderr else ""
+        try:
+            if self.proc.stdin:
+                self.proc.stdin.close()
+        except (BrokenPipeError, OSError):
+            pass  # ffmpeg already gone — the wait() below reports it
+        err = self._stderr_tail()
         ret = self.proc.wait()
         self.proc = None
         if ret != 0:
-            raise RuntimeError(f"ProRes encode failed for {self.out_path}:\n{err[-1200:]}")
+            raise RuntimeError(
+                f"Encodage ProRes échoué pour {self.out_path} (code={ret}):\n{err}"
+            )
 
     def __enter__(self) -> "ProResPipe":
         return self

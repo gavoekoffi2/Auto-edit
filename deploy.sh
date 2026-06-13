@@ -125,6 +125,26 @@ for i in {1..30}; do
   fi
 done
 
+# Janitor: purge les intermédiaires de rendu accumulés dans le volume uploads.
+# Chaque montage écrivait des Go de ProRes .mov + passes mp4 jamais nettoyés;
+# disque plein => ffmpeg meurt en plein encodage ("[Errno 32] Broken pipe").
+# On supprime UNIQUEMENT les fichiers intermédiaires connus, jamais les vidéos
+# sources ni les montages finaux (final_output.mp4 / final_montage_web.mp4).
+echo "[deploy] Cleaning render intermediates in uploads volume..."
+"${COMPOSE[@]}" exec -T backend sh -c '
+  set -e
+  cd /app/uploads 2>/dev/null || exit 0
+  for d in clips_graded animations motion_clips broll_clips sfx; do
+    find . -path "*/output/*" -type d -name "$d" -prune -exec rm -rf {} + 2>/dev/null || true
+  done
+  find . -path "*/output/*" -type f \( \
+      -name "base_only.mp4" -o -name "base_dyn.mp4" \
+      -o -name "composite_nosfx.mp4" -o -name "composite_withsfx.mp4" \
+      -o -name "_composite_pass*.mp4" -o -name "*.mov" -o -name "*.wav" \
+    \) -delete 2>/dev/null || true
+  df -h /app/uploads | tail -1
+' || echo "[deploy] WARNING: uploads janitor skipped (backend not ready?)"
+
 if [ -n "${BACKEND_DOMAIN:-}" ] && [ "$BACKEND_DOMAIN" != "localhost" ]; then
   echo "[deploy] Checking public HTTPS endpoint..."
   if curl -fsS --max-time 15 "https://${BACKEND_DOMAIN}/api/health" >/tmp/autoedit-public-health.json 2>/dev/null; then
