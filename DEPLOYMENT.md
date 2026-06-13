@@ -120,11 +120,47 @@ Après modification : **Trigger deploy / Redeploy site**. Ajoute aussi l'URL Net
 | **Frontend** (Netlify) | `.github/workflows/netlify-frontend.yml` | push sur `main` | `NETLIFY_AUTH_TOKEN`, `NETLIFY_SITE_ID` |
 | **Backend** (VPS) | `.github/workflows/deploy-backend.yml` | push sur `main` touchant `backend/`, `renderers/`, `templates/`, `docker-compose*.yml`, `deploy.sh`, `Caddyfile`, `nginx/` | `VPS_SSH_HOST`, `VPS_SSH_USER`, `VPS_SSH_KEY` (+ option `VPS_SSH_PORT`) |
 
-> ⚠️ **Depuis la v4.2, le job de déploiement backend ÉCHOUE (rouge) si les
-> secrets manquent** — l'ancien comportement (saut silencieux, job vert) a
-> masqué pendant des jours le fait que le VPS ne recevait AUCUN code.
-> Renseigne les 3 secrets ci-dessous puis relance le workflow
-> (`Actions > Deploy backend to VPS > Run workflow`).
+> ⚠️ **Le déploiement backend par SSH (push-based) échoue souvent** :
+> le pare-feu Hostinger bloque les runners GitHub (`dial tcp … i/o timeout`).
+> Le step SSH est donc *best-effort* (non bloquant). **Le mécanisme FIABLE est
+> pull-based** : le VPS interroge GitHub lui-même et se déploie tout seul.
+
+### ⭐ Déploiement automatique FIABLE (pull-based — recommandé)
+
+Le VPS sort vers GitHub en HTTPS (443, toujours ouvert) au lieu d'attendre une
+connexion SSH entrante (bloquée). À installer **une seule fois**, en SSH sur le
+VPS depuis ta machine :
+
+```bash
+cd /opt/Auto-edit
+git fetch origin main && git reset --hard origin/main      # récupère les scripts
+sudo APP_DIR=/opt/Auto-edit \
+     BACKEND_DOMAIN=autoedit.srv1305401.hstgr.cloud \
+     TLS_EMAIL=toi@exemple.com \
+     ./scripts/install-vps-autodeploy.sh
+```
+
+Ça installe un **timer systemd** (`cutforge-autodeploy`, toutes les 2 min) qui :
+fetch `origin/main` → si nouveau commit → `git reset --hard` + `./deploy.sh`.
+Désormais **chaque push sur `main` est déployé tout seul en ≤ 2 min**, sans
+dépendre du SSH entrant.
+
+- Logs : `tail -f /var/log/cutforge-autodeploy.log` ou `journalctl -u cutforge-autodeploy -f`
+- Forcer maintenant : `sudo APP_DIR=/opt/Auto-edit ./scripts/vps-autodeploy.sh --force`
+
+### Déploiement manuel immédiat (si besoin tout de suite)
+
+```bash
+cd /opt/Auto-edit && git fetch origin main && git reset --hard origin/main && ./deploy.sh
+```
+
+### (Optionnel) Réparer le push-based SSH
+
+Pour que `Actions > Deploy backend to VPS` réussisse aussi, il faut que le port
+SSH du VPS soit joignable par les runners GitHub (souvent bloqué) et que
+`VPS_SSH_HOST` pointe sur la **bonne** IP. Renseigne les 3 secrets ci-dessous.
+Tant que ce n'est pas le cas, garde le pull-based ci-dessus comme mécanisme
+principal.
 
 ### Mettre en place les secrets (une seule fois)
 

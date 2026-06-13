@@ -81,13 +81,20 @@ jobs:
           fi
           echo "Secrets OK — déploiement vers le VPS."
 
-      - name: Deploy over SSH
+      # Tentative push-based (best-effort). Le pare-feu du VPS bloque souvent
+      # les runners GitHub (dial tcp ... i/o timeout) — dans ce cas ce step
+      # échoue mais NE BLOQUE PAS: le déploiement fiable est PULL-BASED via le
+      # timer systemd installé par scripts/install-vps-autodeploy.sh (le VPS
+      # interroge GitHub lui-même toutes les ~2 min). Voir DEPLOYMENT.md.
+      - name: Deploy over SSH (best-effort)
+        continue-on-error: true
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_SSH_HOST }}
           username: ${{ secrets.VPS_SSH_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          timeout: 60s
           command_timeout: 40m
           script: |
             set -euo pipefail
@@ -99,3 +106,10 @@ jobs:
             # deploy.sh preserves .env, rebuilds the stack and health-checks it.
             ./deploy.sh
             echo "[ci-deploy] Backend deploy finished."
+
+      - name: Deploy mechanism note
+        run: |
+          echo "Si le step SSH ci-dessus est rouge (timeout), c'est le pare-feu"
+          echo "du VPS qui bloque GitHub. Le déploiement fiable est PULL-BASED:"
+          echo "le VPS tire main tout seul via le timer cutforge-autodeploy."
+          echo "Installer une fois: sudo ./scripts/install-vps-autodeploy.sh"
