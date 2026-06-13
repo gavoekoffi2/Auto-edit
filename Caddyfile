@@ -1,9 +1,12 @@
 {$BACKEND_DOMAIN:localhost} {
     encode gzip zstd
 
-    # Large video uploads. Caddy streams request bodies, but this guards abuse.
+    # Limite de taille du body. DOIT être >= MAX_UPLOAD_SIZE_MB du backend,
+    # sinon Caddy coupe l'upload en plein milieu avec un 413 (c'est ce qui
+    # faisait "s'arrêter en chemin" les vidéos de téléphone > 2,1 Go).
+    # Aligné à 5,2 Go par défaut, surchargeable via MAX_UPLOAD_BODY.
     request_body {
-        max_size 2100MB
+        max_size {$MAX_UPLOAD_BODY:5200MB}
     }
 
     header {
@@ -18,9 +21,14 @@
     reverse_proxy /api* backend:8000 {
         header_up X-Real-IP {remote_host}
         header_up X-Forwarded-Proto {scheme}
+        # Streaming immédiat dans les deux sens: upload poussé au backend au fur
+        # et à mesure (pas de bufferisation complète), download/preview servi
+        # sans attendre tout le fichier (Range/206 OK).
+        flush_interval -1
         transport http {
             read_timeout 3600s
             write_timeout 3600s
+            dial_timeout 30s
         }
     }
 

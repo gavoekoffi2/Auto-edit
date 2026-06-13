@@ -91,4 +91,17 @@ async def health_check():
         health["redis"] = f"error: {str(e)}"
         health["status"] = "degraded"
 
+    # Espace disque du volume d'uploads — un disque plein casse upload ET rendu.
+    try:
+        import shutil
+        usage = shutil.disk_usage(settings.UPLOAD_DIR)
+        free_gb = usage.free / 1e9
+        health["disk_free_gb"] = round(free_gb, 1)
+        health["disk_used_pct"] = round(usage.used / usage.total * 100, 1)
+        if free_gb < 2:
+            health["status"] = "degraded"
+            health["disk_warning"] = "espace disque critique"
+    except Exception as e:
+        health["disk"] = f"error: {str(e)}"
+
     return health
