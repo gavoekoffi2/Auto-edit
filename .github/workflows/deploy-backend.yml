@@ -89,6 +89,11 @@ jobs:
       - name: Deploy over SSH (best-effort)
         continue-on-error: true
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          # Clés runtime optionnelles: si définies en GitHub secrets, elles sont
+          # injectées dans le .env du VPS par deploy.sh (jamais committées).
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         with:
           host: ${{ secrets.VPS_SSH_HOST }}
           username: ${{ secrets.VPS_SSH_USER }}
@@ -96,6 +101,8 @@ jobs:
           port: ${{ secrets.VPS_SSH_PORT || 22 }}
           timeout: 60s
           command_timeout: 40m
+          # Forward the secrets above into the remote shell session.
+          envs: ELEVENLABS_API_KEY,OPENROUTER_API_KEY
           script: |
             set -euo pipefail
             APP_DIR="${{ vars.VPS_APP_DIR || '/root/projects/Auto-edit' }}"
@@ -103,7 +110,9 @@ jobs:
             cd "$APP_DIR"
             git fetch origin main
             git reset --hard origin/main
-            # deploy.sh preserves .env, rebuilds the stack and health-checks it.
+            # deploy.sh preserves .env, injects forwarded keys, rebuilds + health-checks.
+            ELEVENLABS_API_KEY="${ELEVENLABS_API_KEY:-}" \
+            OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-}" \
             ./deploy.sh
             echo "[ci-deploy] Backend deploy finished."
 

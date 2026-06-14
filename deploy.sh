@@ -69,7 +69,7 @@ def get_key(src: str, key: str) -> str:
 text = set_key(text, 'APP_ENV', 'production')
 text = set_key(text, 'PIPELINE_VERSION', os.environ.get('PIPELINE_VERSION', get_key(text, 'PIPELINE_VERSION') or 'v2'))
 text = set_key(text, 'VIDEO_RENDERER', os.environ.get('VIDEO_RENDERER', get_key(text, 'VIDEO_RENDERER') or 'ffmpeg'))
-text = set_key(text, 'WHISPER_MODEL', os.environ.get('WHISPER_MODEL', get_key(text, 'WHISPER_MODEL') or 'base'))
+text = set_key(text, 'WHISPER_MODEL', os.environ.get('WHISPER_MODEL', get_key(text, 'WHISPER_MODEL') or 'small'))
 text = set_key(text, 'CELERY_CONCURRENCY', os.environ.get('CELERY_CONCURRENCY', get_key(text, 'CELERY_CONCURRENCY') or '2'))
 
 backend_domain = os.environ.get('BACKEND_DOMAIN') or get_key(text, 'BACKEND_DOMAIN') or ''
@@ -94,6 +94,17 @@ secret = get_key(text, 'SECRET_KEY')
 if not secret or secret in {'change-me', 'dev-secret-key-change-in-production'} or secret.startswith('replace-me') or len(secret) < 32:
     text = set_key(text, 'SECRET_KEY', secrets.token_urlsafe(48))
     print('[deploy] Generated stable SECRET_KEY in .env (not printed).')
+
+# Runtime API keys / knobs forwarded from the deploy environment (GitHub
+# secrets via the SSH `envs:` passthrough). Only written when provided AND
+# non-empty, so an absent secret never wipes an existing .env value.
+for _k in ('ELEVENLABS_API_KEY', 'OPENROUTER_API_KEY',
+           'TRANSCRIPTION_PROVIDER', 'TRANSCRIPTION_LANGUAGE'):
+    _v = os.environ.get(_k, '').strip()
+    if _v:
+        text = set_key(text, _k, _v)
+        masked = 'set' if 'KEY' in _k else _v
+        print(f'[deploy] {_k} -> {masked} (from deploy env)')
 
 # Generate a strong Postgres password only on a brand-new .env. Do not rotate
 # it later: an existing Postgres volume keeps the original DB password.
