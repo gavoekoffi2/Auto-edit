@@ -139,7 +139,7 @@ docker rm -f "${COMPOSE_PROJECT_NAME}-backend-1" "${COMPOSE_PROJECT_NAME}-worker
 
 # Build and start all services.
 echo "[deploy] Building and starting AutoEdit production stack..."
-"${COMPOSE[@]}" up -d --build
+"${COMPOSE[@]}" --env-file "$ENV_FILE" up -d --build
 
 echo "[deploy] Services:"
 "${COMPOSE[@]}" ps
