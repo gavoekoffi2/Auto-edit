@@ -48,6 +48,24 @@ W, H = config.WIDTH, config.HEIGHT
 ACCENT = config.MOTION_ACCENT
 GOLD = config.MOTION_GOLD
 INK = config.MOTION_INK
+# Stage background (mutable: varied per video by select_palette()).
+BG_TOP = config.MOTION_BG_TOP
+BG_BOTTOM = config.MOTION_BG_BOTTOM
+
+
+def select_palette(seed_text: str) -> None:
+    """Pick a per-video colour palette (accent/gold/background) from a hash of
+    the spoken content, so two different videos never share the same look —
+    even when scenes fall back to the procedural drawings."""
+    global ACCENT, GOLD, BG_TOP, BG_BOTTOM
+    palettes = getattr(config, "MOTION_PALETTES", None)
+    if not palettes:
+        return
+    import hashlib
+    h = int(hashlib.md5((seed_text or "x").encode("utf-8")).hexdigest(), 16)
+    bg_top, bg_bot, accent, gold = palettes[h % len(palettes)]
+    BG_TOP, BG_BOTTOM = bg_top, bg_bot
+    ACCENT, GOLD = accent, gold
 STROKE_W = 14                      # doodle ink width (px)
 
 # Scene animation timeline (seconds from scene start).  These are the moments
@@ -272,7 +290,7 @@ def _stage_base() -> Image.Image:
     video underneath.
     """
     grad = Image.new("RGB", (1, H))
-    top, bot = config.MOTION_BG_TOP, config.MOTION_BG_BOTTOM
+    top, bot = BG_TOP, BG_BOTTOM
     px = grad.load()
     for y in range(H):
         t = y / (H - 1)
@@ -699,6 +717,8 @@ def render_scene(scene: dict, out_path: str, fps: int = config.FPS) -> dict:
 
 def render_all(scenes: List[dict], outdir: str) -> List[dict]:
     os.makedirs(outdir, exist_ok=True)
+    # Per-video colour palette (variety across videos) seeded by the content.
+    select_palette("|".join(s.get("headline", "") + s.get("excerpt", "") for s in scenes))
     out: List[dict] = []
     for i, scene in enumerate(scenes):
         # Cycle the entrance/exit transition variants so two consecutive
