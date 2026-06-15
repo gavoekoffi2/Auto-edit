@@ -122,12 +122,35 @@ def test_broll_ideas_avoid_motion_spans(rich_vu):
     assert spans, "expected at least one motion span"
 
     ideas = content.derive_broll_ideas(rich_vu, avoid_spans=spans)
+    # A B-roll's CENTRE never lands inside a motion span (the scene owns that
+    # beat). B-roll may touch a span edge — final spacing is enforced at
+    # placement (plan_overlays VISUAL_MIN_GAP), so it fills the gaps BETWEEN
+    # scenes instead of being eliminated.
     for idea in ideas:
-        s, e = idea["source_start"], idea["source_end"]
+        mid = (idea["source_start"] + idea["source_end"]) / 2.0
         for ms, me in spans:
-            assert not (s < me and e > ms), (
-                f"B-roll {idea['id']} ({s}-{e}) overlaps motion span ({ms}-{me})"
+            assert not (ms <= mid <= me), (
+                f"B-roll {idea['id']} centre {mid} inside motion span ({ms}-{me})"
             )
+
+
+def test_motion_scenes_scale_with_duration():
+    """Longer videos must get MANY more motion scenes (not capped low)."""
+    def _mk(duration, n):
+        step = duration / n
+        segs = []
+        topics = ["vendre en ligne mobile money", "stratégie marketing whatsapp tiktok",
+                  "confiance client service rapide", "produit photo boutique livraison",
+                  "formation méthode étape secret", "argent profit croissance chiffre"]
+        for i in range(n):
+            s = i * step
+            segs.append(_seg(s, s + step * 0.9, topics[i % len(topics)] + f" point {i}"))
+        return {"language": "fr", "duration": duration, "segments": segs}
+
+    short = content.derive_motion_scenes(_mk(60, 12))
+    long = content.derive_motion_scenes(_mk(600, 90))
+    assert len(long) > len(short)
+    assert len(long) >= 15, f"a 10-min video should get many scenes, got {len(long)}"
 
 
 def test_icon_mapping_matches_concepts():

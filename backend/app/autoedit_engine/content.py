@@ -369,8 +369,11 @@ def derive_broll_ideas(
         if len(ideas) >= n:
             break
         s, e, spoken_text = float(window["start"]), float(window["end"]), window["text"]
-        if motion_spans and _overlaps(s, e, motion_spans):
-            # A motion-design scene already illustrates this beat.
+        # Avoid a motion scene only when this window's CENTER falls inside it
+        # (the scene owns that beat). A window merely touching the edge still
+        # counts, so B-roll fills the gaps BETWEEN scenes instead of vanishing.
+        mid = (s + e) / 2.0
+        if motion_spans and any(ms <= mid <= me for ms, me in motion_spans):
             continue
         if graphic_spans and not is_short and _overlaps(s, e, graphic_spans) and idx % 2 == 0:
             # For long videos, let some motion-design beats carry the narration.

@@ -140,12 +140,12 @@ BROLL_STYLE_PREFIX = (
 # B-roll cadence — COST-AWARE: motion-design scenes (cheap or free) carry a
 # larger share of the visual rhythm, so generated images are reserved for the
 # strongest beats. Values can be overridden through environment variables.
-SECONDS_PER_BROLL = float(os.getenv("SECONDS_PER_BROLL", "9.0"))
-SECONDS_PER_BROLL_WITH_MOTION = float(os.getenv("SECONDS_PER_BROLL_WITH_MOTION", "12.0"))
+SECONDS_PER_BROLL = float(os.getenv("SECONDS_PER_BROLL", "7.0"))
+SECONDS_PER_BROLL_WITH_MOTION = float(os.getenv("SECONDS_PER_BROLL_WITH_MOTION", "9.0"))
 SHORTS_MAX_DURATION_SECONDS = float(os.getenv("SHORTS_MAX_DURATION_SECONDS", "90.0"))
-SHORTS_SECONDS_PER_BROLL = float(os.getenv("SHORTS_SECONDS_PER_BROLL", "6.0"))
-SHORTS_SECONDS_PER_BROLL_WITH_MOTION = float(os.getenv("SHORTS_SECONDS_PER_BROLL_WITH_MOTION", "8.0"))
-MAX_BROLL_IMAGES = int(os.getenv("MAX_BROLL_IMAGES", "8"))   # hard API budget cap
+SHORTS_SECONDS_PER_BROLL = float(os.getenv("SHORTS_SECONDS_PER_BROLL", "4.5"))
+SHORTS_SECONDS_PER_BROLL_WITH_MOTION = float(os.getenv("SHORTS_SECONDS_PER_BROLL_WITH_MOTION", "5.0"))
+MAX_BROLL_IMAGES = int(os.getenv("MAX_BROLL_IMAGES", "18"))   # hard API budget cap (scales with length up to this)
 
 # Precise image prompts: a cheap text model rewrites each spoken excerpt into a
 # literal visual scene before image generation (heuristic fallback if it fails).
@@ -193,9 +193,12 @@ MOTION_STYLE_PREFIX = (
     "NO numbers in the image. Scene to illustrate: "
 )
 
-MOTION_EVERY_SHORT = 14.0       # ~1 scene / 14 s on shorts (<= 90 s)
-MOTION_EVERY_LONG = 22.0        # ~1 scene / 22 s on longer videos
-MOTION_MAX_SCENES = 8
+# Densité du motion design — le NOMBRE de scènes grandit avec la durée:
+# ~1 scène toutes les 13 s (court) / 16 s (long). Le plafond est élevé pour que
+# les vidéos longues reçoivent BEAUCOUP plus de motion design (demande produit).
+MOTION_EVERY_SHORT = float(os.getenv("MOTION_EVERY_SHORT", "13.0"))
+MOTION_EVERY_LONG = float(os.getenv("MOTION_EVERY_LONG", "16.0"))
+MOTION_MAX_SCENES = int(os.getenv("MOTION_MAX_SCENES", "40"))
 MOTION_MIN_SPACING = 10.0       # seconds between two scene starts
 MOTION_MIN_START = 2.0          # never take over the very first seconds
 # Une scène dure le TEMPS DU PROPOS qu'elle illustre (bornée), pas une durée
@@ -207,9 +210,11 @@ MOTION_SCENE_MIN_DUR = 3.2      # une scène ne reste jamais moins de ça
 MOTION_SCENE_MAX_DUR = 6.0      # ni plus longtemps (le visage revient vite)
 MOTION_LEAD = 0.15              # scene starts slightly before the spoken beat
 
-# API budget: only the top-priority scenes get an AI illustration; the others
-# use the procedural line-art drawings (free). 0 disables AI illustrations.
-MOTION_AI_ILLUSTRATIONS_MAX = int(os.getenv("MOTION_AI_ILLUSTRATIONS_MAX", "3"))
+# Créativité: par défaut, CHAQUE scène reçoit une illustration IA unique (quand
+# la clé OpenRouter est là) — c'est ce qui évite "les mêmes dessins à chaque
+# vidéo". Les dessins procéduraux ne servent que de repli (pas de clé / échec).
+# Baisser cette valeur pour économiser l'API. 0 = jamais d'illustration IA.
+MOTION_AI_ILLUSTRATIONS_MAX = int(os.getenv("MOTION_AI_ILLUSTRATIONS_MAX", "12"))
 
 # Transition UNIQUE et COHÉRENTE pour toutes les scènes (demande produit: pas
 # de mouvements désordonnés). La scène GLISSE vers le haut en entrant, redescend
@@ -223,6 +228,18 @@ MOTION_BG_BOTTOM = (26, 19, 46)
 MOTION_ACCENT = (0, 220, 255, 255)      # cyan ink (arrows / doodles)
 MOTION_GOLD = (255, 199, 64, 255)       # gold ink (highlights / counters)
 MOTION_INK = (255, 255, 255, 255)
+
+# CRÉATIVITÉ — palettes alternées d'une VIDÉO à l'autre (seed = hash du
+# discours) pour que les scènes procédurales ne se ressemblent jamais. Chaque
+# entrée = (bg_top, bg_bottom, accent RGBA, gold/second RGBA).
+MOTION_PALETTES = [
+    ((11, 14, 26), (26, 19, 46), (0, 220, 255, 255), (255, 199, 64, 255)),    # cyan / gold (signature)
+    ((20, 12, 28), (40, 16, 40), (255, 96, 120, 255), (120, 230, 255, 255)),  # coral / ice
+    ((10, 22, 24), (12, 40, 38), (60, 240, 180, 255), (255, 210, 90, 255)),   # mint / amber
+    ((18, 14, 32), (34, 18, 54), (170, 130, 255, 255), (120, 255, 180, 255)), # violet / lime
+    ((24, 16, 12), (44, 24, 14), (255, 170, 60, 255), (90, 220, 255, 255)),   # amber / sky
+    ((12, 18, 30), (18, 30, 56), (90, 150, 255, 255), (255, 140, 90, 255)),   # blue / coral
+]
 
 # SFX vocabulary for motion scenes (rotating pools, mixed by plan_overlays).
 MOTION_RISER_SFX = ["riser", "reverse_swell", "tape_stop"]   # anticipation, -0.45 s
@@ -275,8 +292,8 @@ GRAPHIC_LEAD = 0.2             # graphics placed -0.2 s before the topic starts
 # Respiration entre deux visuels: on laisse le cadre "parlant" revenir un
 # moment avant qu'un autre visuel passe (demande produit: "quand l'autre passe,
 # ça attend un peu avant que le suivant vienne"). Vaut pour B-roll ET motion.
-BROLL_MIN_GAP = 1.2            # >= 1.2 s de respiration entre deux visuels
-VISUAL_MIN_GAP = 1.0          # marge mini entre une scène motion et un B-roll
+BROLL_MIN_GAP = 0.8            # respiration entre deux B-roll
+VISUAL_MIN_GAP = 0.35         # le B-roll peut suivre une scène motion de près (pas de chevauchement)
 GAPFILL_THRESHOLD = 4.0        # gaps > 4 s without a visual get a filler SFX
 
 # Graphic SFX (varied, alternated).
