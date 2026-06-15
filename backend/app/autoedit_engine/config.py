@@ -193,10 +193,10 @@ MOTION_STYLE_PREFIX = (
     "NO numbers in the image. Scene to illustrate: "
 )
 
-MOTION_EVERY_SHORT = 14.0       # ~1 scene / 14 s on shorts (<= 90 s)
-MOTION_EVERY_LONG = 22.0        # ~1 scene / 22 s on longer videos
-MOTION_MAX_SCENES = 8
-MOTION_MIN_SPACING = 10.0       # seconds between two scene starts
+MOTION_EVERY_SHORT = 10.0       # denser explainer rhythm on shorts (<= 90 s)
+MOTION_EVERY_LONG = 16.0        # more motion scenes on long explanatory videos
+MOTION_MAX_SCENES = 14
+MOTION_MIN_SPACING = 7.0        # seconds between two scene starts
 MOTION_MIN_START = 2.0          # never take over the very first seconds
 # Une scène dure le TEMPS DU PROPOS qu'elle illustre (bornée), pas une durée
 # fixe: elle glisse quand la personne commence à parler du point, et repart
@@ -209,7 +209,7 @@ MOTION_LEAD = 0.15              # scene starts slightly before the spoken beat
 
 # API budget: only the top-priority scenes get an AI illustration; the others
 # use the procedural line-art drawings (free). 0 disables AI illustrations.
-MOTION_AI_ILLUSTRATIONS_MAX = int(os.getenv("MOTION_AI_ILLUSTRATIONS_MAX", "3"))
+MOTION_AI_ILLUSTRATIONS_MAX = int(os.getenv("MOTION_AI_ILLUSTRATIONS_MAX", "2"))
 
 # Transition UNIQUE et COHÉRENTE pour toutes les scènes (demande produit: pas
 # de mouvements désordonnés). La scène GLISSE vers le haut en entrant, redescend

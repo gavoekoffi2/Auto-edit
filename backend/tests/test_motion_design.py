@@ -221,6 +221,23 @@ def test_render_all_writes_manifest(tmp_path, rich_vu):
     json.dumps(rendered)                             # manifest is serialisable
 
 
+def test_long_explainer_gets_denser_motion_design():
+    segments = []
+    for i in range(24):
+        s = i * 7.5
+        segments.append(_seg(
+            s,
+            s + 6.5,
+            f"attention étape {i + 1} voici une méthode importante pour résoudre le problème client avec une solution concrète et mesurable",
+        ))
+    vu = {"language": "fr", "duration": 180.0, "segments": segments}
+    scenes = content.derive_motion_scenes(vu)
+    assert 9 <= len(scenes) <= engine_config.MOTION_MAX_SCENES
+    assert engine_config.MOTION_MAX_SCENES >= 14
+    for a, b in zip(scenes, scenes[1:]):
+        assert b["source_start"] - a["source_start"] >= engine_config.MOTION_MIN_SPACING - 0.01
+
+
 def test_motion_scenes_guaranteed_on_long_videos(rich_vu, monkeypatch):
     # Même si le scoring ne trouve AUCUN beat fort, une vidéo assez longue
     # doit toujours recevoir au moins une scène motion design (promesse produit).

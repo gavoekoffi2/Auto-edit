@@ -387,7 +387,14 @@ def derive_broll_ideas(
     counts = keyword_counts(vu)
     suffix = _demographic_suffix(demographic)
     ideas: List[dict] = []
-    windows = _broll_windows(vu, seconds_per, max_windows=max(n * 2, n + 4))
+    # With denser motion design, many windows can be reserved for free
+    # procedural illustrations. Scan farther ahead so we still keep the B-roll
+    # image budget when enough non-overlapping speech exists.
+    windows = _broll_windows(
+        vu,
+        seconds_per,
+        max_windows=max(n * 5, n + len(motion_spans) * 2 + 8),
+    )
 
     for idx, window in enumerate(windows):
         if len(ideas) >= n:
