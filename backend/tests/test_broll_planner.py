@@ -5,6 +5,7 @@ from app.processing.broll_planner import (
     _scene_from_text,
 )
 from app.autoedit_engine.content import derive_broll_ideas
+from app.autoedit_engine import config as engine_config
 
 from app.processing.types import (
     Cut,
@@ -134,7 +135,35 @@ def test_engine_broll_ideas_are_more_dense_for_shorts_even_with_graphics():
     # Cost-aware cadence: shorts stay denser than long videos, but the
     # motion-design scenes now carry part of the rhythm (API savings).
     assert len(short_ideas) >= 6
+    assert len(short_ideas) <= engine_config.MAX_BROLL_IMAGES
+    assert len(long_ideas) <= engine_config.MAX_BROLL_IMAGES
     assert len(short_ideas) / 60.0 > len(long_ideas) / 180.0
+
+
+def test_engine_broll_keeps_image_budget_with_dense_motion():
+    segments = []
+    for i in range(40):
+        s = i * 4.5
+        text = "marketing client paiement mobile money boutique en ligne stratégie croissance livraison"
+        segments.append({
+            "start": s,
+            "end": s + 4.0,
+            "text": text,
+            "words": [
+                {"word": w, "start": s + j * 0.38, "end": s + (j + 1) * 0.38}
+                for j, w in enumerate(text.split())
+            ],
+        })
+    vu = {"duration": 180.0, "segments": segments}
+    scenes = derive_broll_ideas.__globals__["derive_motion_scenes"](vu)
+    ideas = derive_broll_ideas(
+        vu,
+        demographic="african",
+        avoid_spans=derive_broll_ideas.__globals__["motion_scene_spans"](scenes),
+    )
+    assert len(scenes) > 8
+    assert len(ideas) >= 6                       # motion never starves B-roll
+    assert len(ideas) <= engine_config.MAX_BROLL_IMAGES
 
 
 def test_engine_broll_ideas_can_target_caucasian_casting():

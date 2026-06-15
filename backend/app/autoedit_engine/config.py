@@ -31,6 +31,8 @@ SCRIBE_MODEL_ID = "scribe_v1"
 # --------------------------------------------------------------------------- #
 # STEP 2 — EDL (cut rules) — RÈGLE PRO #1 RYTHME
 # --------------------------------------------------------------------------- #
+ENGINE_INTERMEDIATE_PRESET = os.getenv("ENGINE_INTERMEDIATE_PRESET", "veryfast")
+ENGINE_INTERMEDIATE_CRF = int(os.getenv("ENGINE_INTERMEDIATE_CRF", "19"))
 GAP_CUT = float(os.getenv("ENGINE_GAP_CUT", "0.4"))   # silence >= this between two words = a cut (tighter = punchier)
 PAD = 0.10              # seconds: SMALL margin around a run — un pad large ré-ajoutait
                         # du silence à chaque coupe (0.18 -> 0.36 s gardés par coupe !)
@@ -194,12 +196,12 @@ MOTION_STYLE_PREFIX = (
 )
 
 # Densité du motion design — le NOMBRE de scènes grandit avec la durée:
-# ~1 scène toutes les 13 s (court) / 16 s (long). Le plafond est élevé pour que
-# les vidéos longues reçoivent BEAUCOUP plus de motion design (demande produit).
-MOTION_EVERY_SHORT = float(os.getenv("MOTION_EVERY_SHORT", "13.0"))
+# ~1 scène toutes les 11 s (court) / 16 s (long), rythme dense. Le plafond est
+# ÉLEVÉ pour que les vidéos longues reçoivent BEAUCOUP plus de motion design.
+MOTION_EVERY_SHORT = float(os.getenv("MOTION_EVERY_SHORT", "11.0"))
 MOTION_EVERY_LONG = float(os.getenv("MOTION_EVERY_LONG", "16.0"))
 MOTION_MAX_SCENES = int(os.getenv("MOTION_MAX_SCENES", "40"))
-MOTION_MIN_SPACING = 10.0       # seconds between two scene starts
+MOTION_MIN_SPACING = float(os.getenv("MOTION_MIN_SPACING", "7.0"))  # seconds between two scene starts
 MOTION_MIN_START = 2.0          # never take over the very first seconds
 # Une scène dure le TEMPS DU PROPOS qu'elle illustre (bornée), pas une durée
 # fixe: elle glisse quand la personne commence à parler du point, et repart
@@ -254,6 +256,7 @@ MOTION_MAX_ELEMENT_SFX = 4      # cap per scene so SFX stay accents, not noise
 # STEP 7 — KEYWORD POPUPS — RÈGLE PRO #2
 # --------------------------------------------------------------------------- #
 KEYWORD_TOP_N = 8
+KEYWORD_POPUP_MAX_PER_VIDEO = int(os.getenv("KEYWORD_POPUP_MAX_PER_VIDEO", "8"))
 KEYWORD_MIN_GAP = 8.0          # seconds between two occurrences of the same word
 KEYWORD_POPUP_DUR = 1.5
 KEYWORD_POPUP_Y = 380          # above the face, TikTok style
@@ -273,6 +276,8 @@ STOPWORDS = {
     "avoir", "fait", "faire", "comme", "aussi", "alors", "bien", "tout",
     "tous", "toute", "toutes", "cela", "ça", "ce", "si", "non", "oui",
     "va", "vais", "vas", "vont", "allez", "veux", "veut", "peux", "peut",
+    "dire", "dit", "dis", "parler", "tellement", "probablement", "voir", "vu",
+    "passer", "passe", "vient", "venir", "semaine", "derrière", "derriere",
     # contractions courantes (le tokenizer garde l'apostrophe)
     "c'est", "n'est", "s'est", "qu'il", "qu'elle", "qu'on", "j'ai", "t'as",
     "d'un", "d'une", "l'on", "jusqu'à", "aujourd'hui", "quelqu'un",
@@ -406,7 +411,7 @@ DEFAULT_TEMPLATE = "tiktok_yellow"
 # FINAL RENDER — qualité visible (master net pour TikTok/Reels)
 # --------------------------------------------------------------------------- #
 FINAL_CRF = int(os.getenv("FINAL_CRF", "20"))      # 26 -> 20 : nettement plus net
-FINAL_PRESET = os.getenv("FINAL_PRESET", "slow")
+FINAL_PRESET = os.getenv("FINAL_PRESET", "medium")
 FINAL_AUDIO_BITRATE = "192k"                        # 128k -> 192k : voix plus propre
 
 # Fonts (Linux system DejaVu fallback + Google Fonts in ~/.fonts).

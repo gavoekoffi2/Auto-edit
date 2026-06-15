@@ -111,6 +111,19 @@ def test_motion_scenes_avoid_repeated_headlines_and_icons():
         assert a != b, f"consecutive identical icon: {icons}"
 
 
+def test_motion_labels_are_clean_and_semantic():
+    vu = {"language": "fr", "duration": 42.0, "segments": [
+        _seg(0, 6, "introduction rapide sans importance"),
+        _seg(7, 15, "attention l'intelligence artificielle devient très puissante pour créer des vidéos"),
+        _seg(17, 25, "le gouvernement américain tire le frein d'urgence parce que le modèle devient dangereux"),
+        _seg(27, 35, "voici la méthode concrète pour utiliser cette technologie sans perdre du temps"),
+    ]}
+    scenes = content.derive_motion_scenes(vu)
+    assert scenes
+    assert all(not s["headline"].startswith("L'") for s in scenes)
+    assert not any(s["headline"] in {"DIRE", "TELLEMENT", "PROBABLEMENT"} for s in scenes)
+
+
 def test_derive_motion_scenes_short_video_returns_empty():
     vu = {"duration": 8.0, "segments": [_seg(0.0, 8.0, "très court extrait sans grand contenu")]}
     assert content.derive_motion_scenes(vu) == []
@@ -229,6 +242,23 @@ def test_render_all_writes_manifest(tmp_path, rich_vu):
     manifest = {**rendered[0]}
     assert manifest["events"]["exit"] > 0
     json.dumps(rendered)                             # manifest is serialisable
+
+
+def test_long_explainer_gets_denser_motion_design():
+    segments = []
+    for i in range(24):
+        s = i * 7.5
+        segments.append(_seg(
+            s,
+            s + 6.5,
+            f"attention étape {i + 1} voici une méthode importante pour résoudre le problème client avec une solution concrète et mesurable",
+        ))
+    vu = {"language": "fr", "duration": 180.0, "segments": segments}
+    scenes = content.derive_motion_scenes(vu)
+    assert 9 <= len(scenes) <= engine_config.MOTION_MAX_SCENES
+    assert engine_config.MOTION_MAX_SCENES >= 14
+    for a, b in zip(scenes, scenes[1:]):
+        assert b["source_start"] - a["source_start"] >= engine_config.MOTION_MIN_SPACING - 0.01
 
 
 def test_motion_scenes_guaranteed_on_long_videos(rich_vu, monkeypatch):

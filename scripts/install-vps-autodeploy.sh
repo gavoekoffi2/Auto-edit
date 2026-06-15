@@ -42,6 +42,9 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=$APP_DIR
+Environment=HOME=/root
+Environment=XDG_CONFIG_HOME=/root/.config
+Environment=GIT_TERMINAL_PROMPT=0
 Environment=APP_DIR=$APP_DIR ${ENV_LINE}
 ExecStart=/usr/bin/env bash $SCRIPT
 EOF
