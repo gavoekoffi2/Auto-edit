@@ -42,6 +42,32 @@ GOLD = config.KEYWORD_CHIP_COLOR
 BG = (12, 14, 22, 200)
 _WORD_RE = re.compile(r"[A-Za-zÀ-ÿ0-9']+")
 
+_POPUP_BLOCKLIST = {
+    "dire", "dit", "dis", "parler", "tellement", "probablement", "voir", "vu",
+    "passer", "passe", "vient", "venir", "semaine", "derriere", "derrière",
+    "created", "create", "make", "thing", "things",
+}
+
+
+def _display_keyword(kw: str) -> str:
+    """Clean spoken token for a premium on-screen chip."""
+    cleaned = kw.strip().lower().strip("'’\".,;:!?()[]{}")
+    cleaned = re.sub(r"^(?:l|d|j|m|t|s|c|n|qu)['’]", "", cleaned)
+    return cleaned
+
+
+def _is_strong_keyword(kw: str) -> bool:
+    display = _display_keyword(kw)
+    if len(display) < 5 or display.isdigit():
+        return False
+    if display in _POPUP_BLOCKLIST or display in config.STOPWORDS or display in config.FILLERS:
+        return False
+    # Avoid weak French adverbs that often appear frequently but do not help the
+    # viewer understand the point.
+    if display.endswith("ment") and display not in {"paiement", "investissement"}:
+        return False
+    return True
+
 
 # --------------------------------------------------------------------------- #
 # chip rendering
@@ -158,7 +184,8 @@ def build_popups(edl_path: str, outdir: str,
         sfx_cues_path = os.path.join(os.path.dirname(os.path.abspath(edl_path)),
                                      "sfx_cues.json")
 
-    keywords = content.top_keywords(vu, config.KEYWORD_TOP_N)
+    keywords = [kw for kw in content.top_keywords(vu, config.KEYWORD_TOP_N * 2)
+                if _is_strong_keyword(kw)][:config.KEYWORD_TOP_N]
 
     # Full-frame takeovers (motion-design scenes) own their span: a popup chip
     # must never blink on top of an illustrated scene.
@@ -188,13 +215,16 @@ def build_popups(edl_path: str, outdir: str,
             kept.append((ot, kw))
             last = ot
 
+    kept = kept[:config.KEYWORD_POPUP_MAX_PER_VIDEO]
+
     movs: Dict[str, str] = {}
     overlays = edl.get("overlays", [])
     counters: Dict[str, int] = {}
     for ot, kw in kept:
+        label = _display_keyword(kw)
         if kw not in movs:
             mov = os.path.join(outdir, f"popup_{_fname_safe(kw)}.mov")
-            render_popup(kw, mov)
+            render_popup(label, mov)
             movs[kw] = mov
         k = counters.get(kw, 0)
         counters[kw] = k + 1

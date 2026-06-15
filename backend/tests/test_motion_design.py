@@ -111,6 +111,19 @@ def test_motion_scenes_avoid_repeated_headlines_and_icons():
         assert a != b, f"consecutive identical icon: {icons}"
 
 
+def test_motion_labels_are_clean_and_semantic():
+    vu = {"language": "fr", "duration": 42.0, "segments": [
+        _seg(0, 6, "introduction rapide sans importance"),
+        _seg(7, 15, "attention l'intelligence artificielle devient très puissante pour créer des vidéos"),
+        _seg(17, 25, "le gouvernement américain tire le frein d'urgence parce que le modèle devient dangereux"),
+        _seg(27, 35, "voici la méthode concrète pour utiliser cette technologie sans perdre du temps"),
+    ]}
+    scenes = content.derive_motion_scenes(vu)
+    assert scenes
+    assert all(not s["headline"].startswith("L'") for s in scenes)
+    assert not any(s["headline"] in {"DIRE", "TELLEMENT", "PROBABLEMENT"} for s in scenes)
+
+
 def test_derive_motion_scenes_short_video_returns_empty():
     vu = {"duration": 8.0, "segments": [_seg(0.0, 8.0, "très court extrait sans grand contenu")]}
     assert content.derive_motion_scenes(vu) == []

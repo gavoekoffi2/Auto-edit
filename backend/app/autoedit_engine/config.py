@@ -237,6 +237,7 @@ MOTION_MAX_ELEMENT_SFX = 4      # cap per scene so SFX stay accents, not noise
 # STEP 7 — KEYWORD POPUPS — RÈGLE PRO #2
 # --------------------------------------------------------------------------- #
 KEYWORD_TOP_N = 8
+KEYWORD_POPUP_MAX_PER_VIDEO = int(os.getenv("KEYWORD_POPUP_MAX_PER_VIDEO", "8"))
 KEYWORD_MIN_GAP = 8.0          # seconds between two occurrences of the same word
 KEYWORD_POPUP_DUR = 1.5
 KEYWORD_POPUP_Y = 380          # above the face, TikTok style
@@ -256,6 +257,8 @@ STOPWORDS = {
     "avoir", "fait", "faire", "comme", "aussi", "alors", "bien", "tout",
     "tous", "toute", "toutes", "cela", "ça", "ce", "si", "non", "oui",
     "va", "vais", "vas", "vont", "allez", "veux", "veut", "peux", "peut",
+    "dire", "dit", "dis", "parler", "tellement", "probablement", "voir", "vu",
+    "passer", "passe", "vient", "venir", "semaine", "derrière", "derriere",
     # contractions courantes (le tokenizer garde l'apostrophe)
     "c'est", "n'est", "s'est", "qu'il", "qu'elle", "qu'on", "j'ai", "t'as",
     "d'un", "d'une", "l'on", "jusqu'à", "aujourd'hui", "quelqu'un",

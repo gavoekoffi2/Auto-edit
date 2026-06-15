@@ -203,6 +203,29 @@ def _headline(text: str, max_words: int = 4) -> str:
     return " ".join(toks[:max_words]).upper()
 
 
+def _clean_display_token(token: str) -> str:
+    """Normalize a spoken token for on-screen labels (l'intelligence -> intelligence)."""
+    cleaned = token.strip().lower().strip("'’\".,;:!?()[]{}")
+    cleaned = re.sub(r"^(?:l|d|j|m|t|s|c|n|qu)['’]", "", cleaned)
+    return cleaned
+
+
+def _display_label_from_focus(focus: List[str], fallback_text: str, max_words: int = 2) -> str:
+    """Professional short label from meaningful concepts, not generic filler words."""
+    labels: List[str] = []
+    for tok in focus:
+        clean = _clean_display_token(tok)
+        if (len(clean) < 4 or clean in config.STOPWORDS or clean in config.FILLERS
+                or clean in labels):
+            continue
+        labels.append(clean)
+        if len(labels) >= max_words:
+            break
+    if labels:
+        return " ".join(labels).upper()
+    return _headline(fallback_text, max_words)
+
+
 def derive_overlay_specs(vu: dict) -> List[dict]:
     """
     Decide which graphic overlays to render and over which topic span.
@@ -417,7 +440,9 @@ def _beat_score(text: str, counts: Counter) -> float:
     toks = _content_tokens(text)
     if toks:
         top = sorted((counts.get(t, 0) for t in set(toks)), reverse=True)[:3]
-        score += min(2.0, 0.25 * sum(top))
+        # Frequency is only a tie-breaker. It must not promote weak repeated
+        # words into full-screen motion scenes by itself.
+        score += min(1.0, 0.12 * sum(top))
     return score
 
 
@@ -473,7 +498,7 @@ def derive_motion_scenes(vu: dict, demographic: str = "african") -> List[dict]:
         start = float(tp["start"])
         if any(abs(start - float(p["start"])) < config.MOTION_MIN_SPACING for p in picked):
             continue
-        if _beat_score(tp["text"], counts) <= 0.5:
+        if _beat_score(tp["text"], counts) <= 1.2:
             continue
         picked.append(tp)
 
@@ -500,9 +525,10 @@ def derive_motion_scenes(vu: dict, demographic: str = "african") -> List[dict]:
         # Choisir un titre DIFFÉRENT des scènes précédentes (évite
         # "confiance / confiance / confiance"). On prend le 1er mot-clé non
         # encore utilisé; sinon on retombe sur le meilleur disponible.
-        headline = next((t.upper() for t in ranked_toks if t.upper() not in used_headlines), "")
+        headline = next((_display_label_from_focus([t], text) for t in ranked_toks
+                         if _display_label_from_focus([t], text) not in used_headlines), "")
         if not headline:
-            headline = (ranked_toks[0] if ranked_toks else (toks[0] if toks else "POINT CLÉ")).upper()
+            headline = _display_label_from_focus(focus, text)
         used_headlines.add(headline)
         excerpt = _safe_excerpt(text, 170)
         pct = _PERCENT_RE.search(text)
