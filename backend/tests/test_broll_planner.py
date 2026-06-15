@@ -134,6 +134,8 @@ def test_engine_broll_ideas_are_more_dense_for_shorts_even_with_graphics():
     # Cost-aware cadence: shorts stay denser than long videos, but the
     # motion-design scenes now carry part of the rhythm (API savings).
     assert len(short_ideas) >= 6
+    assert len(short_ideas) <= 8
+    assert len(long_ideas) <= 8
     assert len(short_ideas) / 60.0 > len(long_ideas) / 180.0
 
 

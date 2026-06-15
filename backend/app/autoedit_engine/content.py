@@ -382,6 +382,7 @@ def derive_broll_ideas(
     seconds_per = _broll_seconds_per(total, bool(graphic_spans))
     if n is None:
         n = max(1, round(total / seconds_per))
+    n = max(1, min(n, config.MAX_BROLL_IMAGES))
 
     counts = keyword_counts(vu)
     suffix = _demographic_suffix(demographic)
@@ -404,7 +405,7 @@ def derive_broll_ideas(
             continue
         ranked = sorted(set(toks), key=lambda t: counts.get(t, 0), reverse=True)
         focus = ranked[:5]
-        label = (ranked[0] if ranked else toks[0]).upper()
+        label = _display_label_from_focus(focus, spoken_text, max_words=2)
         scene = _scene_for_broll_text(spoken_text, focus)
         excerpt = _safe_excerpt(spoken_text)
         prompt = (
