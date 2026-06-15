@@ -31,6 +31,8 @@ SCRIBE_MODEL_ID = "scribe_v1"
 # --------------------------------------------------------------------------- #
 # STEP 2 — EDL (cut rules) — RÈGLE PRO #1 RYTHME
 # --------------------------------------------------------------------------- #
+ENGINE_INTERMEDIATE_PRESET = os.getenv("ENGINE_INTERMEDIATE_PRESET", "veryfast")
+ENGINE_INTERMEDIATE_CRF = int(os.getenv("ENGINE_INTERMEDIATE_CRF", "19"))
 GAP_CUT = float(os.getenv("ENGINE_GAP_CUT", "0.4"))   # silence >= this between two words = a cut (tighter = punchier)
 PAD = 0.10              # seconds: SMALL margin around a run — un pad large ré-ajoutait
                         # du silence à chaque coupe (0.18 -> 0.36 s gardés par coupe !)
@@ -392,7 +394,7 @@ DEFAULT_TEMPLATE = "tiktok_yellow"
 # FINAL RENDER — qualité visible (master net pour TikTok/Reels)
 # --------------------------------------------------------------------------- #
 FINAL_CRF = int(os.getenv("FINAL_CRF", "20"))      # 26 -> 20 : nettement plus net
-FINAL_PRESET = os.getenv("FINAL_PRESET", "slow")
+FINAL_PRESET = os.getenv("FINAL_PRESET", "medium")
 FINAL_AUDIO_BITRATE = "192k"                        # 128k -> 192k : voix plus propre
 
 # Fonts (Linux system DejaVu fallback + Google Fonts in ~/.fonts).

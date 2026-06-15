@@ -119,7 +119,8 @@ def apply_dynamics(base_only: str, edl_path: str, out_path: str) -> str:
     ffmpeg_utils.run([
         ffmpeg_utils.FFMPEG, "-y", "-i", base_only,
         "-vf", vf,
-        "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p",
+        "-c:v", "libx264", "-preset", config.ENGINE_INTERMEDIATE_PRESET,
+        "-crf", str(config.ENGINE_INTERMEDIATE_CRF), "-pix_fmt", "yuv420p",
         "-c:a", "copy",
         out_path,
     ])

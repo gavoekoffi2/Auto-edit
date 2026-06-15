@@ -293,7 +293,8 @@ def encode_segments(source: str, ranges: List[dict], clips_dir: str) -> List[str
             "-i", source,
             "-vf", grade,
             "-af", af,
-            "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p",
+            "-c:v", "libx264", "-preset", config.ENGINE_INTERMEDIATE_PRESET,
+            "-crf", str(config.ENGINE_INTERMEDIATE_CRF), "-pix_fmt", "yuv420p",
             "-r", str(config.FPS),
             "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
             out,
@@ -317,7 +318,8 @@ def concat_segments(seg_paths: List[str], out_path: str) -> str:
     cmd += [
         "-filter_complex", filt,
         "-map", "[v]", "-map", "[a]",
-        "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p",
+        "-c:v", "libx264", "-preset", config.ENGINE_INTERMEDIATE_PRESET,
+        "-crf", str(config.ENGINE_INTERMEDIATE_CRF), "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
         out_path,
     ]
