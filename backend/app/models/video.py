@@ -30,7 +30,7 @@ class Video(Base):
     duration_s: Mapped[float] = mapped_column(Float, nullable=True)
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     status: Mapped[str] = mapped_column(
-        SAEnum("uploaded", "processing", "ready", "error", name="video_status"),
+        SAEnum("uploaded", "compressing", "processing", "ready", "error", name="video_status"),
         default="uploaded",
         server_default="uploaded",
     )

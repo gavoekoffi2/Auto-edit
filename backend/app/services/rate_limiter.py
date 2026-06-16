@@ -47,10 +47,16 @@ async def check_rate_limit(
                 detail=f"Too many attempts. Try again in {ttl} seconds.",
             )
 
-        pipe = r.pipeline()
-        pipe.incr(redis_key)
-        pipe.expire(redis_key, window_seconds)
-        await pipe.execute()
+        # Atomic INCR + conditional EXPIRE via Lua: the TTL is set only on the
+        # first attempt (when INCR returns 1). Without this, each failed login
+        # would reset the 15-minute window, letting an attacker keep it open
+        # indefinitely with a slow-drip attack.
+        _lua_incr_set_ttl = (
+            "local v = redis.call('INCR', KEYS[1]) "
+            "if v == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end "
+            "return v"
+        )
+        await r.eval(_lua_incr_set_ttl, 1, redis_key, window_seconds)
 
     except HTTPException:
         raise

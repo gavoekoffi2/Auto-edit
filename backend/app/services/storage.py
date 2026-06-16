@@ -12,6 +12,14 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Pre-import at module level so import failures are surfaced at startup, not
+# silently swallowed inside emergency_cleanup() at disk-full time.
+try:
+    from app.autoedit_engine.pipeline import cleanup_intermediates as _cleanup_intermediates
+except Exception as _import_err:  # pragma: no cover
+    logger.warning("autoedit_engine.pipeline not importable — emergency disk cleanup disabled: %s", _import_err)
+    _cleanup_intermediates = None
+
 
 def _min_free_bytes() -> int:
     """Marge disque exigée avant d'accepter un upload (source: settings).
@@ -85,9 +93,7 @@ def emergency_cleanup(upload_root: str) -> int:
     touche QUE les fichiers intermédiaires connus — jamais les vidéos sources
     ni les montages finaux.
     """
-    try:
-        from app.autoedit_engine.pipeline import cleanup_intermediates
-    except Exception:  # pragma: no cover - engine import guard
+    if _cleanup_intermediates is None:
         return 0
     freed = 0
     root = Path(upload_root)
@@ -97,7 +103,7 @@ def emergency_cleanup(upload_root: str) -> int:
     for output_dir in root.glob("*/output/*"):
         if output_dir.is_dir():
             try:
-                freed += cleanup_intermediates(str(output_dir))
+                freed += _cleanup_intermediates(str(output_dir))
             except Exception as exc:  # noqa: BLE001 - best effort
                 logger.warning("emergency_cleanup skipped %s: %s", output_dir, exc)
     if freed:

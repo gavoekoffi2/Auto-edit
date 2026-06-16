@@ -162,6 +162,16 @@ async def create_job(
     if not video:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found")
 
+    # Block job creation while the fast-ingest compression task is running.
+    if video.status == "compressing":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Vidéo en cours d'optimisation. "
+                "Cela prend quelques secondes — réessaie dans un moment."
+            ),
+        )
+
     # Verify video file exists on disk
     video_file = get_absolute_path(video.original_path)
     if not os.path.exists(video_file):

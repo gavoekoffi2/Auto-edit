@@ -67,6 +67,15 @@ class Settings(BaseSettings):
     CELERY_TASK_SOFT_TIME_LIMIT_SECONDS: int = 0
     FFMPEG_COMMAND_TIMEOUT_SECONDS: int = 21600  # 6h per heavy command
 
+    # Ingest compression — re-encode uploaded video with fast settings before
+    # the main pipeline runs. Reduces file size by 40-70% (CRF 26 + veryfast)
+    # which makes transcription, scene detection and FFmpeg steps all faster.
+    # Set to False to skip and work with the original file directly.
+    INGEST_COMPRESS_ENABLED: bool = True
+    INGEST_COMPRESS_CRF: int = 26           # slightly lower quality than final CRF 20
+    INGEST_COMPRESS_PRESET: str = "veryfast"  # ~4-10× real-time encoding speed
+    INGEST_COMPRESS_AUDIO_BITRATE: str = "128k"
+
     # FedaPay
     FEDAPAY_SECRET_KEY: Optional[str] = None
     FEDAPAY_PUBLIC_KEY: Optional[str] = None

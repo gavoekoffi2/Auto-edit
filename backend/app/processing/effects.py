@@ -153,7 +153,13 @@ def add_subtitles(
         if txt_clips:
             final = CompositeVideoClip([clip] + txt_clips)
             try:
-                final.write_videofile(output_path, codec="libx264", audio_codec="aac", logger=None)
+                final.write_videofile(
+                    output_path,
+                    codec="libx264",
+                    audio_codec="aac",
+                    bitrate="8000k",
+                    logger=None,
+                )
             finally:
                 final.close()
         else:

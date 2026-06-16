@@ -140,17 +140,29 @@ async def upload_video(
                        f"Upgrade to Enterprise for unlimited.",
             )
 
+    compress_enabled = settings.INGEST_COMPRESS_ENABLED
+    initial_status = "compressing" if compress_enabled else "uploaded"
+
     video = Video(
         user_id=current_user.id,
         title=file.filename,
         original_path=relative_path,
         size_bytes=size_bytes,
         duration_s=duration,
+        status=initial_status,
     )
     db.add(video)
     await db.flush()
 
-    logger.info(f"Video uploaded: {video.id} by user {current_user.id} ({size_bytes} bytes)")
+    if compress_enabled:
+        from app.workers.tasks import compress_ingest_video_task
+        compress_ingest_video_task.delay(str(video.id))
+        logger.info(
+            f"Video uploaded (compressing): {video.id} by user {current_user.id} ({size_bytes} bytes)"
+        )
+    else:
+        logger.info(f"Video uploaded: {video.id} by user {current_user.id} ({size_bytes} bytes)")
+
     return video
 
 

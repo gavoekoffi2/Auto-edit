@@ -8,6 +8,7 @@ from app.db.session import SyncSessionLocal
 from app.models.job import Job
 from app.models.video import Video
 from app.services.storage import get_absolute_path, get_output_dir
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +145,7 @@ def process_video_task(self, job_id: str):
         error_msg = str(e)[:1900]  # Truncate to fit DB column
         # Un job échoué ne doit pas laisser ses Go d'intermédiaires sur le
         # disque (c'est ce qui finissait par tuer les rendus suivants).
-        if output_dir:
+        if output_dir and os.path.exists(output_dir):
             try:
                 from app.autoedit_engine.pipeline import cleanup_intermediates
                 cleanup_intermediates(output_dir)
@@ -171,4 +172,81 @@ def process_video_task(self, job_id: str):
         raise
 
     finally:
+        session.close()
+
+
+@celery_app.task(
+    bind=True,
+    name="compress_ingest_video",
+    autoretry_for=(ConnectionError,),
+    retry_kwargs={"max_retries": 1, "countdown": 10},
+)
+def compress_ingest_video_task(self, video_id: str):
+    """Fast ingest compression task (runs immediately after upload).
+
+    Re-encodes the uploaded file with CRF 26 + veryfast preset to cut working
+    file size by 40–70%.  All downstream pipeline steps then run on a smaller
+    file, reducing total job time.  On success the original is replaced; on
+    failure the original is kept and the status reverts to 'uploaded'.
+    """
+    from app.services.video_compression import compress_for_ingest, safe_replace_with_compressed
+
+    session = SyncSessionLocal()
+    temp_path = None
+    try:
+        video = session.query(Video).filter(Video.id == video_id).first()
+        if not video:
+            logger.error("compress_ingest: video not found: %s", video_id)
+            return
+
+        abs_path = get_absolute_path(video.original_path)
+        if not os.path.exists(abs_path):
+            logger.error("compress_ingest: file missing: %s", abs_path)
+            video.status = "uploaded"
+            session.commit()
+            return
+
+        temp_path = abs_path + ".ingest_tmp.mp4"
+
+        beneficial = compress_for_ingest(abs_path, temp_path)
+
+        if beneficial and os.path.exists(temp_path):
+            final_abs, new_size = safe_replace_with_compressed(abs_path, temp_path)
+            temp_path = None  # ownership transferred to safe_replace_with_compressed
+
+            upload_root = os.path.abspath(settings.UPLOAD_DIR)
+            rel_path = os.path.relpath(final_abs, upload_root)
+            video.original_path = rel_path
+            video.size_bytes = new_size
+            logger.info(
+                "compress_ingest done: video=%s size=%d MB",
+                video_id,
+                new_size // 1_000_000,
+            )
+        else:
+            logger.info("compress_ingest skipped for video %s (not beneficial)", video_id)
+
+        video.status = "uploaded"
+        session.commit()
+
+    except Exception as exc:
+        session.rollback()
+        logger.error("compress_ingest failed for video %s: %s", video_id, exc, exc_info=True)
+        # Always fall back to "uploaded" so the user can still process their video.
+        try:
+            v = session.query(Video).filter(Video.id == video_id).first()
+            if v:
+                v.status = "uploaded"
+                session.commit()
+        except Exception:
+            pass
+        raise
+
+    finally:
+        # Remove temp file if we still own it (i.e. replace never happened).
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
         session.close()

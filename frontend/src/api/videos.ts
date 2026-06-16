@@ -79,6 +79,28 @@ export async function deleteVideo(id: string) {
   await client.delete(`/videos/${id}`)
 }
 
+/**
+ * Poll the video status until it leaves the 'compressing' state.
+ * Calls onStatus on every poll so the UI can show a live indicator.
+ * Resolves with the final VideoResponse once status !== 'compressing'.
+ */
+export async function waitForVideoCompressed(
+  id: string,
+  onStatus?: (status: string) => void,
+  maxWaitMs = 5 * 60 * 1000,
+): Promise<{ id: string; status: string; size_bytes: number; [key: string]: unknown }> {
+  const POLL_MS = 2000
+  const deadline = Date.now() + maxWaitMs
+  while (Date.now() < deadline) {
+    const video = await getVideo(id)
+    if (onStatus) onStatus(video.status)
+    if (video.status !== 'compressing') return video
+    await new Promise((r) => setTimeout(r, POLL_MS))
+  }
+  // Timeout — return the last known state so the caller can decide what to do.
+  return await getVideo(id)
+}
+
 function withAccessToken(url: string) {
   const token = localStorage.getItem('access_token')
   if (!token) return url
