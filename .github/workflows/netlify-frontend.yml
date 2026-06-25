@@ -11,10 +11,6 @@ name: Deploy frontend to Netlify
 on:
   push:
     branches: [main]
-    paths:
-      - "frontend/**"
-      - "netlify.toml"
-      - ".github/workflows/netlify-frontend.yml"
   workflow_dispatch:
 
 # A newer push supersedes an in-flight frontend deploy.
