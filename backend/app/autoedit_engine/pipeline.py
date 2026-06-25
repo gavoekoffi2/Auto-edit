@@ -40,12 +40,14 @@ from . import (
     content,
     finalize,
     genimg,
+    key_moments,
     keyword_popup,
     mix_sfx,
     motion_design,
     overlays,
     plan_overlays,
     subs_ass,
+    timeline,
     transcribe,
     video_dynamics,
 )
@@ -53,6 +55,33 @@ from . import (
 
 def _log(step: str, msg: str = "") -> None:
     print(f"\n=== {step} === {msg}")
+
+
+def plan_visual_mode(visual_mode: str, *, do_broll: bool, have_key: bool,
+                     disable_paid_images: bool) -> tuple[bool, Optional[str]]:
+    """Decide whether the PAID image API may run for a render.
+
+    Pure + deterministic so it is trivially testable. Returns
+    ``(attempt_ai, fallback_reason)``:
+
+      * ``attempt_ai``      whether to call the paid image generator at all.
+      * ``fallback_reason`` why AI images are skipped (None when attempting, or
+                            None for an explicit credit_saver choice).
+
+    Guarantees: ``credit_saver`` NEVER attempts (no paid call, ever), and a
+    disabled / keyless / toggled-off environment never attempts either.
+    """
+    if visual_mode == "credit_saver":
+        return False, None  # explicit choice — not a fallback
+    if visual_mode not in ("ai_broll", "auto_fallback"):
+        return False, None
+    if disable_paid_images:
+        return False, "disabled"
+    if not have_key:
+        return False, "missing_api_key"
+    if not do_broll:
+        return False, "broll_disabled"
+    return True, None
 
 
 # Heavy intermediates left in the workdir after a render. A single job can
@@ -99,6 +128,8 @@ def cleanup_intermediates(workdir: str) -> int:
 def run(source: str, workdir: str, *, vu: Optional[str] = None,
         template: str = config.DEFAULT_TEMPLATE, do_broll: bool = True,
         do_motion: bool = True, broll_demographic: str = "african",
+        visual_mode: str = "auto_fallback", motion_preset: Optional[str] = None,
+        style_seed_text: Optional[str] = None, disable_paid_images: bool = False,
         progress_callback=None, report: Optional[dict] = None,
         cleanup: bool = True) -> str:
     os.makedirs(workdir, exist_ok=True)
@@ -110,6 +141,12 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     rep.update({
         "template": template,
         "motion_enabled": do_motion,
+        "visual_mode_requested": visual_mode,
+        # Effective values, refined as the render progresses.
+        "visual_mode_used": "credit_saver",
+        "ai_images_skipped": True,
+        "fallback_reason": None,
+        "motion_preset": motion_preset,
         "source_duration_s": 0.0,
         "kept_duration_s": 0.0,
         "removed_duration_s": 0.0,
@@ -119,8 +156,13 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
         "motion_ai_illustrations": 0,
         "broll_images": 0,
         "keyword_popups": 0,
+        "key_moments": 0,
+        "camera_flashes": 0,
+        "shutter_sfx": 0,
         "sfx_cues": 0,
     })
+    if visual_mode not in {"ai_broll", "credit_saver", "auto_fallback"}:
+        visual_mode = "auto_fallback"
 
     def _p(pct: int, label: str, msg: str = "") -> None:
         _log(label, msg)
@@ -146,6 +188,29 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     rep["removed_duration_s"] = round(max(0.0, orig - kept), 2)
     rep["segments_kept"] = len(build_res.get("ranges") or [])
 
+    # 2bis) Key moments — hook / numbers / CTA / emotional words / topic shifts.
+    # These drive the camera flashes + shutter SFX that make the credit-saver
+    # edit feel premium WITHOUT any AI image. Times are mapped SOURCE -> OUTPUT
+    # via the EDL ranges so they land on the cut timeline.
+    edl_ranges = build_res.get("ranges") or []
+    km_cues = key_moments.plan_key_moments(vu_data)
+    rep["key_moments"] = len(km_cues)
+
+    def _to_output(src_times: list) -> list:
+        out = sorted({round(timeline.s2o_clamped(t, edl_ranges), 3) for t in src_times})
+        # Re-enforce the minimum gap in OUTPUT time (cuts can compress moments).
+        spaced: list = []
+        for t in out:
+            if not spaced or (t - spaced[-1]) >= config.FLASH_MIN_GAP:
+                spaced.append(t)
+        return spaced
+
+    flash_times_out = _to_output(key_moments.flash_times(km_cues))
+    shutter_times_out = _to_output(key_moments.shutter_times(km_cues))
+    rep["camera_flashes"] = len(flash_times_out)
+    rep["shutter_sfx"] = len(shutter_times_out)
+    n_topic_shift = sum(1 for c in km_cues if c.reason == "topic_shift")
+
     # 3) Graphic overlays ----------------------------------------------------
     _p(34, "3 overlays")
     specs = content.derive_overlay_specs(vu_data)
@@ -167,9 +232,17 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
             vu_data, demographic=broll_demographic)
         rep["motion_scenes_derived"] = len(motion_scenes)
         if motion_scenes:
-            if have_key:
+            # AI illustrations are a PAID image call — only when the visual mode
+            # allows it (never in credit_saver / when paid generation is off).
+            if have_key and visual_mode != "credit_saver" and not disable_paid_images:
                 motion_scenes = genimg.generate_illustrations(motion_scenes, p("motion"))
-            rendered_scenes = motion_design.render_all(motion_scenes, p("motion_clips"))
+            # Stable per-job look: a seed (job/video id or transcript) keeps a
+            # given render reproducible while different videos vary.
+            seed_text = style_seed_text or vu_data.get("text") or "".join(
+                s.get("text", "") for s in vu_data.get("segments", []))[:400]
+            rendered_scenes = motion_design.render_all(
+                motion_scenes, p("motion_clips"),
+                preset=motion_preset, seed_text=seed_text)
             rep["motion_scenes_rendered"] = len(rendered_scenes)
             rep["motion_ai_illustrations"] = sum(
                 1 for s in rendered_scenes if s.get("illustrated"))
@@ -185,23 +258,52 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
         _p(40, "4 motion_design", "skipped (--no-motion)")
 
     # 5 & 6) B-roll images + animation ---------------------------------------
+    # Visual mode decides whether the PAID image API may run:
+    #   credit_saver  -> never (motion + flashes + SFX carry the video)
+    #   ai_broll      -> yes, generate AI B-roll when possible
+    #   auto_fallback -> try, but continue cleanly if it fails / no credits
+    # A failure NEVER blocks the render — it falls back to the credit-saver
+    # visual plan and records WHY in the report.
     broll_json: Optional[str] = None
-    if do_broll and have_key:
-        _p(48, "5 genimg")
-        ideas = content.derive_broll_ideas(
-            vu_data, demographic=broll_demographic, graphic_specs=specs,
-            avoid_spans=content.motion_scene_spans(motion_scenes),
-        )
-        images = genimg.generate_brolls(ideas, p("broll"))
-        rep["broll_images"] = len(images)
-        if images:
-            _p(58, "6 broll_anim")
-            clips = broll_anim.render_all(images, p("broll_clips"))
-            broll_json = p("broll_clips", "_broll_clips.json")
-            json.dump(clips, open(broll_json, "w", encoding="utf-8"),
-                      ensure_ascii=False, indent=2)
+    attempt_ai, fallback_reason = plan_visual_mode(
+        visual_mode, do_broll=do_broll, have_key=have_key,
+        disable_paid_images=disable_paid_images)
+    rep["fallback_reason"] = fallback_reason
+
+    if not attempt_ai:
+        why = fallback_reason or "credit_saver"
+        _p(58, "5-6 broll", f"skipped ({why}) — credit-saver visual plan")
     else:
-        _p(58, "5-6 broll", "skipped (no OPENROUTER_API_KEY or --no-broll)")
+        _p(48, "5 genimg")
+        try:
+            ideas = content.derive_broll_ideas(
+                vu_data, demographic=broll_demographic, graphic_specs=specs,
+                avoid_spans=content.motion_scene_spans(motion_scenes),
+            )
+            if not ideas:
+                rep["fallback_reason"] = "no_ideas"
+            else:
+                images = genimg.generate_brolls(ideas, p("broll"))
+                rep["broll_images"] = len(images)
+                if images:
+                    _p(58, "6 broll_anim")
+                    clips = broll_anim.render_all(images, p("broll_clips"))
+                    broll_json = p("broll_clips", "_broll_clips.json")
+                    json.dump(clips, open(broll_json, "w", encoding="utf-8"),
+                              ensure_ascii=False, indent=2)
+                    # AI images actually landed -> this render used them.
+                    rep["visual_mode_used"] = "ai_broll"
+                    rep["ai_images_skipped"] = False
+                    rep["fallback_reason"] = None
+                else:
+                    # Every idea failed (credits/quota/timeout…): keep rendering.
+                    rep["fallback_reason"] = "image_generation_failed"
+        except Exception as exc:  # noqa: BLE001 - never fail the render on B-roll
+            reason = genimg.classify_image_error(exc)
+            rep["fallback_reason"] = reason
+            print(f"[pipeline] WARN B-roll generation failed ({reason}); "
+                  f"continuing in credit-saver mode: {exc}", file=sys.stderr)
+            _p(58, "5-6 broll", f"failed ({reason}) — credit-saver fallback")
 
     # 7) Plan timeline + SFX cues -------------------------------------------
     _p(62, "7 plan_overlays")
@@ -215,9 +317,16 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     rep["keyword_popups"] = int(popup_res.get("added", 0))
     rep["sfx_cues"] += int(popup_res.get("sfx_added", 0))
 
-    # 9) Dynamic zoom --------------------------------------------------------
+    # 8bis) Key-moment shutter / camera SFX — the AUDIBLE half of the photo
+    # capture effect, synced to the white flashes. Merged into the SFX plan so
+    # mix_sfx renders them; ducking keeps them under the voice.
+    added_key_sfx = _inject_key_moment_sfx(p("sfx_cues.json"), shutter_times_out)
+    rep["sfx_cues"] += added_key_sfx
+
+    # 9) Dynamic zoom + key-moment camera flashes ----------------------------
     _p(74, "9 video_dynamics")
-    base_dyn = video_dynamics.apply_dynamics(base_only, edl_path, p("base_dyn.mp4"))
+    base_dyn = video_dynamics.apply_dynamics(
+        base_only, edl_path, p("base_dyn.mp4"), flash_times=flash_times_out)
 
     # 10) Composite ----------------------------------------------------------
     _p(85, "10 composite")
@@ -236,13 +345,58 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     _p(97, "13 finalize")
     final = finalize.burn_subs(withsfx, ass_path, p("final_montage_web.mp4"))
 
+    # Final, truthful effect tally — proves the credit-saver edit is dynamic
+    # even with zero AI images.
+    rep["effects_applied"] = {
+        "cameraFlashes": rep["camera_flashes"],
+        "shutterSfx": rep["shutter_sfx"],
+        "motionCards": rep["motion_scenes_rendered"],
+        "transitions": (rep["motion_scenes_rendered"] + rep["broll_images"]
+                        + n_topic_shift),
+    }
+    # If AI images never landed, the effective mode is credit_saver regardless
+    # of what was requested (the render still happened — never blocked).
+    if rep["broll_images"] <= 0:
+        rep["visual_mode_used"] = "credit_saver"
+        rep["ai_images_skipped"] = True
+
     if cleanup and os.environ.get("ENGINE_KEEP_INTERMEDIATES") not in {"1", "true"}:
         cleanup_intermediates(workdir)
 
     if progress_callback:
         progress_callback(100, "done")
-    print(f"\n✅ Auto Edit complete -> {final}")
+    print(f"\n✅ Auto Edit complete ({rep['visual_mode_used']}, "
+          f"{rep['camera_flashes']} flashes) -> {final}")
     return final
+
+
+def _inject_key_moment_sfx(sfx_cues_path: str, shutter_times: list) -> int:
+    """Merge camera-shutter SFX at key-moment instants into the SFX plan.
+
+    Alternates the photo-capture sounds (the engine already synthesises them
+    locally — no API) so the flashes are AUDIBLE as well as visible, and avoids
+    stacking two identical SFX back-to-back. Returns the number added.
+    """
+    if not shutter_times or not os.path.exists(sfx_cues_path):
+        return 0
+    try:
+        with open(sfx_cues_path, "r", encoding="utf-8") as fh:
+            cues = json.load(fh)
+    except (OSError, ValueError):
+        return 0
+    pool = ["camera_flash", "shutter", "camera_flash", "shutter_burst"]
+    existing = {(round(float(c.get("t", -1)), 2), c.get("sfx")) for c in cues}
+    added = 0
+    for i, t in enumerate(shutter_times):
+        sfx = pool[i % len(pool)]
+        if (round(float(t), 2), sfx) in existing:
+            continue
+        cues.append({"sfx": sfx, "t": round(float(t), 3), "src": "key_moment"})
+        added += 1
+    cues.sort(key=lambda c: float(c.get("t", 0.0)))
+    with open(sfx_cues_path, "w", encoding="utf-8") as fh:
+        json.dump(cues, fh, ensure_ascii=False, indent=2)
+    return added
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -255,9 +409,20 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--no-broll", action="store_true", help="skip AI B-roll generation")
     ap.add_argument("--no-motion", action="store_true",
                     help="skip illustrated motion-design scenes")
+    ap.add_argument("--visual-mode", default="auto_fallback",
+                    choices=["ai_broll", "credit_saver", "auto_fallback"],
+                    help="ai_broll | credit_saver | auto_fallback (default)")
+    ap.add_argument("--motion-preset", default=None,
+                    help="force a motion-design family (clean_fintech, neon_social, …)")
+    ap.add_argument("--disable-paid-images", action="store_true",
+                    help="never call the paid image API (credit safe)")
     args = ap.parse_args(argv)
+    report: dict = {}
     run(args.source, args.workdir, vu=args.vu, template=args.template,
-        do_broll=not args.no_broll, do_motion=not args.no_motion)
+        do_broll=not args.no_broll, do_motion=not args.no_motion,
+        visual_mode=args.visual_mode, motion_preset=args.motion_preset,
+        disable_paid_images=args.disable_paid_images, report=report)
+    print("\n[report]", json.dumps(report.get("effects_applied", {}), ensure_ascii=False))
     return 0
 
 

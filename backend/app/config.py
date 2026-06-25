@@ -22,10 +22,22 @@ VALID_MODES = {
     "publicite_locale",
     "podcast_propre",
     "formation_educative",
+    # Mode économie crédits (montage créateur sans dépendre des images IA) —
+    # nouveau défaut MVP. `creator_economy_mode` est un alias historique accepté.
+    "credit_saver_creator_edit",
+    "creator_economy_mode",
 }
 VALID_PIPELINE_VERSIONS = {"v1", "v2"}
 VALID_IMAGE_PROVIDERS = {"openrouter", "replicate", "stability", "noop"}
 VALID_RENDERERS = {"ffmpeg", "hyperframes", "remotion"}
+
+# Visual strategy for a render:
+#   ai_broll      -> existing behaviour, generate AI B-roll images when possible.
+#   credit_saver  -> never call the paid image API; rely on source video +
+#                    captions + motion design + camera flashes + SFX.
+#   auto_fallback -> try AI images when configured, but continue in credit_saver
+#                    if generation fails / credits are exhausted / disabled.
+VALID_VISUAL_MODES = {"ai_broll", "credit_saver", "auto_fallback"}
 
 
 class Settings(BaseSettings):
@@ -125,6 +137,19 @@ class Settings(BaseSettings):
     ENABLE_MUSIC: bool = True
 
     # ---------------------------------------------------------------------
+    # Mode économie crédits (montage créateur sans images IA obligatoires)
+    # ---------------------------------------------------------------------
+    # Stratégie visuelle par défaut quand le job n'en fournit pas une.
+    #   credit_saver  -> jamais d'image payante (MVP rapide, non bloquant)
+    #   auto_fallback -> tente l'IA, retombe en credit_saver si échec/crédits
+    #   ai_broll      -> ancien comportement (images IA quand possible)
+    AUTOEDIT_DEFAULT_VISUAL_MODE: str = "auto_fallback"
+    # Coupe-circuit global: si True, AUCUNE génération d'image payante n'est
+    # appelée, quel que soit le mode demandé (utile quand les crédits sont à 0
+    # ou pour garantir des tests sans coût).
+    AUTOEDIT_DISABLE_PAID_IMAGE_GENERATION: bool = False
+
+    # ---------------------------------------------------------------------
     # Email transactionnel — optionnel en dev, requis en prod si tu veux
     # le reset password fonctionnel.
     # ---------------------------------------------------------------------
@@ -176,6 +201,15 @@ class Settings(BaseSettings):
     def validate_video_renderer(cls, v: str) -> str:
         if v not in VALID_RENDERERS:
             raise ValueError(f"VIDEO_RENDERER must be one of: {VALID_RENDERERS}")
+        return v
+
+    @field_validator("AUTOEDIT_DEFAULT_VISUAL_MODE")
+    @classmethod
+    def validate_default_visual_mode(cls, v: str) -> str:
+        if v not in VALID_VISUAL_MODES:
+            raise ValueError(
+                f"AUTOEDIT_DEFAULT_VISUAL_MODE must be one of: {VALID_VISUAL_MODES}"
+            )
         return v
 
     @field_validator("APP_ENV")

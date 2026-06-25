@@ -32,6 +32,44 @@ from . import config
 from . import content
 
 
+# Canonical reasons the paid image step can be skipped / fall back. Used by the
+# pipeline to populate the job summary's `fallbackReason`.
+FALLBACK_REASONS = {
+    "insufficient_credits", "quota_exceeded", "payment_required",
+    "rate_limited", "timeout", "provider_unavailable", "missing_api_key",
+    "image_generation_failed", "disabled", "no_ideas",
+}
+
+
+def classify_image_error(exc: object) -> str:
+    """Map an image-generation failure to a canonical fallback reason.
+
+    Recognises the common provider failure modes (insufficient credits, quota,
+    402/429, timeouts, provider down, missing key) so the pipeline can keep
+    rendering in credit-saver mode and report WHY the AI images were skipped —
+    never turning any of these into a hard render failure.
+    """
+    msg = str(exc).lower()
+    if "openrouter_api_key" in msg or "api key" in msg or "api_key" in msg or "missing key" in msg:
+        return "missing_api_key"
+    if "insufficient" in msg and ("credit" in msg or "fund" in msg or "balance" in msg):
+        return "insufficient_credits"
+    if "credit" in msg and ("exhaust" in msg or "no " in msg or "out of" in msg):
+        return "insufficient_credits"
+    if "402" in msg or "payment required" in msg:
+        return "payment_required"
+    if "429" in msg or "rate limit" in msg or "too many requests" in msg:
+        return "rate_limited"
+    if "quota" in msg or "limit exceeded" in msg or "exceeded your" in msg:
+        return "quota_exceeded"
+    if "timeout" in msg or "timed out" in msg:
+        return "timeout"
+    if ("unavailable" in msg or "503" in msg or "502" in msg or "500" in msg
+            or "connection" in msg or "could not connect" in msg):
+        return "provider_unavailable"
+    return "image_generation_failed"
+
+
 def _decode_image_payload(url: str) -> bytes:
     """Decode a base64 data URI, or download an http(s) URL."""
     if url.startswith("data:"):

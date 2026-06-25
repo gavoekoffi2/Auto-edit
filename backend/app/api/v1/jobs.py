@@ -15,6 +15,7 @@ from app.models.user import User
 from app.models.video import Video
 from app.models.job import Job
 from app.schemas.job import JobCreate, JobResponse
+from app.api.v1.modes import MODE_DEFINITIONS, DEFAULT_MODE
 from app.api.deps import get_current_user
 from app.services.auth import decode_token
 from app.services.storage import get_absolute_path
@@ -45,97 +46,6 @@ async def get_media_user(
     return user
 
 
-_MODE_DEFINITIONS: list[dict] = [
-    {
-        "id": "tiktok_viral",
-        "name": "TikTok viral",
-        "icon": "🔥",
-        "description": "Vertical 9:16, captions animées, B-roll IA africain, CTA final",
-        "pipeline": "v2",
-        "defaults": {
-            "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
-            "motion_design": True,
-            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
-            "broll_style": "tiktok_viral", "broll_demographic": "african",
-        },
-    },
-    {
-        "id": "business_premium_african",
-        "name": "Business premium 🇸🇳🇨🇮🇹🇬",
-        "icon": "💼",
-        "description": "Style africain moderne, B-roll premium, musique sobre",
-        "pipeline": "v2",
-        "defaults": {
-            "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
-            "motion_design": True,
-            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
-            "broll_style": "african_business_premium", "broll_demographic": "african",
-        },
-    },
-    {
-        "id": "publicite_locale",
-        "name": "Publicité locale",
-        "icon": "📣",
-        "description": "Restaurant, boutique, service local — CTA clair",
-        "pipeline": "v2",
-        "defaults": {
-            "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
-            "motion_design": True,
-            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
-            "broll_style": "publicite_locale", "broll_demographic": "african",
-        },
-    },
-    {
-        "id": "podcast_propre",
-        "name": "Podcast propre",
-        "icon": "🎙️",
-        "description": "Suppression silences uniquement, audio préservé",
-        "pipeline": "v2",
-        "defaults": {
-            "remove_silence": True, "dynamic_captions": False, "ai_broll": False,
-            "motion_design": False,
-            "music": False, "sfx": False, "vertical_9_16": False, "final_cta": False,
-            "broll_style": "podcast_propre", "broll_demographic": "african",
-        },
-    },
-    {
-        "id": "formation_educative",
-        "name": "Formation / éducatif",
-        "icon": "🎓",
-        "description": "Captions lisibles, B-roll discret, horizontal",
-        "pipeline": "v2",
-        "defaults": {
-            "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
-            "motion_design": True,
-            "music": False, "sfx": False, "vertical_9_16": False, "final_cta": False,
-            "broll_style": "formation_educative", "broll_demographic": "african",
-        },
-    },
-    {
-        "id": "tiktok",
-        "name": "TikTok (legacy)",
-        "icon": "📱",
-        "description": "Pipeline v1 — vertical 9:16, sous-titres, cuts rapides",
-        "pipeline": "v1",
-        "defaults": {},
-    },
-    {
-        "id": "youtube",
-        "name": "YouTube (legacy)",
-        "icon": "📹",
-        "description": "Pipeline v1 — suppression silences + sous-titres",
-        "pipeline": "v1",
-        "defaults": {},
-    },
-    {
-        "id": "podcast",
-        "name": "Podcast (legacy)",
-        "icon": "🎧",
-        "description": "Pipeline v1 — audio uniquement",
-        "pipeline": "v1",
-        "defaults": {},
-    },
-]
 
 
 @router.get("/modes")
@@ -143,9 +53,10 @@ async def list_modes():
     """Liste les modes de montage disponibles + leurs defaults d'options.
 
     Endpoint public — le frontend l'utilise pour rendre dynamiquement le
-    selecteur de modes sans dupliquer la liste cote TS.
+    selecteur de modes sans dupliquer la liste cote TS. `default_mode` indique
+    le choix par defaut (montage createur economique).
     """
-    return {"modes": _MODE_DEFINITIONS}
+    return {"modes": MODE_DEFINITIONS, "default_mode": DEFAULT_MODE}
 
 
 @router.post("", response_model=JobResponse, status_code=status.HTTP_201_CREATED)

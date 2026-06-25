@@ -135,10 +135,40 @@ V2_MODE_PRESETS: dict[str, dict] = {
         "broll_style": "formation_educative",
         "broll_demographic": "african",
     },
+    # --- nouveau défaut MVP : montage créateur économique -------------------
+    # Rapide, non bloquant, sans dépendre des images IA : silences coupés,
+    # captions, zooms, flashs caméra + shutter SFX, transitions, motion design.
+    "credit_saver_creator_edit": {
+        "remove_silence": True,
+        "dynamic_captions": True,
+        "ai_broll": False,          # pas d'image IA payante par défaut
+        "motion_design": True,
+        "music": True,
+        "sfx": True,
+        "vertical_9_16": True,
+        "final_cta": True,
+        "visual_mode": "credit_saver",
+        "broll_style": "tiktok_viral",
+        "broll_demographic": "african",
+    },
 }
+# Alias historique accepté pour le même mode.
+V2_MODE_PRESETS["creator_economy_mode"] = dict(V2_MODE_PRESETS["credit_saver_creator_edit"])
 
 
 ProgressFn = Callable[[int, str], None]
+
+
+def resolve_visual_mode(options: dict, default: str) -> str:
+    """Resolve the visual strategy: explicit option > mode preset > env default.
+
+    Pure + testable. Crucially, an OLD job whose stored options carry no
+    `visual_mode` is NOT forced to the new credit-saver mode — it falls back to
+    the configured *default* (so historical jobs keep their behaviour).
+    """
+    from app.config import VALID_VISUAL_MODES
+    chosen = (options or {}).get("visual_mode") or default
+    return chosen if chosen in VALID_VISUAL_MODES else default
 
 
 def _choose_transcription_provider(provider: Optional[str], has_elevenlabs_key: bool) -> str:
@@ -167,6 +197,8 @@ MODE_TO_TEMPLATE: dict[str, str] = {
     "formation_educative": "bold_box",
     "podcast": "tiktok_yellow",
     "podcast_propre": "tiktok_yellow",
+    "credit_saver_creator_edit": "tiktok_yellow",
+    "creator_economy_mode": "tiktok_yellow",
 }
 
 
@@ -274,12 +306,20 @@ def run_pipeline_v2(
     if settings_key and not os.environ.get("OPENROUTER_API_KEY"):
         os.environ["OPENROUTER_API_KEY"] = settings_key
 
-    have_key = bool(os.environ.get("OPENROUTER_API_KEY"))
+    # Visual strategy: explicit option > mode preset > env default.
+    # credit_saver  -> never any paid image (MVP, non bloquant)
+    # ai_broll      -> ancien comportement (images IA quand possible)
+    # auto_fallback -> tente l'IA, retombe en credit_saver si échec/crédits
+    visual_mode = resolve_visual_mode(options, settings.AUTOEDIT_DEFAULT_VISUAL_MODE)
+    disable_paid_images = bool(getattr(settings, "AUTOEDIT_DISABLE_PAID_IMAGE_GENERATION", False))
+
+    # `do_broll` = the user toggle only; the engine applies the visual_mode /
+    # key / disable gating (single source of truth) and NEVER fails on B-roll.
     do_broll = (
         bool(settings.ENABLE_AI_BROLL)
         and options.get("ai_broll", True) is not False
-        and have_key
     )
+    motion_preset = options.get("motion_preset") or None
     # Motion design works WITHOUT an API key (procedural drawings), so it only
     # follows the product flag and the user toggle.
     do_motion = (
@@ -305,6 +345,7 @@ def run_pipeline_v2(
         "options": options,
         "aspect_ratio": "9:16",
         "subtitle_template": template,
+        "visual_mode": visual_mode,
         "steps_completed": [],
         "steps_failed": [],
         "broll": {"enabled": do_broll},
@@ -385,12 +426,23 @@ def run_pipeline_v2(
         do_broll=do_broll,
         do_motion=do_motion,
         broll_demographic=options.get("broll_demographic") or "african",
+        visual_mode=visual_mode,
+        motion_preset=motion_preset,
+        disable_paid_images=disable_paid_images,
         progress_callback=progress,
         report=montage_report,
     )
 
     if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
         raise RuntimeError("Le moteur Auto Edit n'a pas produit de vidéo de sortie.")
+
+    # Documented job contract: what the render actually did with the visuals.
+    # The render is NEVER blocked by missing AI images — these fields explain
+    # WHY images were skipped (if they were) without surfacing a hard error.
+    results["visualModeUsed"] = montage_report.get("visual_mode_used", "credit_saver")
+    results["aiImagesSkipped"] = bool(montage_report.get("ai_images_skipped", True))
+    results["fallbackReason"] = montage_report.get("fallback_reason")
+    results["effectsApplied"] = montage_report.get("effects_applied", {})
 
     # Preuve de contenu: le résultat du job dit exactement ce que le montage
     # contient (scènes motion design, B-rolls, popups, SFX) — fini les doutes
