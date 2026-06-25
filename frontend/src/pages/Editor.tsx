@@ -12,7 +12,7 @@ import {
   getJobDownloadUrl,
   createJob,
   listJobs,
-  listModes,
+  listModesFull,
   type JobOptions,
   type ModeDescriptor,
   type PipelineVersion,
@@ -29,18 +29,38 @@ interface VideoMeta {
   status: string
 }
 
-// Fallback statique utilise si l'endpoint /jobs/modes est indisponible.
+// Fallback statique utilisé si l'endpoint /jobs/modes est indisponible. Le
+// PREMIER mode est le défaut produit : le montage créateur économique (rapide,
+// non bloquant, sans dépendre des images IA).
 const FALLBACK_MODES: ModeDescriptor[] = [
   {
+    id: 'credit_saver_creator_edit',
+    name: 'Montage créateur économique',
+    icon: '⚡',
+    description:
+      'Recommandé MVP : silences coupés, captions, zooms, flashs caméra, SFX, ' +
+      'transitions et motion design — sans dépendre des images IA.',
+    pipeline: 'v2',
+    default: true,
+    defaults: {
+      remove_silence: true, dynamic_captions: true, ai_broll: false,
+      motion_design: true,
+      music: true, sfx: true, vertical_9_16: true, final_cta: true,
+      visual_mode: 'credit_saver',
+      broll_style: 'tiktok_viral', broll_demographic: 'african',
+    },
+  },
+  {
     id: 'business_premium_african',
-    name: 'Business premium 🇸🇳🇨🇮🇹🇬',
-    icon: '💼',
-    description: 'Style africain moderne, B-roll premium, musique sobre',
+    name: 'Images IA + motion design',
+    icon: '🖼️',
+    description: 'Ancien montage premium : B-roll/images IA quand des crédits sont disponibles.',
     pipeline: 'v2',
     defaults: {
       remove_silence: true, dynamic_captions: true, ai_broll: true,
       motion_design: true,
-      music: true, sfx: false, vertical_9_16: true, final_cta: true,
+      music: true, sfx: true, vertical_9_16: true, final_cta: true,
+      visual_mode: 'ai_broll',
       broll_style: 'african_business_premium',
       broll_demographic: 'african',
     },
@@ -75,12 +95,16 @@ export default function Editor() {
   // Charge le catalogue de modes depuis l'API (DRY avec le backend).
   useEffect(() => {
     let cancelled = false
-    listModes()
-      .then((list) => {
+    listModesFull()
+      .then(({ modes: list, default_mode }) => {
         if (cancelled || list.length === 0) return
         setModes(list)
-        // Selectionne par defaut le premier mode v2 (business premium africain)
-        const preferred = list.find((m) => m.pipeline === 'v2') ?? list[0]
+        // Choix par défaut = montage créateur économique (default_mode renvoyé
+        // par l'API, sinon le mode marqué default, sinon le premier).
+        const preferred =
+          list.find((m) => m.id === default_mode) ??
+          list.find((m) => m.default) ??
+          list[0]
         setSelectedMode(preferred.id)
       })
       .catch(() => { /* on garde le fallback */ })
@@ -242,6 +266,17 @@ export default function Editor() {
               Aperçu du DERNIER montage terminé. Si tu relances un montage, cet aperçu disparaît jusqu'à la fin du nouveau rendu.
             </div>
           )}
+          {/* Alerte NON bloquante : les images IA étaient indisponibles mais le
+              montage a quand même été produit en mode économique. */}
+          {(() => {
+            const notice = fallbackNotice(completedResult)
+            if (!notice) return null
+            return (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                ⚡ {notice}
+              </div>
+            )
+          })()}
           <VideoPlayer src={previewSrc} />
           {scenes && scenes.scenes.length > 0 && (
             <Timeline scenes={scenes.scenes} totalDuration={video.duration_s || 0} />
@@ -472,11 +507,18 @@ export default function Editor() {
                 {(() => {
                   const m = completedResult!.montage as Record<string, unknown>
                   const n = (k: string) => Number(m[k] ?? 0)
+                  // En mode économique, l'absence d'images IA est NORMALE (non
+                  // bloquante) : on ne l'affiche pas en rouge.
+                  const aiSkipped = completedResult?.aiImagesSkipped === true
+                  const brollLabel = n('broll_images') > 0
+                    ? `${n('broll_images')} images B-roll IA`
+                    : 'Images IA non requises (mode éco)'
                   const items: Array<[string, string, boolean]> = [
+                    ['⚡', `${n('camera_flashes')} flashs caméra`, n('camera_flashes') > 0],
                     ['🎨', `${n('motion_scenes_rendered')} scènes motion design`, n('motion_scenes_rendered') > 0],
-                    ['🖼️', `${n('broll_images')} images B-roll IA`, n('broll_images') > 0],
-                    ['🏷️', `${n('keyword_popups')} mots-clés popup`, n('keyword_popups') > 0],
                     ['🔊', `${n('sfx_cues')} effets sonores`, n('sfx_cues') > 0],
+                    ['🏷️', `${n('keyword_popups')} mots-clés popup`, n('keyword_popups') > 0],
+                    ['🖼️', brollLabel, n('broll_images') > 0 || aiSkipped],
                   ]
                   return items.map(([icon, label, ok]) => (
                     <div
@@ -491,9 +533,13 @@ export default function Editor() {
                   ))
                 })()}
               </div>
-              {Number((completedResult!.montage as Record<string, unknown>).motion_scenes_rendered ?? 0) === 0 && (
-                <p className="mt-3 text-xs text-red-300 bg-red-400/10 rounded-lg p-2.5">
-                  ⚠️ Aucune scène motion design dans ce rendu — signale-le, ce n'est pas normal.
+              {/* On ne crie au rouge QUE si le motion design a échoué alors
+                  qu'il était demandé — jamais quand le MP4 a bien été produit
+                  sans images IA (c'est le comportement attendu du mode éco). */}
+              {options.motion_design &&
+                Number((completedResult!.montage as Record<string, unknown>).motion_scenes_rendered ?? 0) === 0 && (
+                <p className="mt-3 text-xs text-amber-300 bg-amber-400/10 rounded-lg p-2.5">
+                  ⚠️ Aucune scène motion design dans ce rendu — le reste du montage (flashs, SFX, captions) est bien présent.
                 </p>
               )}
             </div>
@@ -554,4 +600,30 @@ function PipelineStep(props: { icon: React.ReactNode; label: string }) {
       {props.label}
     </div>
   )
+}
+
+// Messages d'explication NON bloquants pour les raisons de fallback côté moteur.
+const FALLBACK_REASON_LABELS: Record<string, string> = {
+  insufficient_credits: 'crédits images IA épuisés',
+  payment_required: 'paiement requis pour les images IA',
+  quota_exceeded: 'quota images IA dépassé',
+  rate_limited: 'API images IA temporairement saturée',
+  timeout: "délai dépassé sur l'API images IA",
+  provider_unavailable: "fournisseur d'images IA indisponible",
+  missing_api_key: "clé API images non configurée",
+  disabled: 'génération payante désactivée',
+  image_generation_failed: 'génération des images IA en échec',
+}
+
+/**
+ * Renvoie un message NON bloquant quand le rendu a continué sans images IA,
+ * ou null s'il n'y a rien à signaler (mode économique explicite, ou images
+ * bien générées). Ne s'affiche jamais comme une erreur rouge.
+ */
+function fallbackNotice(result: Record<string, unknown> | null): string | null {
+  if (!result) return null
+  const reason = result.fallbackReason
+  if (!reason || typeof reason !== 'string') return null
+  const detail = FALLBACK_REASON_LABELS[reason] ?? reason.replace(/_/g, ' ')
+  return `Les images IA sont indisponibles (${detail}). AutoEdit a continué en mode économique : flashs, SFX, captions et motion design.`
 }

@@ -2,6 +2,13 @@ import client, { downloadWithAuth } from './client'
 
 export type PipelineVersion = 'v1' | 'v2'
 
+/** Stratégie visuelle d'un rendu. */
+export type VisualMode = 'ai_broll' | 'credit_saver' | 'auto_fallback'
+/** Familles de motion design (look varié d'une vidéo à l'autre). */
+export type MotionPreset =
+  | 'clean_fintech' | 'neon_social' | 'african_premium'
+  | 'minimal_creator' | 'kinetic_education'
+
 export interface JobOptions {
   remove_silence?: boolean
   dynamic_captions?: boolean
@@ -14,6 +21,10 @@ export interface JobOptions {
   final_cta?: boolean
   broll_style?: string
   broll_demographic?: 'african' | 'caucasian' | 'global'
+  /** ai_broll | credit_saver | auto_fallback — par défaut le preset du mode. */
+  visual_mode?: VisualMode
+  /** Force une famille motion design (sinon seed stable de la vidéo). */
+  motion_preset?: MotionPreset
   cta_text?: string
   logo_text?: string
 }
@@ -38,12 +49,26 @@ export interface ModeDescriptor {
   icon: string
   description: string
   pipeline: PipelineVersion
+  /** true pour le mode sélectionné par défaut (montage créateur économique). */
+  default?: boolean
   defaults: JobOptions
 }
 
-export async function listModes(): Promise<ModeDescriptor[]> {
+export interface ModesResponse {
+  modes: ModeDescriptor[]
+  default_mode: string
+}
+
+export async function listModesFull(): Promise<ModesResponse> {
   const res = await client.get('/jobs/modes')
-  const modes = (res.data?.modes ?? []) as ModeDescriptor[]
+  return {
+    modes: (res.data?.modes ?? []) as ModeDescriptor[],
+    default_mode: (res.data?.default_mode ?? '') as string,
+  }
+}
+
+export async function listModes(): Promise<ModeDescriptor[]> {
+  const { modes } = await listModesFull()
   return modes
 }
 

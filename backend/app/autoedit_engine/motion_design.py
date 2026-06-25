@@ -53,19 +53,33 @@ BG_TOP = config.MOTION_BG_TOP
 BG_BOTTOM = config.MOTION_BG_BOTTOM
 
 
-def select_palette(seed_text: str) -> None:
-    """Pick a per-video colour palette (accent/gold/background) from a hash of
-    the spoken content, so two different videos never share the same look —
-    even when scenes fall back to the procedural drawings."""
+def select_palette(seed_text: str, preset: Optional[str] = None) -> str:
+    """Pick a per-video colour palette (accent/gold/background).
+
+    When *preset* names a motion-design family it is used directly (the
+    credit-saver edit drives this so the look varies per video in a
+    reproducible way). Otherwise a stable seed of the spoken content chooses a
+    family, so two different videos never share the same look — even when every
+    scene falls back to the procedural drawings. Returns the chosen family name.
+    """
     global ACCENT, GOLD, BG_TOP, BG_BOTTOM
-    palettes = getattr(config, "MOTION_PALETTES", None)
-    if not palettes:
-        return
-    import hashlib
-    h = int(hashlib.md5((seed_text or "x").encode("utf-8")).hexdigest(), 16)
-    bg_top, bg_bot, accent, gold = palettes[h % len(palettes)]
-    BG_TOP, BG_BOTTOM = bg_top, bg_bot
-    ACCENT, GOLD = accent, gold
+    try:
+        from . import motion_presets
+        chosen = (motion_presets.preset_for(preset) if preset
+                  else motion_presets.choose_preset(seed_text))
+        BG_TOP, BG_BOTTOM, ACCENT, GOLD = chosen.palette()
+        return chosen.name
+    except Exception:
+        # Fallback to the legacy palette table if presets are unavailable.
+        palettes = getattr(config, "MOTION_PALETTES", None)
+        if not palettes:
+            return "default"
+        import hashlib
+        h = int(hashlib.md5((seed_text or "x").encode("utf-8")).hexdigest(), 16)
+        bg_top, bg_bot, accent, gold = palettes[h % len(palettes)]
+        BG_TOP, BG_BOTTOM = bg_top, bg_bot
+        ACCENT, GOLD = accent, gold
+        return "legacy"
 STROKE_W = 14                      # doodle ink width (px)
 
 # Scene animation timeline (seconds from scene start).  These are the moments
@@ -715,10 +729,15 @@ def render_scene(scene: dict, out_path: str, fps: int = config.FPS) -> dict:
             "illustrated": illu is not None, "events": events}
 
 
-def render_all(scenes: List[dict], outdir: str) -> List[dict]:
+def render_all(scenes: List[dict], outdir: str, *, preset: Optional[str] = None,
+               seed_text: Optional[str] = None) -> List[dict]:
     os.makedirs(outdir, exist_ok=True)
-    # Per-video colour palette (variety across videos) seeded by the content.
-    select_palette("|".join(s.get("headline", "") + s.get("excerpt", "") for s in scenes))
+    # Per-video colour palette (variety across videos). A stable seed (job/video
+    # id or the transcript) keeps a given job reproducible; *preset* forces a
+    # named motion-design family.
+    seed = seed_text or "|".join(
+        s.get("headline", "") + s.get("excerpt", "") for s in scenes)
+    select_palette(seed, preset=preset)
     out: List[dict] = []
     for i, scene in enumerate(scenes):
         # Cycle the entrance/exit transition variants so two consecutive

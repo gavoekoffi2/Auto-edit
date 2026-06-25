@@ -3,9 +3,18 @@ from uuid import UUID
 from datetime import datetime
 from typing import Optional, Literal
 
-from app.config import VALID_JOB_TYPES, VALID_MODES, VALID_PIPELINE_VERSIONS
+from app.config import (
+    VALID_JOB_TYPES,
+    VALID_MODES,
+    VALID_PIPELINE_VERSIONS,
+    VALID_VISUAL_MODES,
+)
 
 VALID_BROLL_DEMOGRAPHICS = {"african", "caucasian", "global"}
+VALID_MOTION_PRESETS = {
+    "clean_fintech", "neon_social", "african_premium",
+    "minimal_creator", "kinetic_education",
+}
 
 
 class JobOptions(BaseModel):
@@ -25,6 +34,11 @@ class JobOptions(BaseModel):
     final_cta: Optional[bool] = None
     broll_style: Optional[str] = None  # ex: "african_business_premium"
     broll_demographic: Optional[str] = None  # african | caucasian | global
+    # Stratégie visuelle: ai_broll | credit_saver | auto_fallback. Si absent,
+    # le pipeline retombe sur le preset du mode puis AUTOEDIT_DEFAULT_VISUAL_MODE.
+    visual_mode: Optional[str] = None
+    # Famille motion design forcée (sinon choisie par seed stable de la vidéo).
+    motion_preset: Optional[str] = None
     cta_text: Optional[str] = Field(default=None, max_length=120)
     logo_text: Optional[str] = Field(default=None, max_length=60)
 
@@ -34,6 +48,24 @@ class JobOptions(BaseModel):
         if v is not None and v not in VALID_BROLL_DEMOGRAPHICS:
             raise ValueError(
                 f"broll_demographic must be one of: {', '.join(sorted(VALID_BROLL_DEMOGRAPHICS))}"
+            )
+        return v
+
+    @field_validator("visual_mode")
+    @classmethod
+    def validate_visual_mode(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_VISUAL_MODES:
+            raise ValueError(
+                f"visual_mode must be one of: {', '.join(sorted(VALID_VISUAL_MODES))}"
+            )
+        return v
+
+    @field_validator("motion_preset")
+    @classmethod
+    def validate_motion_preset(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_MOTION_PRESETS:
+            raise ValueError(
+                f"motion_preset must be one of: {', '.join(sorted(VALID_MOTION_PRESETS))}"
             )
         return v
 

@@ -91,6 +91,21 @@ PUNCH_AMP = 0.08
 PUNCH_SIGMA = 0.30 / 2.5  # = 0.12
 
 # --------------------------------------------------------------------------- #
+# STEP 4bis — KEY-MOMENT CAMERA FLASH (credit-saver creator edit)
+#
+# At each key moment (hook / number / CTA / emotional word…), the talking-head
+# frame gets a short bright "photo flash" + a synced punch zoom — the visible
+# half of the camera-capture effect (the audible half is the shutter SFX).
+# Implemented as a single time-based ffmpeg `eq=brightness:eval=frame` pulse so
+# it is robust, fast and needs no extra files or AI images.
+# --------------------------------------------------------------------------- #
+FLASH_BRIGHTNESS = 0.85   # peak added luma (eq brightness, ~0..1) — strong white pop
+FLASH_SIGMA = 0.055       # seconds: half-width of the gaussian flash (≈120-180 ms visible)
+FLASH_PUNCH_AMP = 0.06    # extra synced punch-zoom amplitude at a flash
+FLASH_PUNCH_SIGMA = 0.10  # seconds: punch-zoom half-width at a flash
+FLASH_MIN_GAP = 2.5       # never two flashes closer than this (premium pacing)
+
+# --------------------------------------------------------------------------- #
 # STEP 5 — OVERLAYS (anti-collision safe zones, in px)
 #
 # RÈGLE PRODUIT: les overlays graphiques (stat / lower-third / liste) ne doivent

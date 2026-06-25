@@ -60,13 +60,27 @@ def _punch_terms(o_start: float, o_end: float, t: str) -> str:
     return ("+" + "+".join(terms)) if terms else ""
 
 
-def build_zoom_expr(ranges: List[dict], fps: int = config.FPS) -> str:
+def _flash_punch_terms(flash_times: Optional[List[float]], t: str) -> str:
+    """Extra synced punch-zoom gaussians ADDED to the z-curve at key moments."""
+    if not flash_times:
+        return ""
+    terms = [
+        f"{config.FLASH_PUNCH_AMP}*exp(-pow(({t}-{tf:.3f})/{config.FLASH_PUNCH_SIGMA:.4f},2))"
+        for tf in flash_times
+    ]
+    return ("+" + "+".join(terms)) if terms else ""
+
+
+def build_zoom_expr(ranges: List[dict], fps: int = config.FPS,
+                    flash_times: Optional[List[float]] = None) -> str:
     """
     Build the full piecewise zoompan ``z`` expression.
 
     Output segment boundaries come from the EDL ranges: kept range *i* occupies
     output time [o_start, o_start + range_len).  Time is inlined as (on/fps) so
     the expression stays a single statement (no ';' to escape in the filtergraph).
+
+    *flash_times* (output seconds) add a synced punch-zoom at each key moment.
     """
     t = f"(on/{fps})"
     o_start = 0.0
@@ -87,35 +101,62 @@ def build_zoom_expr(ranges: List[dict], fps: int = config.FPS) -> str:
         else:
             nested = f"if(lt({t},{o1:.3f}),{seg_z},{nested})"
 
+    punch = _flash_punch_terms(flash_times, t)
+    if punch:
+        nested = f"({nested}{punch})"
     return nested
 
 
-def build_vf(ranges: List[dict]) -> str:
+def build_flash_filter(flash_times: Optional[List[float]]) -> str:
+    """A single time-based `eq` brightness pulse train = white camera flashes.
+
+    Returns '' when there is nothing to flash, so the filter chain is unchanged
+    for renders without key moments.
+    """
+    if not flash_times:
+        return ""
+    pulses = "+".join(
+        f"{config.FLASH_BRIGHTNESS}*exp(-pow((t-{tf:.3f})/{config.FLASH_SIGMA:.4f}\\,2))"
+        for tf in flash_times
+    )
+    # eval=frame so brightness is recomputed every frame (the pulse animates).
+    return f"eq=brightness='{pulses}':eval=frame"
+
+
+def build_vf(ranges: List[dict], flash_times: Optional[List[float]] = None) -> str:
     """Full -vf chain: pre-scale x2 -> zoompan -> final 1080x1920 scale.
 
     The x/y expressions add a slow panoramic drift while the piecewise z curve
     does zoom-in/zoom-out plus micro-punches. This makes important moments feel
     dynamic instead of a static centered zoom.
+
+    *flash_times* (output seconds) add a synced punch zoom + a short white
+    camera flash at each key moment.
     """
-    z = build_zoom_expr(ranges)
+    z = build_zoom_expr(ranges, flash_times=flash_times)
     t = f"(on/{config.FPS})"
     x = f"(iw-iw/zoom)*(0.50+0.10*sin({t}*0.85))"
     y = f"(ih-ih/zoom)*(0.50+0.06*cos({t}*0.65))"
-    return (
+    chain = (
         "scale=iw*2:ih*2,"
         f"zoompan=z='{z}'"
         f":x='{x}':y='{y}'"
         f":d=1:s={config.WIDTH}x{config.HEIGHT}:fps={config.FPS},"
         f"scale={config.WIDTH}:{config.HEIGHT}"
     )
+    flash = build_flash_filter(flash_times)
+    if flash:
+        chain += "," + flash
+    return chain
 
 
-def apply_dynamics(base_only: str, edl_path: str, out_path: str) -> str:
+def apply_dynamics(base_only: str, edl_path: str, out_path: str,
+                   flash_times: Optional[List[float]] = None) -> str:
     ffmpeg_utils.ensure_ffmpeg()
     with open(edl_path, "r", encoding="utf-8") as fh:
         ranges = json.load(fh)["ranges"]
 
-    vf = build_vf(ranges)
+    vf = build_vf(ranges, flash_times=flash_times)
     ffmpeg_utils.run([
         ffmpeg_utils.FFMPEG, "-y", "-i", base_only,
         "-vf", vf,
@@ -124,8 +165,9 @@ def apply_dynamics(base_only: str, edl_path: str, out_path: str) -> str:
         "-c:a", "copy",
         out_path,
     ])
-    print(f"[video_dynamics] Ken Burns + micro-punches over "
-          f"{output_duration(ranges):.1f}s -> {out_path}")
+    n_flash = len(flash_times or [])
+    print(f"[video_dynamics] Ken Burns + micro-punches + {n_flash} camera "
+          f"flashes over {output_duration(ranges):.1f}s -> {out_path}")
     return out_path
 
 
