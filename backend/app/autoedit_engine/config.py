@@ -126,6 +126,14 @@ LIGHT_OVERLAY_WARMTH = 0.30      # peak gamma_r/gamma_b shift -> warm leak tint
 LIGHT_OVERLAY_PUNCH_AMP = 0.03   # tiny synced punch-zoom amplitude
 LIGHT_OVERLAY_PUNCH_SIGMA = 0.16  # seconds: punch-zoom half-width
 
+# Real light-leak asset (the exact video + audio the user supplied) — used
+# standalone at speech-pause instants. The synthesized EQ warm-pulse is kept
+# ONLY for the motion-design transition instants (silent, per spec).
+LIGHT_OVERLAY_ASSET_DIR = os.path.join(os.path.dirname(__file__), "assets")
+LIGHT_OVERLAY_ASSET_MP4 = os.path.join(LIGHT_OVERLAY_ASSET_DIR, "light_leak_original.mp4")
+LIGHT_OVERLAY_ASSET_WAV = os.path.join(LIGHT_OVERLAY_ASSET_DIR, "light_leak_original.wav")
+LIGHT_OVERLAY_ASSET_OPACITY = 0.55  # alpha scale post-lumakey: face stays visible
+
 # --------------------------------------------------------------------------- #
 # STEP 5 — OVERLAYS (anti-collision safe zones, in px)
 #
@@ -384,6 +392,8 @@ SFX_NAMES = [
     # v4.2 professional additions
     "shutter_burst", "camera_focus", "pen_scribble", "tape_stop",
     "bubble", "snap", "cinematic_hit", "data_tick",
+    # real (non-synthesized) asset — the user's original light-leak sound
+    "light_leak_original",
 ]
 
 # Per-SFX peak gain (approximate, from spec).
@@ -395,6 +405,7 @@ SFX_GAINS = {
     "glitch": 0.78, "pop": 0.75, "ding": 0.72, "snap": 0.74,
     "chime": 0.72, "sparkle": 0.70, "digi_blip": 0.68, "click": 0.60,
     "bubble": 0.70, "pen_scribble": 0.52, "data_tick": 0.62,
+    "light_leak_original": 1.0,  # real asset — keep its native level, no re-gain
 }
 
 # loudnorm target (broadcast-safe social loudness).

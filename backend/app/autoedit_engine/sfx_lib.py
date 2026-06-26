@@ -351,6 +351,13 @@ def _write_wav(path: str, samples: np.ndarray) -> None:
 
 
 def generate(name: str, out_dir: str) -> str:
+    if name == "light_leak_original":
+        # Real (non-synthesized) asset: copy the user's original WAV verbatim,
+        # no re-gain, so the exact original sound is preserved.
+        import shutil
+        path = os.path.join(out_dir, f"{name}.wav")
+        shutil.copyfile(config.LIGHT_OVERLAY_ASSET_WAV, path)
+        return path
     if name not in GENERATORS:
         raise ValueError(f"unknown SFX '{name}'")
     samples = _norm(GENERATORS[name]().astype(np.float64), config.SFX_GAINS.get(name, 0.8))

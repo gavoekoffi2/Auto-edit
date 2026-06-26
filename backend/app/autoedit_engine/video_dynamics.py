@@ -165,7 +165,8 @@ def build_light_overlay_filter(light_times: Optional[List[float]]) -> str:
 
 
 def build_vf(ranges: List[dict], flash_times: Optional[List[float]] = None,
-            light_times: Optional[List[float]] = None) -> str:
+            light_times: Optional[List[float]] = None,
+            eq_light_times: Optional[List[float]] = None) -> str:
     """Full -vf chain: pre-scale x2 -> zoompan -> final 1080x1920 scale.
 
     The x/y expressions add a slow panoramic drift while the piecewise z curve
@@ -174,7 +175,11 @@ def build_vf(ranges: List[dict], flash_times: Optional[List[float]] = None,
 
     *flash_times* (output seconds) add a synced punch zoom + a short white
     camera flash at each key moment. *light_times* (output seconds) add a tiny
-    punch zoom + a soft warm light-leak sweep at every speech pause.
+    punch zoom at every speech pause AND every motion-design transition cut.
+    *eq_light_times* is the SUBSET that also gets the synthesized warm `eq`
+    pulse: only the motion-design transition instants — pause instants now get
+    the real light-leak video+audio overlay instead (composited separately),
+    so they must NOT also receive the synthesized brightness/warmth pulse.
     """
     z = build_zoom_expr(ranges, flash_times=flash_times, light_times=light_times)
     t = f"(on/{config.FPS})"
@@ -190,20 +195,45 @@ def build_vf(ranges: List[dict], flash_times: Optional[List[float]] = None,
     flash = build_flash_filter(flash_times)
     if flash:
         chain += "," + flash
-    light = build_light_overlay_filter(light_times)
+    light = build_light_overlay_filter(eq_light_times)
     if light:
         chain += "," + light
     return chain
 
 
+def prepare_light_leak_overlay_clip(out_path: str) -> str:
+    """Convert the user's real light-leak asset into an alpha-keyed ProRes 4444
+    overlay clip: black background -> transparent (via lumakey), then the
+    whole alpha channel scaled down so the face stays visible underneath
+    (reduced opacity, screen/lighten-style). Video only — the asset's real
+    audio is mixed separately as the "light_leak_original" SFX cue.
+    """
+    ffmpeg_utils.ensure_ffmpeg()
+    vf = (
+        "lumakey=threshold=0.12:tolerance=0.08:softness=0.15,"
+        f"colorchannelmixer=aa={config.LIGHT_OVERLAY_ASSET_OPACITY},"
+        f"format={config.PRORES_PIX_FMT}"
+    )
+    ffmpeg_utils.run([
+        ffmpeg_utils.FFMPEG, "-y", "-i", config.LIGHT_OVERLAY_ASSET_MP4,
+        "-vf", vf, "-an",
+        "-c:v", "prores_ks", "-profile:v", config.PRORES_PROFILE,
+        "-pix_fmt", config.PRORES_PIX_FMT,
+        out_path,
+    ])
+    return out_path
+
+
 def apply_dynamics(base_only: str, edl_path: str, out_path: str,
                    flash_times: Optional[List[float]] = None,
-                   light_times: Optional[List[float]] = None) -> str:
+                   light_times: Optional[List[float]] = None,
+                   eq_light_times: Optional[List[float]] = None) -> str:
     ffmpeg_utils.ensure_ffmpeg()
     with open(edl_path, "r", encoding="utf-8") as fh:
         ranges = json.load(fh)["ranges"]
 
-    vf = build_vf(ranges, flash_times=flash_times, light_times=light_times)
+    vf = build_vf(ranges, flash_times=flash_times, light_times=light_times,
+                  eq_light_times=eq_light_times)
     ffmpeg_utils.run([
         ffmpeg_utils.FFMPEG, "-y", "-i", base_only,
         "-vf", vf,
@@ -214,8 +244,10 @@ def apply_dynamics(base_only: str, edl_path: str, out_path: str,
     ])
     n_flash = len(flash_times or [])
     n_light = len(light_times or [])
+    n_eq_light = len(eq_light_times or [])
     print(f"[video_dynamics] Ken Burns + micro-punches + {n_flash} camera "
-          f"flashes + {n_light} pause light-leaks over "
+          f"flashes + {n_light} pause/transition punch-zooms "
+          f"({n_eq_light} with warm eq pulse) over "
           f"{output_duration(ranges):.1f}s -> {out_path}")
     return out_path
 
