@@ -338,3 +338,33 @@ def flash_times(cues: Sequence[KeyMomentCue]) -> List[float]:
 def shutter_times(cues: Sequence[KeyMomentCue]) -> List[float]:
     """Source-time instants of cues that carry a shutter / camera SFX."""
     return [round(c.start, 3) for c in cues if "shutter_sfx" in c.effects]
+
+
+def plan_light_overlays(
+    vu: dict,
+    *,
+    pause_gap: float = config.LIGHT_OVERLAY_PAUSE_GAP,
+    min_gap: float = config.LIGHT_OVERLAY_MIN_GAP,
+) -> List[float]:
+    """Source-time instants where the speaker takes a short breath/pause.
+
+    Unlike :func:`plan_key_moments` (a scored, capped pool tuned for ~1 accent
+    every 7s), this is deliberately DENSE: it fires at every meaningful pause
+    between two parts of a sentence — not just full stops — so a "light leak"
+    overlay + whoosh SFX can be dropped throughout the whole video to keep a
+    plain talking-head edit visually dynamic. Only a tight *min_gap* keeps two
+    overlays from stacking back-to-back.
+    """
+    words = content._all_words(vu)
+    if len(words) < 2:
+        return []
+    chosen: List[float] = []
+    for prev, w in zip(words, words[1:]):
+        gap = float(w["start"]) - float(prev.get("end", prev["start"]))
+        if gap < pause_gap:
+            continue
+        t = float(w["start"])
+        if chosen and (t - chosen[-1]) < min_gap:
+            continue
+        chosen.append(round(t, 3))
+    return chosen

@@ -159,6 +159,7 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
         "key_moments": 0,
         "camera_flashes": 0,
         "shutter_sfx": 0,
+        "light_overlays": 0,
         "sfx_cues": 0,
     })
     if visual_mode not in {"ai_broll", "credit_saver", "auto_fallback"}:
@@ -196,12 +197,12 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     km_cues = key_moments.plan_key_moments(vu_data)
     rep["key_moments"] = len(km_cues)
 
-    def _to_output(src_times: list) -> list:
+    def _to_output(src_times: list, min_gap: float = config.FLASH_MIN_GAP) -> list:
         out = sorted({round(timeline.s2o_clamped(t, edl_ranges), 3) for t in src_times})
         # Re-enforce the minimum gap in OUTPUT time (cuts can compress moments).
         spaced: list = []
         for t in out:
-            if not spaced or (t - spaced[-1]) >= config.FLASH_MIN_GAP:
+            if not spaced or (t - spaced[-1]) >= min_gap:
                 spaced.append(t)
         return spaced
 
@@ -210,6 +211,18 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     rep["camera_flashes"] = len(flash_times_out)
     rep["shutter_sfx"] = len(shutter_times_out)
     n_topic_shift = sum(1 for c in km_cues if c.reason == "topic_shift")
+
+    # 2ter) Speech-pause light-leak overlay — fires at EVERY meaningful pause
+    # (not just the scored/capped key moments) so a plain talking-head edit
+    # without B-roll stays visually dynamic throughout. Soft warm flash +
+    # whoosh SFX, never closer to a camera flash than its own min gap.
+    light_src = key_moments.plan_light_overlays(vu_data)
+    light_overlay_times_out = _to_output(light_src, min_gap=config.LIGHT_OVERLAY_MIN_GAP)
+    light_overlay_times_out = [
+        t for t in light_overlay_times_out
+        if all(abs(t - tf) >= config.LIGHT_OVERLAY_MIN_GAP for tf in flash_times_out)
+    ]
+    rep["light_overlays"] = len(light_overlay_times_out)
 
     # 3) Graphic overlays ----------------------------------------------------
     _p(34, "3 overlays")
@@ -323,10 +336,16 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     added_key_sfx = _inject_key_moment_sfx(p("sfx_cues.json"), shutter_times_out)
     rep["sfx_cues"] += added_key_sfx
 
-    # 9) Dynamic zoom + key-moment camera flashes ----------------------------
+    # 8ter) Speech-pause light-leak whoosh SFX — the audible half of the warm
+    # light sweep, synced to the soft flashes added below.
+    added_light_sfx = _inject_light_overlay_sfx(p("sfx_cues.json"), light_overlay_times_out)
+    rep["sfx_cues"] += added_light_sfx
+
+    # 9) Dynamic zoom + key-moment camera flashes + pause light-leaks --------
     _p(74, "9 video_dynamics")
     base_dyn = video_dynamics.apply_dynamics(
-        base_only, edl_path, p("base_dyn.mp4"), flash_times=flash_times_out)
+        base_only, edl_path, p("base_dyn.mp4"), flash_times=flash_times_out,
+        light_times=light_overlay_times_out)
 
     # 10) Composite ----------------------------------------------------------
     _p(85, "10 composite")
@@ -350,6 +369,7 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     rep["effects_applied"] = {
         "cameraFlashes": rep["camera_flashes"],
         "shutterSfx": rep["shutter_sfx"],
+        "lightOverlays": rep["light_overlays"],
         "motionCards": rep["motion_scenes_rendered"],
         "transitions": (rep["motion_scenes_rendered"] + rep["broll_images"]
                         + n_topic_shift),
@@ -366,7 +386,8 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     if progress_callback:
         progress_callback(100, "done")
     print(f"\n✅ Auto Edit complete ({rep['visual_mode_used']}, "
-          f"{rep['camera_flashes']} flashes) -> {final}")
+          f"{rep['camera_flashes']} flashes, "
+          f"{rep['light_overlays']} pause light-leaks) -> {final}")
     return final
 
 
@@ -392,6 +413,35 @@ def _inject_key_moment_sfx(sfx_cues_path: str, shutter_times: list) -> int:
         if (round(float(t), 2), sfx) in existing:
             continue
         cues.append({"sfx": sfx, "t": round(float(t), 3), "src": "key_moment"})
+        added += 1
+    cues.sort(key=lambda c: float(c.get("t", 0.0)))
+    with open(sfx_cues_path, "w", encoding="utf-8") as fh:
+        json.dump(cues, fh, ensure_ascii=False, indent=2)
+    return added
+
+
+def _inject_light_overlay_sfx(sfx_cues_path: str, light_times: list) -> int:
+    """Merge a soft whoosh SFX at each speech-pause light-leak overlay.
+
+    Alternates the breath/transition sounds the engine already synthesises
+    locally so the warm light sweep is also AUDIBLE, and avoids stacking two
+    identical SFX back-to-back. Returns the number added.
+    """
+    if not light_times or not os.path.exists(sfx_cues_path):
+        return 0
+    try:
+        with open(sfx_cues_path, "r", encoding="utf-8") as fh:
+            cues = json.load(fh)
+    except (OSError, ValueError):
+        return 0
+    pool = ["whoosh", "swoosh_up", "transition", "reverse_swell"]
+    existing = {(round(float(c.get("t", -1)), 2), c.get("sfx")) for c in cues}
+    added = 0
+    for i, t in enumerate(light_times):
+        sfx = pool[i % len(pool)]
+        if (round(float(t), 2), sfx) in existing:
+            continue
+        cues.append({"sfx": sfx, "t": round(float(t), 3), "src": "light_overlay"})
         added += 1
     cues.sort(key=lambda c: float(c.get("t", 0.0)))
     with open(sfx_cues_path, "w", encoding="utf-8") as fh:

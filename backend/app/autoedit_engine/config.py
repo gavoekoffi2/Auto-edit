@@ -106,6 +106,27 @@ FLASH_PUNCH_SIGMA = 0.10  # seconds: punch-zoom half-width at a flash
 FLASH_MIN_GAP = 2.5       # never two flashes closer than this (premium pacing)
 
 # --------------------------------------------------------------------------- #
+# STEP 4ter — SPEECH-PAUSE LIGHT-LEAK OVERLAY (credit-saver dynamism)
+#
+# Every time the speaker pauses mid-thought (a short breath between two parts
+# of a sentence, not necessarily a full stop), a warm "light leak" sweeps over
+# the talking-head frame — a soft, semi-transparent flash of warm light (like
+# a lens catching a light source) synced with a whoosh/transition SFX. Unlike
+# the white CAMERA FLASH (key moments only, capped, plain white), this is
+# deliberately MORE FREQUENT (every meaningful pause) and SOFTER/WARMER so the
+# face stays clearly visible underneath — it reads as "light passing", not a
+# photo capture. Implemented the same procedural way as the camera flash (a
+# single time-based ffmpeg `eq` pulse train) so it needs no extra image asset.
+# --------------------------------------------------------------------------- #
+LIGHT_OVERLAY_PAUSE_GAP = 0.5   # seconds: a word gap >= this counts as a "pause"
+LIGHT_OVERLAY_MIN_GAP = 1.6     # never two light overlays closer than this
+LIGHT_OVERLAY_BRIGHTNESS = 0.40  # peak added luma — soft, face stays visible
+LIGHT_OVERLAY_SIGMA = 0.20       # seconds: half-width of the pulse (soft sweep)
+LIGHT_OVERLAY_WARMTH = 0.30      # peak gamma_r/gamma_b shift -> warm leak tint
+LIGHT_OVERLAY_PUNCH_AMP = 0.03   # tiny synced punch-zoom amplitude
+LIGHT_OVERLAY_PUNCH_SIGMA = 0.16  # seconds: punch-zoom half-width
+
+# --------------------------------------------------------------------------- #
 # STEP 5 — OVERLAYS (anti-collision safe zones, in px)
 #
 # RÈGLE PRODUIT: les overlays graphiques (stat / lower-third / liste) ne doivent
