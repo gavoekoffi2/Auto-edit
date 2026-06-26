@@ -26,8 +26,8 @@ from . import ffmpeg_utils
 from . import sfx_lib
 
 
-def _delay_ms(t: float) -> int:
-    return max(0, int(round((t + config.SFX_OFFSET) * 1000)))
+def _delay_ms(t: float, offset: float = config.SFX_OFFSET) -> int:
+    return max(0, int(round((t + offset) * 1000)))
 
 
 def _build_filter(cues: List[dict], sfx_index: Dict[str, str]) -> tuple[str, list]:
@@ -50,15 +50,25 @@ def _build_filter(cues: List[dict], sfx_index: Dict[str, str]) -> tuple[str, lis
             continue
         inputs.append(path)
         idx = len(inputs)                       # ffmpeg input index (0 is video)
-        ms = _delay_ms(float(cue["t"]))
         label = f"[s{ci}]"
+
+        # The real light-leak asset must play in lockstep with its own video
+        # overlay (no anticipation offset, no pitch/speed "humanisation" —
+        # that would shift its duration and desync it from the light passage).
+        is_light_leak = cue["sfx"] == "light_leak_original"
 
         # Variation index advances per occurrence OF THE SAME sound, so the
         # first hit of every sound stays at its designed pitch.
         k = seen_count.get(cue["sfx"], 0)
         seen_count[cue["sfx"]] = k + 1
-        pitch = config.SFX_PITCH_VARIANTS[k % len(config.SFX_PITCH_VARIANTS)]
-        gain = config.SFX_BUS_GAIN * config.SFX_GAIN_VARIANTS[k % len(config.SFX_GAIN_VARIANTS)]
+        if is_light_leak:
+            ms = _delay_ms(float(cue["t"]), offset=0.0)
+            pitch = 1.0
+            gain = config.SFX_BUS_GAIN
+        else:
+            ms = _delay_ms(float(cue["t"]))
+            pitch = config.SFX_PITCH_VARIANTS[k % len(config.SFX_PITCH_VARIANTS)]
+            gain = config.SFX_BUS_GAIN * config.SFX_GAIN_VARIANTS[k % len(config.SFX_GAIN_VARIANTS)]
 
         chain = f"[{idx}:a]"
         if abs(pitch - 1.0) > 1e-3:

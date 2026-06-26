@@ -170,9 +170,11 @@ def test_icon_mapping_matches_concepts():
     assert content.icon_for_text("le client paie en mobile money") == "money"
     assert content.icon_for_text("notre croissance va doubler") == "growth"
     assert content.icon_for_text("envoie un message whatsapp") == "phone"
-    assert content.icon_for_text("phrase neutre sans concept") == content.DEFAULT_ICON
-    # every mapped icon exists in the drawing library
+    assert content.icon_for_text("phrase neutre sans concept") in content.DEFAULT_ICON_POOL
+    # every mapped icon (and every fallback pool entry) exists in the library
     for _, icon in content.ICON_RULES:
+        assert icon in motion_design.ICONS
+    for icon in content.DEFAULT_ICON_POOL:
         assert icon in motion_design.ICONS
 
 
