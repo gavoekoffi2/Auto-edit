@@ -71,8 +71,20 @@ def _flash_punch_terms(flash_times: Optional[List[float]], t: str) -> str:
     return ("+" + "+".join(terms)) if terms else ""
 
 
+def _light_punch_terms(light_times: Optional[List[float]], t: str) -> str:
+    """Tiny synced punch-zoom gaussians at each speech-pause light overlay."""
+    if not light_times:
+        return ""
+    terms = [
+        f"{config.LIGHT_OVERLAY_PUNCH_AMP}*exp(-pow(({t}-{tl:.3f})/{config.LIGHT_OVERLAY_PUNCH_SIGMA:.4f},2))"
+        for tl in light_times
+    ]
+    return ("+" + "+".join(terms)) if terms else ""
+
+
 def build_zoom_expr(ranges: List[dict], fps: int = config.FPS,
-                    flash_times: Optional[List[float]] = None) -> str:
+                    flash_times: Optional[List[float]] = None,
+                    light_times: Optional[List[float]] = None) -> str:
     """
     Build the full piecewise zoompan ``z`` expression.
 
@@ -81,6 +93,8 @@ def build_zoom_expr(ranges: List[dict], fps: int = config.FPS,
     the expression stays a single statement (no ';' to escape in the filtergraph).
 
     *flash_times* (output seconds) add a synced punch-zoom at each key moment.
+    *light_times* (output seconds) add a much smaller punch-zoom at each
+    speech-pause light-leak overlay (see :func:`build_light_overlay_filter`).
     """
     t = f"(on/{fps})"
     o_start = 0.0
@@ -101,7 +115,7 @@ def build_zoom_expr(ranges: List[dict], fps: int = config.FPS,
         else:
             nested = f"if(lt({t},{o1:.3f}),{seg_z},{nested})"
 
-    punch = _flash_punch_terms(flash_times, t)
+    punch = _flash_punch_terms(flash_times, t) + _light_punch_terms(light_times, t)
     if punch:
         nested = f"({nested}{punch})"
     return nested
@@ -123,7 +137,35 @@ def build_flash_filter(flash_times: Optional[List[float]]) -> str:
     return f"eq=brightness='{pulses}':eval=frame"
 
 
-def build_vf(ranges: List[dict], flash_times: Optional[List[float]] = None) -> str:
+def build_light_overlay_filter(light_times: Optional[List[float]]) -> str:
+    """Warm "light leak" sweep at each speech pause — a soft, time-based `eq`
+    pulse train (brightness lift + warm gamma shift on r/b channels).
+
+    Softer and warmer than :func:`build_flash_filter` (the white camera flash):
+    the face must stay clearly visible underneath, it should read as a light
+    passing over the frame rather than a photo capture. Returns '' when there
+    is nothing to do, so the filter chain is unchanged for renders without
+    detected pauses.
+    """
+    if not light_times:
+        return ""
+    bright_terms = "+".join(
+        f"{config.LIGHT_OVERLAY_BRIGHTNESS}*exp(-pow((t-{tl:.3f})/{config.LIGHT_OVERLAY_SIGMA:.4f}\\,2))"
+        for tl in light_times
+    )
+    warm_terms = "+".join(
+        f"{config.LIGHT_OVERLAY_WARMTH}*exp(-pow((t-{tl:.3f})/{config.LIGHT_OVERLAY_SIGMA:.4f}\\,2))"
+        for tl in light_times
+    )
+    return (
+        f"eq=brightness='{bright_terms}'"
+        f":gamma_r='1+({warm_terms})':gamma_b='1-({warm_terms})*0.6'"
+        ":eval=frame"
+    )
+
+
+def build_vf(ranges: List[dict], flash_times: Optional[List[float]] = None,
+            light_times: Optional[List[float]] = None) -> str:
     """Full -vf chain: pre-scale x2 -> zoompan -> final 1080x1920 scale.
 
     The x/y expressions add a slow panoramic drift while the piecewise z curve
@@ -131,9 +173,10 @@ def build_vf(ranges: List[dict], flash_times: Optional[List[float]] = None) -> s
     dynamic instead of a static centered zoom.
 
     *flash_times* (output seconds) add a synced punch zoom + a short white
-    camera flash at each key moment.
+    camera flash at each key moment. *light_times* (output seconds) add a tiny
+    punch zoom + a soft warm light-leak sweep at every speech pause.
     """
-    z = build_zoom_expr(ranges, flash_times=flash_times)
+    z = build_zoom_expr(ranges, flash_times=flash_times, light_times=light_times)
     t = f"(on/{config.FPS})"
     x = f"(iw-iw/zoom)*(0.50+0.10*sin({t}*0.85))"
     y = f"(ih-ih/zoom)*(0.50+0.06*cos({t}*0.65))"
@@ -147,16 +190,20 @@ def build_vf(ranges: List[dict], flash_times: Optional[List[float]] = None) -> s
     flash = build_flash_filter(flash_times)
     if flash:
         chain += "," + flash
+    light = build_light_overlay_filter(light_times)
+    if light:
+        chain += "," + light
     return chain
 
 
 def apply_dynamics(base_only: str, edl_path: str, out_path: str,
-                   flash_times: Optional[List[float]] = None) -> str:
+                   flash_times: Optional[List[float]] = None,
+                   light_times: Optional[List[float]] = None) -> str:
     ffmpeg_utils.ensure_ffmpeg()
     with open(edl_path, "r", encoding="utf-8") as fh:
         ranges = json.load(fh)["ranges"]
 
-    vf = build_vf(ranges, flash_times=flash_times)
+    vf = build_vf(ranges, flash_times=flash_times, light_times=light_times)
     ffmpeg_utils.run([
         ffmpeg_utils.FFMPEG, "-y", "-i", base_only,
         "-vf", vf,
@@ -166,8 +213,10 @@ def apply_dynamics(base_only: str, edl_path: str, out_path: str,
         out_path,
     ])
     n_flash = len(flash_times or [])
+    n_light = len(light_times or [])
     print(f"[video_dynamics] Ken Burns + micro-punches + {n_flash} camera "
-          f"flashes over {output_duration(ranges):.1f}s -> {out_path}")
+          f"flashes + {n_light} pause light-leaks over "
+          f"{output_duration(ranges):.1f}s -> {out_path}")
     return out_path
 
 
