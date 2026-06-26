@@ -38,6 +38,7 @@ from . import (
     composite,
     config,
     content,
+    ffmpeg_utils,
     finalize,
     genimg,
     key_moments,
@@ -342,6 +343,39 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     })
     rep["motion_transitions_lit"] = len(motion_transition_times)
 
+    # 7ter) Real light-leak overlay clip — standalone, at each speech pause.
+    # Per explicit user instruction: the exact original asset (video + its own
+    # audio) must play, not a synthesized EQ pulse, whenever the light-leak is
+    # NOT being used as a motion-design transition (that case stays as-is,
+    # silent, EQ-only — see 7bis above). The clip never overlaps a motion
+    # takeover span, so it can't collide with the EQ-based transition effect
+    # and the video stays clear/coherent for the viewer.
+    light_leak_mov = p("light_leak_overlay.mov")
+    video_dynamics.prepare_light_leak_overlay_clip(light_leak_mov)
+    clip_dur = ffmpeg_utils.probe_duration(light_leak_mov) or 0.633
+    motion_spans = [(float(o["start"]), float(o["end"])) for o in motion_overlays]
+    edl = json.load(open(edl_path, encoding="utf-8"))
+    overlays_list = edl.get("overlays", [])
+    n_light_overlay_clips = 0
+    for i, t in enumerate(light_overlay_times_out):
+        end_t = min(t + clip_dur, kept) if kept else t + clip_dur
+        if end_t - t < clip_dur * 0.5:
+            continue
+        if any(t < me and end_t > ms for ms, me in motion_spans):
+            continue
+        overlays_list.append({
+            "id": f"light_leak_{i}",
+            "mov": light_leak_mov,
+            "start": round(t, 3),
+            "end": round(end_t, 3),
+            "kind": "light_overlay",
+        })
+        n_light_overlay_clips += 1
+    edl["overlays"] = overlays_list
+    with open(edl_path, "w", encoding="utf-8") as fh:
+        json.dump(edl, fh, ensure_ascii=False, indent=2)
+    rep["light_overlay_clips"] = n_light_overlay_clips
+
     dynamics_light_times = sorted(set(light_overlay_times_out) | set(motion_transition_times))
     spaced_dynamics_light_times: list = []
     for t in dynamics_light_times:
@@ -370,7 +404,8 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     _p(74, "9 video_dynamics")
     base_dyn = video_dynamics.apply_dynamics(
         base_only, edl_path, p("base_dyn.mp4"), flash_times=flash_times_out,
-        light_times=spaced_dynamics_light_times)
+        light_times=spaced_dynamics_light_times,
+        eq_light_times=motion_transition_times)
 
     # 10) Composite ----------------------------------------------------------
     _p(85, "10 composite")
@@ -447,11 +482,13 @@ def _inject_key_moment_sfx(sfx_cues_path: str, shutter_times: list) -> int:
 
 
 def _inject_light_overlay_sfx(sfx_cues_path: str, light_times: list) -> int:
-    """Merge a soft whoosh SFX at each speech-pause light-leak overlay.
+    """Merge the light-leak's REAL original sound at each speech-pause overlay.
 
-    Alternates the breath/transition sounds the engine already synthesises
-    locally so the warm light sweep is also AUDIBLE, and avoids stacking two
-    identical SFX back-to-back. Returns the number added.
+    The user supplied the exact overlay asset (video + audio) and wants its
+    native sound used verbatim when the overlay plays standalone (i.e. at a
+    speech pause) — not a synthesized whoosh/swoosh approximation. Motion-
+    design transition instants stay silent (handled separately, unchanged).
+    Returns the number added.
     """
     if not light_times or not os.path.exists(sfx_cues_path):
         return 0
@@ -460,7 +497,7 @@ def _inject_light_overlay_sfx(sfx_cues_path: str, light_times: list) -> int:
             cues = json.load(fh)
     except (OSError, ValueError):
         return 0
-    pool = ["whoosh", "swoosh_up", "transition", "reverse_swell"]
+    pool = ["light_leak_original"]
     existing = {(round(float(c.get("t", -1)), 2), c.get("sfx")) for c in cues}
     added = 0
     for i, t in enumerate(light_times):

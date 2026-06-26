@@ -10,7 +10,11 @@ from app.autoedit_engine.mix_sfx import _build_filter
 
 
 def test_every_named_sfx_has_a_generator():
+    # "light_leak_original" is a real (non-synthesized) asset copied verbatim
+    # by sfx_lib.generate() — it intentionally has no numpy GENERATORS entry.
     for name in engine_config.SFX_NAMES:
+        if name == "light_leak_original":
+            continue
         assert name in sfx_lib.GENERATORS, name
         assert name in engine_config.SFX_GAINS, name
 
