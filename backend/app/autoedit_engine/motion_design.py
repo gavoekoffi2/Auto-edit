@@ -82,6 +82,33 @@ def select_palette(seed_text: str, preset: Optional[str] = None) -> str:
         return "legacy"
 STROKE_W = 14                      # doodle ink width (px)
 
+# --------------------------------------------------------------------------- #
+# scene LAYOUTS — distinct compositions, not just recoloured copies of the
+# same template. A preset (motion_presets.py) only changes the colour/shape
+# density; a layout changes WHERE things sit and HOW the background moves, so
+# two scenes genuinely look like a different piece of design:
+#
+#   stage_center     signature look — centered panel, chip kicker, dot grid
+#   split_panel      illustration as a wide letterboxed strip, single
+#                     diagonal connector arrow, vertical drifting lines
+#   badge_top        big illustration low on the frame, kicker+headline fused
+#                     into a full-width ribbon banner across the top, rays
+#   fullbleed_frame  illustration bleeds edge-to-edge, headline lives in a
+#                     lower-third caption bar instead of floating mid-screen
+#
+# Selection is per-scene (never the same layout twice in a row) AND seeded
+# per-video (an md5 of the spoken content), so two different videos rarely
+# open their first motion-design beat on the same layout either.
+# --------------------------------------------------------------------------- #
+LAYOUTS = ["stage_center", "split_panel", "badge_top", "fullbleed_frame"]
+
+
+def _layout_for(seed_text: str, index: int) -> str:
+    import hashlib
+    h = int(hashlib.md5((seed_text or "x").encode("utf-8")).hexdigest(), 16)
+    offset = h % len(LAYOUTS)
+    return LAYOUTS[(offset + index) % len(LAYOUTS)]
+
 # Scene animation timeline (seconds from scene start).  These are the moments
 # plan_overlays converts into per-element SFX cues.
 T_ILLU = 0.12        # illustration pop / draw-on starts
@@ -331,6 +358,53 @@ def _dots_layer(t: float) -> Image.Image:
     return layer
 
 
+def _lines_layer(t: float) -> Image.Image:
+    """split_panel motif: slow vertical drifting hairlines."""
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    drift = 18.0 * math.sin(t * 0.35)
+    for gx in range(40, W, 84):
+        x = gx + drift
+        d.line([(x, 0), (x, H)], fill=(255, 255, 255, 10), width=2)
+    return layer
+
+
+def _rays_layer(t: float) -> Image.Image:
+    """badge_top motif: faint rays radiating from the top-center banner."""
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    cx, cy = W // 2, 140
+    spin = t * 0.15
+    for k in range(14):
+        a = spin + k * (2 * math.pi / 14)
+        x2, y2 = cx + math.cos(a) * 1400, cy + math.sin(a) * 1400
+        d.line([(cx, cy), (x2, y2)], fill=(255, 255, 255, 9), width=3)
+    return layer
+
+
+def _grain_layer(t: float) -> Image.Image:
+    """fullbleed_frame motif: sparse drifting dust specks over the bleed image."""
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    drift = 14.0 * math.sin(t * 0.5)
+    for gy in range(80, H, 140):
+        for gx in range(40, W, 140):
+            x = gx + drift * (1 if (gy // 140) % 2 == 0 else -1)
+            y = gy + drift * 0.4
+            d.ellipse((x - 3, y - 3, x + 3, y + 3), fill=(255, 255, 255, 12))
+    return layer
+
+
+def _bg_motif(layout: str, t: float) -> Image.Image:
+    if layout == "split_panel":
+        return _lines_layer(t)
+    if layout == "badge_top":
+        return _rays_layer(t)
+    if layout == "fullbleed_frame":
+        return _grain_layer(t)
+    return _dots_layer(t)
+
+
 def _light_sweep(progress: float) -> Image.Image:
     """Diagonal white sweep crossing the frame (entrance transition)."""
     layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -383,13 +457,21 @@ def _fmt_value(value: float, raw: str) -> str:
 # --------------------------------------------------------------------------- #
 # scene rendering
 # --------------------------------------------------------------------------- #
-def _illu_box(kind: str) -> Tuple[int, int, int, int]:
-    """Bounds of the illustration zone (steps/number scenes leave more room)."""
+def _illu_box(kind: str, layout: str = "stage_center") -> Tuple[int, int, int, int]:
+    """Bounds of the illustration zone — varies by *layout* (see LAYOUTS),
+    not just by *kind* (steps/number scenes always keep extra room for text).
+    """
     if kind == "steps":
         return (210, 330, W - 210, 950)
     if kind == "number":
         return (170, 330, W - 170, 1000)
-    return (120, 330, W - 120, 1130)
+    if layout == "split_panel":
+        return (70, 470, W - 70, 1240)        # wide letterboxed strip, lower
+    if layout == "badge_top":
+        return (130, 600, W - 130, 1430)      # big panel, room for top ribbon
+    if layout == "fullbleed_frame":
+        return (0, 210, W, 1540)              # edge-to-edge bleed
+    return (120, 330, W - 120, 1130)          # stage_center (signature look)
 
 
 def _pop(t: float, start: float, dur: float = 0.45) -> float:
@@ -461,6 +543,57 @@ def _draw_arrows(draw: ImageDraw.ImageDraw, t: float, box: Tuple[int, int, int, 
         _draw_strokes(draw, _partial_strokes(left, pl), (0, 0, 1, 1), ACCENT, width=11)
     if pr > 0:
         _draw_strokes(draw, _partial_strokes(right, pr), (0, 0, 1, 1), GOLD, width=11)
+
+
+def _draw_arrow_diagonal(draw: ImageDraw.ImageDraw, t: float, box: Tuple[int, int, int, int]):
+    """split_panel layout: a single bold diagonal connector, headline -> panel."""
+    x0, y0, x1, y1 = box
+    arrow = _arrow_strokes((W - 140, 300), (W // 2 + 40, 360), (x1 - 40, y0 + 70))
+    p = ease_in_out(_linear(t, T_ARROWS, 0.55))
+    if p > 0:
+        _draw_strokes(draw, _partial_strokes(arrow, p), (0, 0, 1, 1), GOLD, width=13)
+
+
+def _draw_ribbon_banner(draw: ImageDraw.ImageDraw, target: Image.Image,
+                        kicker: str, headline: str, t: float):
+    """badge_top layout: kicker + headline fused into a full-width top ribbon."""
+    p = _pop(t, T_KICKER, 0.4)
+    if p <= 0:
+        return
+    h = int(300 * (0.5 + 0.5 * p))
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    dl = ImageDraw.Draw(layer)
+    dl.rectangle((0, 0, W, h), fill=(10, 10, 14, 230))
+    dl.line([(0, h), (W, h)], fill=GOLD, width=6)
+    if p > 0.4:
+        fk = load_font("Montserrat", 38)
+        dl.text((W // 2, max(40, h - 200)), kicker, font=fk, fill=GOLD, anchor="mm")
+    if p > 0.6:
+        fh = _fit_font("Anton", 108, headline, 980, min_size=56)
+        a = int(255 * clamp((p - 0.6) / 0.4))
+        dl.text((W // 2, max(120, h - 100)), headline, font=fh, anchor="mm",
+                fill=(255, 255, 255, a), stroke_width=5, stroke_fill=(0, 0, 0, min(a, 230)))
+    target.alpha_composite(layer)
+
+
+def _draw_caption_bar(draw: ImageDraw.ImageDraw, target: Image.Image,
+                      kicker: str, headline: str, t: float):
+    """fullbleed_frame layout: headline lives in a lower-third caption bar."""
+    p = _pop(t, T_HEADLINE, 0.4)
+    if p <= 0:
+        return
+    y0 = H - int(360 * (0.5 + 0.5 * p))
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    dl = ImageDraw.Draw(layer)
+    dl.rectangle((0, y0, W, H), fill=(8, 8, 12, 215))
+    dl.line([(0, y0), (W, y0)], fill=ACCENT, width=6)
+    fk = load_font("Montserrat", 36)
+    dl.text((90, y0 + 60), kicker.upper(), font=fk, fill=GOLD, anchor="lm")
+    fh = _fit_font("Anton", 104, headline, W - 180, min_size=54)
+    a = int(255 * clamp(p * 1.6))
+    dl.text((90, y0 + 170), headline, font=fh, anchor="lm",
+            fill=(255, 255, 255, a), stroke_width=5, stroke_fill=(0, 0, 0, min(a, 230)))
+    target.alpha_composite(layer)
 
 
 def _draw_sparkles(draw: ImageDraw.ImageDraw, t: float, box: Tuple[int, int, int, int]):
@@ -647,11 +780,16 @@ def _apply_scene_transitions(canvas: Image.Image, scene: dict,
 
 def _compose_frame(scene: dict, illu: Optional[Image.Image], stage: Image.Image,
                    t: float, dur: float) -> Image.Image:
-    canvas = stage.copy()
-    canvas.alpha_composite(_dots_layer(t))
-
     kind = scene.get("kind", "idea")
-    box = _illu_box(kind)
+    # The 4 distinct layouts (see LAYOUTS) only apply to plain "idea" beats —
+    # steps/number scenes keep their own bespoke composition (pills/counter)
+    # so those stay legible regardless of the layout rotation.
+    layout = scene.get("layout", "stage_center") if kind == "idea" else "stage_center"
+
+    canvas = stage.copy()
+    canvas.alpha_composite(_bg_motif(layout, t))
+
+    box = _illu_box(kind, layout)
     if illu is not None:
         _paste_illustration(canvas, illu, t, dur, box)
 
@@ -665,19 +803,38 @@ def _compose_frame(scene: dict, illu: Optional[Image.Image], stage: Image.Image,
         _draw_icon_drawing(fg, scene.get("icon", content.DEFAULT_ICON), t, dur, box)
         draw = ImageDraw.Draw(fg)
 
-    _draw_kicker(draw, fg, scene.get("kicker", "À RETENIR"), t)
-    draw = ImageDraw.Draw(fg)
-
+    kicker = scene.get("kicker", "À RETENIR")
     headline_y = 1245 if kind != "steps" else 0
     if kind == "steps":
+        _draw_kicker(draw, fg, kicker, t)
+        draw = ImageDraw.Draw(fg)
         _draw_steps(draw, scene.get("steps", []), t)
     else:
         if kind == "number" and scene.get("value") is not None:
+            _draw_kicker(draw, fg, kicker, t)
+            draw = ImageDraw.Draw(fg)
             _draw_counter(draw, float(scene["value"]), scene.get("raw", ""), t)
             headline_y = 1290
-        _draw_headline(draw, scene.get("headline", ""), t, headline_y)
-        _draw_headline_circle(draw, scene.get("headline", ""), t, headline_y)
-        _draw_arrows(draw, t, box)
+            _draw_headline(draw, scene.get("headline", ""), t, headline_y)
+            _draw_headline_circle(draw, scene.get("headline", ""), t, headline_y)
+            _draw_arrows(draw, t, box)
+        elif layout == "badge_top":
+            _draw_ribbon_banner(draw, fg, kicker, scene.get("headline", ""), t)
+            draw = ImageDraw.Draw(fg)
+        elif layout == "fullbleed_frame":
+            _draw_caption_bar(draw, fg, kicker, scene.get("headline", ""), t)
+            draw = ImageDraw.Draw(fg)
+        elif layout == "split_panel":
+            _draw_kicker(draw, fg, kicker, t)
+            draw = ImageDraw.Draw(fg)
+            _draw_headline(draw, scene.get("headline", ""), t, 1340)
+            _draw_arrow_diagonal(draw, t, box)
+        else:  # stage_center — signature look
+            _draw_kicker(draw, fg, kicker, t)
+            draw = ImageDraw.Draw(fg)
+            _draw_headline(draw, scene.get("headline", ""), t, headline_y)
+            _draw_headline_circle(draw, scene.get("headline", ""), t, headline_y)
+            _draw_arrows(draw, t, box)
 
     _draw_sparkles(draw, t, box)
     canvas.alpha_composite(fg)
@@ -741,11 +898,15 @@ def render_all(scenes: List[dict], outdir: str, *, preset: Optional[str] = None,
     out: List[dict] = []
     for i, scene in enumerate(scenes):
         # Cycle the entrance/exit transition variants so two consecutive
-        # takeovers never use the same move (belles transitions variées).
+        # takeovers never use the same move (belles transitions variées), AND
+        # rotate the scene LAYOUT itself (composition, not just colour) so the
+        # motion-design beats of a single video never repeat the same template
+        # back to back — and the rotation start point varies per video too.
         scene = {
             **scene,
             "variant_in": config.MOTION_ENTRANCES[i % len(config.MOTION_ENTRANCES)],
             "variant_out": config.MOTION_EXITS[i % len(config.MOTION_EXITS)],
+            "layout": _layout_for(seed, i),
         }
         path = os.path.join(outdir, f"{scene['id']}.mov")
         try:
