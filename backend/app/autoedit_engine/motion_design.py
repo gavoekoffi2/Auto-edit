@@ -95,19 +95,48 @@ STROKE_W = 14                      # doodle ink width (px)
 #                     into a full-width ribbon banner across the top, rays
 #   fullbleed_frame  illustration bleeds edge-to-edge, headline lives in a
 #                     lower-third caption bar instead of floating mid-screen
+#   corner_stack     small illustration tucked top-right, big vertical
+#                     stacked kicker+headline chip pinned to the left edge,
+#                     drifting diagonal corner wedges in the background
+#   ticker_strip     illustration centered high, headline rides a bold
+#                     horizontal marquee/ticker bar near the bottom, faint
+#                     scrolling dash lines
+#   frame_card       illustration sits inside a bracketed "card" with corner
+#                     ticks (polaroid feel), headline centered just under the
+#                     card, thin scanline shimmer in the background
+#   diagonal_split   the frame is cut by a diagonal: illustration on one
+#                     side, headline running along the cut on the other,
+#                     a single bright diagonal seam sweeping slowly
 #
-# Selection is per-scene (never the same layout twice in a row) AND seeded
-# per-video (an md5 of the spoken content), so two different videos rarely
-# open their first motion-design beat on the same layout either.
+# Eight structurally different compositions means a video with several
+# motion-design beats can genuinely ALTERNATE between them instead of
+# settling on one template for its whole length — and across videos the
+# sequence is reshuffled (seeded by the spoken content) so two edits rarely
+# walk through the layouts in the same order either.
 # --------------------------------------------------------------------------- #
-LAYOUTS = ["stage_center", "split_panel", "badge_top", "fullbleed_frame"]
+LAYOUTS = [
+    "stage_center", "split_panel", "badge_top", "fullbleed_frame",
+    "corner_stack", "ticker_strip", "frame_card", "diagonal_split",
+]
 
 
-def _layout_for(seed_text: str, index: int) -> str:
-    import hashlib
-    h = int(hashlib.md5((seed_text or "x").encode("utf-8")).hexdigest(), 16)
-    offset = h % len(LAYOUTS)
-    return LAYOUTS[(offset + index) % len(LAYOUTS)]
+def _layout_sequence(seed_text: str, n: int) -> List[str]:
+    """A per-video shuffled rotation through every layout, never repeating
+    the same one twice in a row, so a single video alternates between many
+    designs instead of looping a short cycle.
+    """
+    import random
+    rng = random.Random(seed_text or "x")
+    seq: List[str] = []
+    last: Optional[str] = None
+    while len(seq) < n:
+        pool = list(LAYOUTS)
+        rng.shuffle(pool)
+        if last is not None and pool[0] == last and len(pool) > 1:
+            pool[0], pool[1] = pool[1], pool[0]
+        seq.extend(pool)
+        last = seq[-1]
+    return seq[:n]
 
 # Scene animation timeline (seconds from scene start).  These are the moments
 # plan_overlays converts into per-element SFX cues.
@@ -395,6 +424,49 @@ def _grain_layer(t: float) -> Image.Image:
     return layer
 
 
+def _wedges_layer(t: float) -> Image.Image:
+    """corner_stack motif: drifting diagonal wedges from the top-left corner."""
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    drift = 12.0 * math.sin(t * 0.45)
+    for k in range(6):
+        off = k * 220 + drift
+        d.line([(-200 + off, -200), (1400 + off, 1000)], fill=(255, 255, 255, 11), width=14)
+    return layer
+
+
+def _ticker_layer(t: float) -> Image.Image:
+    """ticker_strip motif: faint horizontal dashes scrolling sideways."""
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    scroll = (t * 140) % 120
+    for gy in range(160, H, 220):
+        for gx in range(-120, W + 120, 120):
+            x = gx - scroll
+            d.line([(x, gy), (x + 60, gy)], fill=(255, 255, 255, 12), width=4)
+    return layer
+
+
+def _scanlines_layer(t: float) -> Image.Image:
+    """frame_card motif: thin shimmering scanlines drifting downward."""
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    shift = (t * 60) % 48
+    for y in range(int(-48 + shift), H, 48):
+        d.line([(0, y), (W, y)], fill=(255, 255, 255, 7), width=2)
+    return layer
+
+
+def _diagonal_seam_layer(t: float) -> Image.Image:
+    """diagonal_split motif: a single bright seam sweeping slowly across."""
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    drift = 30.0 * math.sin(t * 0.3)
+    cx = W * 0.42 + drift
+    d.line([(cx - H * 0.5, 0), (cx + H * 0.5, H)], fill=(255, 255, 255, 26), width=6)
+    return layer
+
+
 def _bg_motif(layout: str, t: float) -> Image.Image:
     if layout == "split_panel":
         return _lines_layer(t)
@@ -402,6 +474,14 @@ def _bg_motif(layout: str, t: float) -> Image.Image:
         return _rays_layer(t)
     if layout == "fullbleed_frame":
         return _grain_layer(t)
+    if layout == "corner_stack":
+        return _wedges_layer(t)
+    if layout == "ticker_strip":
+        return _ticker_layer(t)
+    if layout == "frame_card":
+        return _scanlines_layer(t)
+    if layout == "diagonal_split":
+        return _diagonal_seam_layer(t)
     return _dots_layer(t)
 
 
@@ -471,6 +551,14 @@ def _illu_box(kind: str, layout: str = "stage_center") -> Tuple[int, int, int, i
         return (130, 600, W - 130, 1430)      # big panel, room for top ribbon
     if layout == "fullbleed_frame":
         return (0, 210, W, 1540)              # edge-to-edge bleed
+    if layout == "corner_stack":
+        return (430, 300, W - 60, 1080)       # tucked top-right, room left for the stack
+    if layout == "ticker_strip":
+        return (140, 260, W - 140, 1280)      # centered high, room low for the ticker bar
+    if layout == "frame_card":
+        return (160, 300, W - 160, 1220)      # bracketed card, room below for headline
+    if layout == "diagonal_split":
+        return (340, 360, W - 60, 1300)       # right-of-seam, headline runs along the cut
     return (120, 330, W - 120, 1130)          # stage_center (signature look)
 
 
@@ -594,6 +682,116 @@ def _draw_caption_bar(draw: ImageDraw.ImageDraw, target: Image.Image,
     dl.text((90, y0 + 170), headline, font=fh, anchor="lm",
             fill=(255, 255, 255, a), stroke_width=5, stroke_fill=(0, 0, 0, min(a, 230)))
     target.alpha_composite(layer)
+
+
+def _draw_corner_stack(draw: ImageDraw.ImageDraw, target: Image.Image,
+                       kicker: str, headline: str, t: float):
+    """corner_stack layout: kicker + headline stacked vertically, pinned left."""
+    p = _pop(t, T_KICKER, 0.4)
+    if p <= 0:
+        return
+    w = int(360 * (0.5 + 0.5 * p))
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    dl = ImageDraw.Draw(layer)
+    dl.rounded_rectangle((40, 280, 40 + w, 1080), radius=36,
+                         fill=(10, 10, 14, 225), outline=GOLD, width=4)
+    if p > 0.35:
+        fk = load_font("Montserrat", 36)
+        dl.text((40 + w // 2, 360), kicker.upper(), font=fk, fill=GOLD, anchor="mm")
+    if p > 0.55:
+        fh = _fit_font("Anton", 92, headline, w - 70, min_size=46)
+        a = int(255 * clamp((p - 0.55) / 0.45))
+        # wrap onto a few lines so a long headline fits the narrow stack
+        words = headline.split()
+        lines: List[str] = []
+        cur = ""
+        for word in words:
+            probe = (cur + " " + word).strip()
+            if draw.textbbox((0, 0), probe, font=fh)[2] <= w - 70 or not cur:
+                cur = probe
+            else:
+                lines.append(cur)
+                cur = word
+        if cur:
+            lines.append(cur)
+        ly = 520
+        for line in lines[:4]:
+            dl.text((40 + w // 2, ly), line, font=fh, anchor="mm",
+                    fill=(255, 255, 255, a), stroke_width=5, stroke_fill=(0, 0, 0, min(a, 230)))
+            ly += 130
+    target.alpha_composite(layer)
+
+
+def _draw_ticker_bar(draw: ImageDraw.ImageDraw, target: Image.Image,
+                     kicker: str, headline: str, t: float):
+    """ticker_strip layout: headline rides a bold marquee bar near the bottom."""
+    p = _pop(t, T_HEADLINE, 0.4)
+    if p <= 0:
+        return
+    h = int(220 * (0.5 + 0.5 * p))
+    y0 = 1370
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    dl = ImageDraw.Draw(layer)
+    dl.rectangle((0, y0, W, y0 + h), fill=GOLD)
+    fh = _fit_font("Anton", 96, headline, W - 140, min_size=48)
+    a = int(255 * clamp(p * 1.6))
+    dl.text((W // 2, y0 + h // 2 + 10), headline, font=fh, anchor="mm",
+            fill=(10, 10, 14, a))
+    fk = load_font("Montserrat", 34)
+    dl.text((W // 2, y0 - 36), kicker.upper(), font=fk, fill=ACCENT, anchor="mm")
+    target.alpha_composite(layer)
+
+
+def _draw_card_caption(draw: ImageDraw.ImageDraw, target: Image.Image,
+                       kicker: str, headline: str, t: float,
+                       box: Tuple[int, int, int, int]):
+    """frame_card layout: bracketed corner ticks around the card + caption below."""
+    x0, y0, x1, y1 = box
+    p = _pop(t, T_ILLU, 0.4)
+    if p > 0:
+        tick = 56
+        col = GOLD
+        for cx, cy, dx, dy in ((x0, y0, 1, 1), (x1, y0, -1, 1), (x0, y1, 1, -1), (x1, y1, -1, -1)):
+            draw.line([(cx, cy), (cx + dx * tick, cy)], fill=col, width=8)
+            draw.line([(cx, cy), (cx, cy + dy * tick)], fill=col, width=8)
+    hp = _pop(t, T_HEADLINE, 0.4)
+    if hp <= 0:
+        return
+    fk = load_font("Montserrat", 36)
+    draw.text((W // 2, y1 + 70), kicker.upper(), font=fk, fill=GOLD, anchor="mm")
+    fh = _fit_font("Anton", 110, headline, W - 200, min_size=56)
+    a = int(255 * clamp(hp * 1.6))
+    draw.text((W // 2, y1 + 180), headline, font=fh, anchor="mm",
+              fill=(255, 255, 255, a), stroke_width=5, stroke_fill=(0, 0, 0, min(a, 230)))
+
+
+def _draw_diagonal_caption(draw: ImageDraw.ImageDraw, target: Image.Image,
+                           kicker: str, headline: str, t: float):
+    """diagonal_split layout: headline runs vertically down the left seam."""
+    p = _pop(t, T_HEADLINE, 0.4)
+    if p <= 0:
+        return
+    fk = load_font("Montserrat", 36)
+    draw.text((150, 420), kicker.upper(), font=fk, fill=GOLD, anchor="lm")
+    fh = _fit_font("Anton", 100, headline, 360, min_size=48)
+    a = int(255 * clamp(p * 1.6))
+    words = headline.split()
+    lines: List[str] = []
+    cur = ""
+    for word in words:
+        probe = (cur + " " + word).strip()
+        if draw.textbbox((0, 0), probe, font=fh)[2] <= 360 or not cur:
+            cur = probe
+        else:
+            lines.append(cur)
+            cur = word
+    if cur:
+        lines.append(cur)
+    ly = 540
+    for line in lines[:4]:
+        draw.text((150, ly), line, font=fh, anchor="lm",
+                  fill=(255, 255, 255, a), stroke_width=5, stroke_fill=(0, 0, 0, min(a, 230)))
+        ly += 130
 
 
 def _draw_sparkles(draw: ImageDraw.ImageDraw, t: float, box: Tuple[int, int, int, int]):
@@ -829,6 +1027,16 @@ def _compose_frame(scene: dict, illu: Optional[Image.Image], stage: Image.Image,
             draw = ImageDraw.Draw(fg)
             _draw_headline(draw, scene.get("headline", ""), t, 1340)
             _draw_arrow_diagonal(draw, t, box)
+        elif layout == "corner_stack":
+            _draw_corner_stack(draw, fg, kicker, scene.get("headline", ""), t)
+            draw = ImageDraw.Draw(fg)
+        elif layout == "ticker_strip":
+            _draw_ticker_bar(draw, fg, kicker, scene.get("headline", ""), t)
+            draw = ImageDraw.Draw(fg)
+        elif layout == "frame_card":
+            _draw_card_caption(draw, fg, kicker, scene.get("headline", ""), t, box)
+        elif layout == "diagonal_split":
+            _draw_diagonal_caption(draw, fg, kicker, scene.get("headline", ""), t)
         else:  # stage_center — signature look
             _draw_kicker(draw, fg, kicker, t)
             draw = ImageDraw.Draw(fg)
@@ -895,18 +1103,21 @@ def render_all(scenes: List[dict], outdir: str, *, preset: Optional[str] = None,
     seed = seed_text or "|".join(
         s.get("headline", "") + s.get("excerpt", "") for s in scenes)
     select_palette(seed, preset=preset)
+    layouts = _layout_sequence(seed, len(scenes))
     out: List[dict] = []
     for i, scene in enumerate(scenes):
         # Cycle the entrance/exit transition variants so two consecutive
         # takeovers never use the same move (belles transitions variées), AND
         # rotate the scene LAYOUT itself (composition, not just colour) so the
-        # motion-design beats of a single video never repeat the same template
-        # back to back — and the rotation start point varies per video too.
+        # motion-design beats of a single video alternate between many
+        # designs instead of repeating one template — the rotation is
+        # reshuffled per video so different edits don't even share the same
+        # layout order.
         scene = {
             **scene,
             "variant_in": config.MOTION_ENTRANCES[i % len(config.MOTION_ENTRANCES)],
             "variant_out": config.MOTION_EXITS[i % len(config.MOTION_EXITS)],
-            "layout": _layout_for(seed, i),
+            "layout": layouts[i],
         }
         path = os.path.join(outdir, f"{scene['id']}.mov")
         try:
