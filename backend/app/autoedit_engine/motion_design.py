@@ -256,12 +256,68 @@ def _icon_map() -> List[Stroke]:
     return [drop, _arc(0.5, 0.40, 0.10, 0, 2 * math.pi)]
 
 
+def _icon_chart() -> List[Stroke]:
+    return [[(0.10, 0.10), (0.10, 0.90), (0.92, 0.90)],
+            [(0.22, 0.78), (0.22, 0.56)], [(0.42, 0.78), (0.42, 0.40)],
+            [(0.62, 0.78), (0.62, 0.62)], [(0.82, 0.78), (0.82, 0.24)]]
+
+
+def _icon_star() -> List[Stroke]:
+    pts = []
+    for k in range(11):
+        a = -math.pi / 2 + k * math.pi / 5
+        r = 0.42 if k % 2 == 0 else 0.18
+        pts.append((0.5 + r * math.cos(a), 0.5 + r * math.sin(a)))
+    return [pts]
+
+
+def _icon_heart() -> List[Stroke]:
+    left = _arc(0.32, 0.36, 0.20, math.pi, 2.6 * math.pi)
+    right = _arc(0.68, 0.36, 0.20, -0.6 * math.pi, math.pi)
+    return [left + [(0.5, 0.86)] + right[::-1]]
+
+
+def _icon_globe() -> List[Stroke]:
+    return [_arc(0.5, 0.5, 0.40, 0, 2 * math.pi),
+            _arc(0.5, 0.5, 0.40, 0, 2 * math.pi, ry=0.40 * 0.4),
+            [(0.5, 0.10), (0.5, 0.90)], [(0.10, 0.5), (0.90, 0.5)]]
+
+
+def _icon_chat() -> List[Stroke]:
+    bubble = [(0.10, 0.16), (0.90, 0.16), (0.90, 0.66), (0.40, 0.66),
+              (0.26, 0.84), (0.30, 0.66), (0.10, 0.66), (0.10, 0.16)]
+    return [bubble, [(0.26, 0.36), (0.74, 0.36)], [(0.26, 0.50), (0.60, 0.50)]]
+
+
+def _icon_lock() -> List[Stroke]:
+    body = [(0.22, 0.46), (0.78, 0.46), (0.78, 0.90), (0.22, 0.90), (0.22, 0.46)]
+    shackle = _arc(0.5, 0.40, 0.22, math.pi, 2 * math.pi)
+    return [body, shackle, _arc(0.5, 0.66, 0.06, 0, 2 * math.pi)]
+
+
+def _icon_handshake() -> List[Stroke]:
+    return [[(0.06, 0.42), (0.30, 0.42), (0.46, 0.56), (0.54, 0.50)],
+            [(0.94, 0.42), (0.70, 0.42), (0.54, 0.56), (0.46, 0.50)],
+            [(0.30, 0.42), (0.30, 0.26)], [(0.70, 0.42), (0.70, 0.26)]]
+
+
+def _icon_calendar() -> List[Stroke]:
+    rect = [(0.10, 0.20), (0.90, 0.20), (0.90, 0.90), (0.10, 0.90), (0.10, 0.20)]
+    return [rect, [(0.10, 0.38), (0.90, 0.38)],
+            [(0.28, 0.08), (0.28, 0.28)], [(0.72, 0.08), (0.72, 0.28)],
+            [(0.28, 0.58), (0.40, 0.58)], [(0.52, 0.58), (0.64, 0.58)],
+            [(0.28, 0.74), (0.40, 0.74)], [(0.52, 0.74), (0.64, 0.74)]]
+
+
 ICONS: Dict[str, List[Stroke]] = {
     "money": _icon_money(), "growth": _icon_growth(), "phone": _icon_phone(),
     "people": _icon_people(), "cart": _icon_cart(), "idea": _icon_idea(),
     "target": _icon_target(), "gear": _icon_gear(), "book": _icon_book(),
     "megaphone": _icon_megaphone(), "shield": _icon_shield(),
     "clock": _icon_clock(), "rocket": _icon_rocket(), "map": _icon_map(),
+    "chart": _icon_chart(), "star": _icon_star(), "heart": _icon_heart(),
+    "globe": _icon_globe(), "chat": _icon_chat(), "lock": _icon_lock(),
+    "handshake": _icon_handshake(), "calendar": _icon_calendar(),
 }
 
 

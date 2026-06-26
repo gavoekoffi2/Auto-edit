@@ -106,8 +106,21 @@ ICON_RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\b(temps|heure|minute|jour|semaine|mois|ann[ée]e|rapide|vite|time|fast|deadline)\b", re.I), "clock"),
     (re.compile(r"\b(lancer|d[ée]marrer|commencer|d[ée]but|launch|start|fus[ée]e|rocket)\b", re.I), "rocket"),
     (re.compile(r"\b(lieu|localis|adresse|ville|pays|carte|livraison|transport|map|location)\b", re.I), "map"),
+    (re.compile(r"\b(statistique|donn[ée]es|chiffres|analyse|rapport|data|stats|analytics|report)\b", re.I), "chart"),
+    (re.compile(r"\b(qualit[ée]|excellent|meilleur|top|premium|star|excellence|best|quality)\b", re.I), "star"),
+    (re.compile(r"\b(passion|aimer|adorer|satisfaction|coeur|love|favorite|favori)\b", re.I), "heart"),
+    (re.compile(r"\b(international|monde|mondial|global|partout|export|worldwide|world)\b", re.I), "globe"),
+    (re.compile(r"\b(discuter|conversation|[ée]changer|discussion|commentaire|chat|message|r[ée]pondre)\b", re.I), "chat"),
+    (re.compile(r"\b(confidentiel|priv[ée]|mot de passe|cl[ée]|verrouill|prot[ée]ger|password|private|lock)\b", re.I), "lock"),
+    (re.compile(r"\b(partenaire|partenariat|collaborer|accord|deal|partnership|collab)\b", re.I), "handshake"),
+    (re.compile(r"\b(planning|planifier|agenda|date|rendez-vous|calendrier|schedule|plan)\b", re.I), "calendar"),
 ]
-DEFAULT_ICON = "idea"
+
+# When no keyword rule matches, rotate through a varied pool instead of
+# always falling back to the same icon — avoids the "always a lightbulb"
+# monotony on talking-head scenes with generic phrasing.
+DEFAULT_ICON_POOL = ["idea", "star", "chat", "growth", "target", "chart"]
+DEFAULT_ICON = DEFAULT_ICON_POOL[0]
 
 
 def icon_for_text(text: str) -> str:
@@ -115,7 +128,8 @@ def icon_for_text(text: str) -> str:
     for pattern, icon in ICON_RULES:
         if pattern.search(text):
             return icon
-    return DEFAULT_ICON
+    h = sum(ord(c) for c in text) if text else 0
+    return DEFAULT_ICON_POOL[h % len(DEFAULT_ICON_POOL)]
 
 
 def _demographic_suffix(style: Optional[str]) -> str:
