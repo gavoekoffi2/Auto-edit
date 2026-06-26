@@ -160,6 +160,7 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
         "camera_flashes": 0,
         "shutter_sfx": 0,
         "light_overlays": 0,
+        "motion_transitions_lit": 0,
         "sfx_cues": 0,
     })
     if visual_mode not in {"ai_broll", "credit_saver", "auto_fallback"}:
@@ -324,6 +325,30 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
                                  motion_json=motion_json, outdir=workdir)
     rep["sfx_cues"] = len(planned.get("cues", []))
 
+    # 7bis) Motion-design transitions — bonne pratique de montage: au lieu
+    # d'un cut sec, la même lumière chaude qui marque les pauses de parole
+    # sert aussi de TRANSITION quand on bascule vers (et qu'on revient de)
+    # une scène de motion design. Elle est ajoutée à l'instant exact du cut
+    # sur la vidéo de base; comme la scène motion fond depuis la transparence
+    # à son entrée/sortie (alpha_fade), la lumière chaude transparaît à
+    # travers ce fondu — c'est un vrai effet de transition, pas un flash en
+    # plus. Purement visuel ici: la scène motion a déjà son riser/whoosh/
+    # swoosh audio propre, pas besoin d'un second SFX au même instant.
+    motion_overlays = [o for o in planned.get("overlays", []) if o.get("kind") == "motion"]
+    motion_transition_times = sorted({
+        round(float(o["start"]), 3) for o in motion_overlays
+    } | {
+        round(float(o["end"]), 3) for o in motion_overlays
+    })
+    rep["motion_transitions_lit"] = len(motion_transition_times)
+
+    dynamics_light_times = sorted(set(light_overlay_times_out) | set(motion_transition_times))
+    spaced_dynamics_light_times: list = []
+    for t in dynamics_light_times:
+        if not spaced_dynamics_light_times or (
+            t - spaced_dynamics_light_times[-1]) >= config.LIGHT_OVERLAY_MIN_GAP:
+            spaced_dynamics_light_times.append(t)
+
     # 8) Keyword popups ------------------------------------------------------
     _p(66, "8 keyword_popup")
     popup_res = keyword_popup.build_popups(edl_path, p("broll_clips"))
@@ -345,7 +370,7 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     _p(74, "9 video_dynamics")
     base_dyn = video_dynamics.apply_dynamics(
         base_only, edl_path, p("base_dyn.mp4"), flash_times=flash_times_out,
-        light_times=light_overlay_times_out)
+        light_times=spaced_dynamics_light_times)
 
     # 10) Composite ----------------------------------------------------------
     _p(85, "10 composite")
@@ -370,6 +395,7 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
         "cameraFlashes": rep["camera_flashes"],
         "shutterSfx": rep["shutter_sfx"],
         "lightOverlays": rep["light_overlays"],
+        "motionTransitionsLit": rep["motion_transitions_lit"],
         "motionCards": rep["motion_scenes_rendered"],
         "transitions": (rep["motion_scenes_rendered"] + rep["broll_images"]
                         + n_topic_shift),
