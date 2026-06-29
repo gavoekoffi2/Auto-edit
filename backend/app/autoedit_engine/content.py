@@ -66,6 +66,14 @@ BROLL_SCENE_RULES: list[tuple[re.Pattern[str], str]] = [
     # Put specific visual actions before broad words like “client” so a phrase
     # such as “client paie en mobile money” produces a payment image, not a
     # generic support/call-center image.
+    (re.compile(r"\b(transfert|envoyer|envoi|re[çc]oit|recevoir|diaspora|western union|moneygram|remittance)\b", re.I),
+     "an African diaspora money-transfer scene: one person sends money on a smartphone while a family member receives the confirmation in West Africa"),
+    (re.compile(r"\b(change|exchange|taux|devise|devises|dollar|euro|conversion|convertir)\b", re.I),
+     "a modern African currency-exchange desk with a phone showing a live exchange rate and clear money-transfer confirmation"),
+    (re.compile(r"\b(crypto|bitcoin|usdt|p2p|binance|bitget|wallet|blockchain|web3)\b", re.I),
+     "an African crypto P2P transaction scene with a secure wallet on a smartphone, buyer and seller confirming payment"),
+    (re.compile(r"\b(s[ée]curit[ée]|v[ée]rification|code|otp|kyc|identit[ée]|confiance|fiable|garantie)\b", re.I),
+     "a secure digital-transfer verification scene with OTP code, identity check and a trusted African fintech interface"),
     (re.compile(r"\b(mobile money|momo|orange money|wave|moov money|airtel money|paiement|payer)\b", re.I),
      "a close-up of a mobile-money payment on a smartphone in a modern African shop"),
     (re.compile(r"\b(e[- ]?commerce|boutique en ligne|vente en ligne|shopify|woocommerce|commande|livraison)\b", re.I),
@@ -92,6 +100,12 @@ BROLL_SCENE_RULES: list[tuple[re.Pattern[str], str]] = [
 # Concept -> procedural icon id (motion_design fallback drawings + prompt hints).
 # First match wins, so put the most specific concepts first.
 ICON_RULES: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\b(transfert|envoyer|envoi|re[çc]oit|recevoir|diaspora|remittance)\b", re.I), "transfer"),
+    (re.compile(r"\b(attention|danger|risque|erreur|pi[eè]ge|warning)\b", re.I), "warning"),
+    (re.compile(r"\b(crypto|bitcoin|usdt|p2p|binance|bitget|wallet|blockchain|web3)\b", re.I), "crypto"),
+    (re.compile(r"\b(change|exchange|taux|devise|devises|dollar|euro|conversion|convertir)\b", re.I), "bank"),
+    (re.compile(r"\b(otp|code|v[ée]rification|kyc|identit[ée])\b", re.I), "check"),
+    (re.compile(r"\b(carte bancaire|visa|mastercard|carte|bank card)\b", re.I), "card"),
     (re.compile(r"\b(mobile money|momo|paiement|payer|argent|cash|prix|euro|franc|fcfa|revenu|salaire|money|pay)\b", re.I), "money"),
     (re.compile(r"\b(croissance|augmenter|progresser|doubler|exploser|grandir|growth|scale|profit|chiffre)\b", re.I), "growth"),
     (re.compile(r"\b(t[ée]l[ée]phone|whatsapp|smartphone|appel|application|appli|phone|app|tiktok|instagram)\b", re.I), "phone"),
@@ -364,6 +378,24 @@ def _safe_excerpt(text: str, max_chars: int = 190) -> str:
     return compact[: max_chars - 1].rstrip() + "…"
 
 
+def _spoken_line(text: str, max_chars: int = 112) -> str:
+    """Readable on-screen sentence that follows the speaker, not a tiny keyword.
+
+    The headline stays punchy, but Claude specifically wants the text that
+    accompanies drawings to match what the person is saying. This line carries
+    the spoken idea in 1–3 large readable lines.
+    """
+    compact = re.sub(r"\s+", " ", text).strip(" .,:;!?\n\t")
+    if len(compact) <= max_chars:
+        return compact
+    cut = max(compact.rfind(sep, 0, max_chars) for sep in (",", ";", ":", ".", " et ", " mais ", " donc "))
+    if cut < max_chars * 0.45:
+        cut = compact.rfind(" ", 0, max_chars)
+    if cut < 24:
+        cut = max_chars
+    return compact[:cut].strip(" ,;:") + "…"
+
+
 def derive_broll_ideas(
     vu: dict,
     n: Optional[int] = None,
@@ -450,11 +482,24 @@ def derive_broll_ideas(
 # --------------------------------------------------------------------------- #
 # MOTION DESIGN scenes — illustrate what the speaker explains
 # --------------------------------------------------------------------------- #
+_VISUAL_BEAT_RE = re.compile(
+    r"\b(transfert|envoyer|re[çc]oit|recevoir|diaspora|change|exchange|taux|devise|"
+    r"crypto|bitcoin|usdt|p2p|wallet|otp|kyc|v[ée]rification|mobile money|"
+    r"paiement|client|argent|s[ée]curit[ée]|confiance|danger|erreur|solution)\b",
+    re.IGNORECASE,
+)
+
+
 def _beat_score(text: str, counts: Counter) -> float:
     """How much a beat deserves a motion-design illustration."""
     score = 0.0
     if _ENUM_HINTS.search(text) or text.count(",") >= 3:
         score += 3.0
+    if _VISUAL_BEAT_RE.search(text):
+        # A concrete fintech/action concept deserves a drawing even without
+        # numbers or list words; otherwise transfer/exchange/OTP lines stay as
+        # plain talking head and feel generic.
+        score += 1.45
     if _PERCENT_RE.search(text):
         score += 3.0
     elif _NUM_RE.search(text):
@@ -612,6 +657,7 @@ def derive_motion_scenes(vu: dict, demographic: str = "african") -> List[dict]:
             "raw": raw,
             "concepts": focus,
             "excerpt": excerpt,
+            "spoken_line": _spoken_line(text),
             "icon": icon,
             "prompt": prompt,
         })

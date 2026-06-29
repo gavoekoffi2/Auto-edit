@@ -309,6 +309,46 @@ def _icon_calendar() -> List[Stroke]:
             [(0.28, 0.74), (0.40, 0.74)], [(0.52, 0.74), (0.64, 0.74)]]
 
 
+def _icon_transfer() -> List[Stroke]:
+    """Two phones + arrows: money transfer / remittance."""
+    left_phone = [(0.10, 0.24), (0.34, 0.24), (0.34, 0.78), (0.10, 0.78), (0.10, 0.24)]
+    right_phone = [(0.66, 0.24), (0.90, 0.24), (0.90, 0.78), (0.66, 0.78), (0.66, 0.24)]
+    arrow1 = [(0.36, 0.38), (0.56, 0.38), (0.50, 0.31), (0.56, 0.38), (0.50, 0.45)]
+    arrow2 = [(0.64, 0.64), (0.44, 0.64), (0.50, 0.57), (0.44, 0.64), (0.50, 0.71)]
+    return [left_phone, right_phone, arrow1, arrow2, _arc(0.22, 0.52, 0.055, 0, 2 * math.pi), _arc(0.78, 0.52, 0.055, 0, 2 * math.pi)]
+
+
+def _icon_crypto() -> List[Stroke]:
+    coin = _arc(0.50, 0.50, 0.34, 0, 2 * math.pi)
+    b = [(0.43, 0.26), (0.43, 0.74), (0.58, 0.74), (0.66, 0.66), (0.58, 0.58),
+         (0.43, 0.58), (0.60, 0.58), (0.68, 0.50), (0.60, 0.42), (0.43, 0.42)]
+    return [coin, b, [(0.38, 0.20), (0.38, 0.30)], [(0.58, 0.20), (0.58, 0.30)],
+            [(0.38, 0.70), (0.38, 0.82)], [(0.58, 0.70), (0.58, 0.82)]]
+
+
+def _icon_bank() -> List[Stroke]:
+    roof = [(0.10, 0.36), (0.50, 0.12), (0.90, 0.36), (0.10, 0.36)]
+    base = [(0.12, 0.82), (0.88, 0.82)]
+    cols = []
+    for x in (0.24, 0.40, 0.56, 0.72):
+        cols.append([(x, 0.42), (x, 0.78)])
+    return [roof, base, [(0.16, 0.88), (0.84, 0.88)]] + cols
+
+
+def _icon_card() -> List[Stroke]:
+    card = [(0.10, 0.28), (0.90, 0.28), (0.90, 0.74), (0.10, 0.74), (0.10, 0.28)]
+    return [card, [(0.10, 0.42), (0.90, 0.42)], [(0.22, 0.58), (0.44, 0.58)], [(0.68, 0.58), (0.82, 0.58)]]
+
+
+def _icon_check() -> List[Stroke]:
+    return [_arc(0.50, 0.50, 0.40, 0, 2 * math.pi), [(0.28, 0.52), (0.44, 0.68), (0.74, 0.34)]]
+
+
+def _icon_warning() -> List[Stroke]:
+    tri = [(0.50, 0.12), (0.90, 0.84), (0.10, 0.84), (0.50, 0.12)]
+    return [tri, [(0.50, 0.34), (0.50, 0.62)], _arc(0.50, 0.73, 0.035, 0, 2 * math.pi)]
+
+
 ICONS: Dict[str, List[Stroke]] = {
     "money": _icon_money(), "growth": _icon_growth(), "phone": _icon_phone(),
     "people": _icon_people(), "cart": _icon_cart(), "idea": _icon_idea(),
@@ -318,6 +358,8 @@ ICONS: Dict[str, List[Stroke]] = {
     "chart": _icon_chart(), "star": _icon_star(), "heart": _icon_heart(),
     "globe": _icon_globe(), "chat": _icon_chat(), "lock": _icon_lock(),
     "handshake": _icon_handshake(), "calendar": _icon_calendar(),
+    "transfer": _icon_transfer(), "crypto": _icon_crypto(), "bank": _icon_bank(),
+    "card": _icon_card(), "check": _icon_check(), "warning": _icon_warning(),
 }
 
 
@@ -864,6 +906,70 @@ def _draw_sparkles(draw: ImageDraw.ImageDraw, t: float, box: Tuple[int, int, int
         draw.line([(cx, cy - s), (cx, cy + s)], fill=col, width=7)
 
 
+def _wrap_words(draw: ImageDraw.ImageDraw, text: str, font, max_w: int, max_lines: int = 3) -> List[str]:
+    words = (text or "").split()
+    lines: List[str] = []
+    cur = ""
+    for word in words:
+        probe = (cur + " " + word).strip()
+        if draw.textbbox((0, 0), probe, font=font)[2] <= max_w or not cur:
+            cur = probe
+        else:
+            lines.append(cur)
+            cur = word
+        if len(lines) >= max_lines:
+            break
+    if cur and len(lines) < max_lines:
+        lines.append(cur)
+    if len(lines) == max_lines and len(" ".join(words)) > len(" ".join(lines)):
+        lines[-1] = lines[-1].rstrip("…") + "…"
+    return lines
+
+
+def _draw_spoken_line(draw: ImageDraw.ImageDraw, target: Image.Image,
+                      scene: dict, t: float, layout: str):
+    """Large readable line that mirrors the spoken idea under each drawing.
+
+    This fixes the old 'tiny generic keyword' problem: a viewer sees the exact
+    phrase the illustration is meant to explain, not only a one-word headline.
+    """
+    text = (scene.get("spoken_line") or scene.get("excerpt") or "").strip()
+    if not text:
+        return
+    p = _pop(t, T_HEADLINE + 0.18, 0.42)
+    if p <= 0:
+        return
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    dl = ImageDraw.Draw(layer)
+    font = load_font("Montserrat", 46)
+    max_w = W - 180
+    lines = _wrap_words(dl, text, font, max_w, max_lines=3)
+    if not lines:
+        return
+    line_h = 58
+    pad_x, pad_y = 34, 24
+    box_h = len(lines) * line_h + pad_y * 2
+    # Keep the spoken line high enough for TikTok safe-zone captions, but below
+    # the main illustration/headline. Full-bleed and ticker layouts reserve more
+    # space near the bottom, so the readable line floats slightly above them.
+    y0 = 1500 if layout not in {"ticker_strip", "fullbleed_frame"} else 1180
+    y0 = min(y0, H - box_h - 180)
+    x0, x1 = 80, W - 80
+    dl.rounded_rectangle((x0, y0, x1, y0 + box_h), radius=34,
+                         fill=(8, 10, 18, int(218 * clamp(p))),
+                         outline=(255, 255, 255, int(40 * clamp(p))), width=2)
+    accent_w = int((x1 - x0 - 50) * ease_out_cube(clamp((t - T_UNDERLINE) / 0.55)))
+    if accent_w > 0:
+        dl.line([(x0 + 25, y0 + 10), (x0 + 25 + accent_w, y0 + 10)], fill=GOLD, width=5)
+    a = int(255 * clamp(p * 1.3))
+    y = y0 + pad_y + line_h / 2
+    for line in lines:
+        dl.text((W // 2, y), line, font=font, anchor="mm",
+                fill=(255, 255, 255, a), stroke_width=2, stroke_fill=(0, 0, 0, min(a, 190)))
+        y += line_h
+    target.alpha_composite(layer)
+
+
 def _paste_illustration(canvas: Image.Image, illu: Image.Image, t: float, dur: float,
                         box: Tuple[int, int, int, int]):
     """AI illustration: rounded panel + glow border, pop + float + Ken Burns."""
@@ -1102,6 +1208,10 @@ def _compose_frame(scene: dict, illu: Optional[Image.Image], stage: Image.Image,
 
     _draw_sparkles(draw, t, box)
     canvas.alpha_composite(fg)
+
+    # Readable semantic caption that mirrors the actual spoken phrase. It is
+    # drawn after the template headline so it stays large/clear across layouts.
+    _draw_spoken_line(draw, canvas, scene, t, layout)
 
     canvas = _apply_scene_transitions(canvas, scene, t, dur)
     return _apply_alpha(canvas, alpha_fade(t, dur, fin=0.18, fout=EXIT_FADE))

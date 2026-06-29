@@ -168,6 +168,10 @@ def test_motion_scenes_scale_with_duration():
 
 def test_icon_mapping_matches_concepts():
     assert content.icon_for_text("le client paie en mobile money") == "money"
+    assert content.icon_for_text("la diaspora envoie un transfert au pays") == "transfer"
+    assert content.icon_for_text("échange USDT en P2P avec wallet crypto") == "crypto"
+    assert content.icon_for_text("vérification OTP avant validation") == "check"
+    assert content.icon_for_text("attention danger erreur de taux") == "warning"
     assert content.icon_for_text("notre croissance va doubler") == "growth"
     assert content.icon_for_text("envoie un message whatsapp") == "phone"
     assert content.icon_for_text("phrase neutre sans concept") in content.DEFAULT_ICON_POOL
