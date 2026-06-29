@@ -29,6 +29,10 @@ type Queued = {
   resolve: (token: string) => void
   reject: (err: unknown) => void
 }
+export type AutoEditRequestConfig = InternalAxiosRequestConfig & {
+  _retry?: boolean
+  _skipAuthRetry?: boolean
+}
 let isRefreshing = false
 let pending: Queued[] = []
 
@@ -46,13 +50,27 @@ function clearAuthAndRedirect() {
   }
 }
 
+export async function refreshAuthTokens(): Promise<string> {
+  const refreshToken = localStorage.getItem('refresh_token')
+  if (!refreshToken) throw new Error('Session expirée. Connecte-toi puis relance l’upload.')
+
+  const res = await axios.post(`${API_URL}/v1/auth/refresh`, {
+    refresh_token: refreshToken,
+  }, { timeout: 15000 })
+  const newAccess = res.data?.access_token as string | undefined
+  const newRefresh = res.data?.refresh_token as string | undefined
+  if (!newAccess || !newRefresh) throw new Error('Session expirée. Connecte-toi puis relance l’upload.')
+
+  localStorage.setItem('access_token', newAccess)
+  localStorage.setItem('refresh_token', newRefresh)
+  return newAccess
+}
+
 client.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
-    const originalRequest = error.config as InternalAxiosRequestConfig & {
-      _retry?: boolean
-    }
-    if (!originalRequest || error.response?.status !== 401 || originalRequest._retry) {
+    const originalRequest = error.config as AutoEditRequestConfig
+    if (!originalRequest || error.response?.status !== 401 || originalRequest._retry || originalRequest._skipAuthRetry) {
       return Promise.reject(error)
     }
 
@@ -86,15 +104,7 @@ client.interceptors.response.use(
 
     isRefreshing = true
     try {
-      const res = await axios.post(`${API_URL}/v1/auth/refresh`, {
-        refresh_token: refreshToken,
-      }, { timeout: 15000 })
-      const newAccess = res.data?.access_token as string | undefined
-      const newRefresh = res.data?.refresh_token as string | undefined
-      if (!newAccess || !newRefresh) throw new Error('Invalid refresh response')
-
-      localStorage.setItem('access_token', newAccess)
-      localStorage.setItem('refresh_token', newRefresh)
+      const newAccess = await refreshAuthTokens()
       resolvePending(newAccess)
       originalRequest.headers = originalRequest.headers ?? {}
       originalRequest.headers.Authorization = `Bearer ${newAccess}`

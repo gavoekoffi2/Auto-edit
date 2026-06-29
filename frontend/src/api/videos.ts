@@ -1,4 +1,4 @@
-import client from './client'
+import client, { refreshAuthTokens } from './client'
 
 export const MAX_FILE_SIZE_MB = 5120
 export const ALLOWED_VIDEO_EXTENSIONS = ['mp4', 'mov', 'm4v', 'avi', 'mkv', 'webm', 'flv', 'wmv', '3gp', '3g2', 'mts', 'm2ts']
@@ -37,8 +37,9 @@ export function validateVideoFile(file: File) {
 
 async function warmAuthSession() {
   // Force le refresh token AVANT d'envoyer une grosse vidéo. Sinon un token
-  // expiré peut n'être découvert qu'après plusieurs minutes d'upload mobile.
-  await client.get('/auth/me', { timeout: 15000 })
+  // expiré peut n'être découvert qu'après plusieurs minutes d'upload mobile,
+  // et Axios relançait le POST après 401: la barre revenait de 99% à 0%.
+  await refreshAuthTokens()
 }
 
 export async function uploadVideo(file: File, onProgress?: (percent: number) => void) {
@@ -49,19 +50,24 @@ export async function uploadVideo(file: File, onProgress?: (percent: number) => 
   const formData = new FormData()
   formData.append('file', file)
 
-  const res = await client.post('/videos/upload', formData, {
+  const uploadConfig = {
     headers: { 'Content-Type': 'multipart/form-data' },
     // Ne jamais couper côté navigateur: sur mobile, une vidéo de 3 minutes peut
     // dépasser 10 minutes selon la 4G/Wi-Fi. Le serveur/proxy garde ses propres
     // limites de sécurité; ici on attend la vraie réponse au lieu d'afficher
     // "timeout of 600000ms exceeded".
     timeout: 0,
-    onUploadProgress: (e) => {
+    // Ne jamais réessayer automatiquement ce POST: si le serveur refuse après
+    // réception du gros body, refaire la même requête redémarre l'upload à 0%.
+    _skipAuthRetry: true,
+    onUploadProgress: (e: ProgressEvent) => {
       if (e.total && onProgress) {
         onProgress(Math.round((e.loaded * 100) / e.total))
       }
     },
-  })
+  } as any
+
+  const res = await client.post('/videos/upload', formData, uploadConfig)
   return res.data
 }
 
