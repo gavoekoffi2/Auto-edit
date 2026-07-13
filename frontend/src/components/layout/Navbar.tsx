@@ -34,6 +34,9 @@ export default function Navbar() {
                 <Link to="/dashboard" className="text-dark-300 hover:text-white transition-colors">
                   Dashboard
                 </Link>
+                <Link to="/clips" className="text-dark-300 hover:text-white transition-colors">
+                  Clips
+                </Link>
                 {user?.is_admin && (
                   <Link to="/admin" className="text-dark-300 hover:text-white transition-colors flex items-center gap-1">
                     <Shield className="w-4 h-4" />

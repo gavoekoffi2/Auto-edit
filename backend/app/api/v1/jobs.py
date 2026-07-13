@@ -250,3 +250,48 @@ async def download_result(
         media_type="video/mp4",
         filename=f"cutforge_{job_id}.mp4",
     )
+
+
+@router.get("/{job_id}/clips/{clip_index}/download")
+async def download_clip(
+    job_id: UUID,
+    clip_index: int,
+    request: Request,
+    access_token: str | None = Query(None),
+    credentials: HTTPAuthorizationCredentials | None = Depends(optional_security),
+    db: AsyncSession = Depends(get_db),
+):
+    """Télécharge UN clip d'un job « Clips » (vidéo longue -> shorts viraux)."""
+    current_user = await get_media_user(db, credentials, access_token)
+    result = await db.execute(
+        select(Job).where(Job.id == job_id, Job.user_id == current_user.id)
+    )
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    if job.status != "completed" or not job.result:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Job not completed yet",
+        )
+
+    clips = job.result.get("clips") or []
+    clip = next(
+        (c for c in clips if c.get("index") == clip_index and c.get("output_path")),
+        None,
+    )
+    if clip is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clip not found")
+
+    absolute_path = get_absolute_path(clip["output_path"])
+    if not os.path.exists(absolute_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Clip file no longer exists on disk",
+        )
+    return ranged_file_response(
+        absolute_path,
+        request,
+        media_type="video/mp4",
+        filename=f"cutforge_{job_id}_clip{clip_index + 1}.mp4",
+    )

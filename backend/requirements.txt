@@ -32,6 +32,9 @@ python-magic==0.4.27
 numpy>=1.24,<2.1
 Pillow>=10.0
 
+# Fonctionnalité Clips — téléchargement des vidéos sources depuis une URL
+yt-dlp>=2025.1.15
+
 # Test dependencies used by backend/tests
 pytest==9.0.2
 pytest-asyncio==1.3.0

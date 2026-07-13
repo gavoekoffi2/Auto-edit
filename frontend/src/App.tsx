@@ -14,6 +14,7 @@ const Signup = lazy(() => import('./pages/Signup'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'))
 const Editor = lazy(() => import('./pages/Editor'))
+const Clips = lazy(() => import('./pages/Clips'))
 const Pricing = lazy(() => import('./pages/Pricing'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
@@ -75,6 +76,14 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <Editor />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/clips"
+              element={
+                <ProtectedRoute>
+                  <Clips />
                 </ProtectedRoute>
               }
             />

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator, Field
+from pydantic import BaseModel, field_validator, model_validator, Field
 from uuid import UUID
 from datetime import datetime
 from typing import Optional, Literal
@@ -47,6 +47,8 @@ class JobOptions(BaseModel):
     motion_preset: Optional[str] = None
     # Template de sous-titres animés (sinon déduit du mode choisi).
     subtitle_template: Optional[str] = None
+    # Fonctionnalité Clips: nombre maximum de shorts extraits d'une vidéo longue.
+    max_clips: Optional[int] = Field(default=None, ge=1, le=10)
     cta_text: Optional[str] = Field(default=None, max_length=120)
     logo_text: Optional[str] = Field(default=None, max_length=60)
 
@@ -122,6 +124,34 @@ class JobCreate(BaseModel):
                 f"pipeline_version must be one of: {', '.join(sorted(VALID_PIPELINE_VERSIONS))}"
             )
         return v
+
+
+class ClipsCreate(BaseModel):
+    """Création d'un job « Clips »: vidéo longue -> shorts viraux.
+
+    La source est SOIT une URL publique (YouTube, TikTok…), SOIT une vidéo
+    déjà uploadée sur la plateforme.
+    """
+
+    source_url: Optional[str] = Field(default=None, max_length=2048)
+    video_id: Optional[UUID] = None
+    mode: Optional[str] = None            # style de montage appliqué aux clips
+    options: Optional[JobOptions] = None
+
+    @field_validator("mode")
+    @classmethod
+    def validate_mode(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_MODES:
+            raise ValueError(f"mode must be one of: {', '.join(sorted(VALID_MODES))}")
+        return v
+
+    @model_validator(mode="after")
+    def validate_one_source(self):
+        if self.video_id is None and not self.source_url:
+            raise ValueError("Provide either source_url or video_id")
+        if self.video_id is not None and self.source_url:
+            raise ValueError("Provide only one of source_url or video_id")
+        return self
 
 
 class JobResponse(BaseModel):

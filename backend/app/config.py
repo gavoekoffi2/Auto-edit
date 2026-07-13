@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 VALID_APP_ENVS = {"development", "staging", "production"}
 VALID_WHISPER_MODELS = {"tiny", "base", "small", "medium", "large"}
-VALID_JOB_TYPES = {"pipeline", "transcribe", "silence_removal", "scene_detect", "effects", "export"}
+VALID_JOB_TYPES = {"pipeline", "transcribe", "silence_removal", "scene_detect", "effects", "export", "clips"}
 VALID_MODES = {
     # Legacy modes (v1)
     "tiktok",

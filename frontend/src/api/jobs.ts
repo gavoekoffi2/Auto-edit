@@ -32,6 +32,8 @@ export interface JobOptions {
   motion_preset?: MotionPreset
   /** Template de sous-titres animés (sinon déduit du mode/style choisi). */
   subtitle_template?: SubtitleTemplate
+  /** Fonctionnalité Clips: nombre max de shorts extraits d'une vidéo longue (1-10). */
+  max_clips?: number
   cta_text?: string
   logo_text?: string
 }
