@@ -62,12 +62,15 @@ def select_palette(seed_text: str, preset: Optional[str] = None) -> str:
     family, so two different videos never share the same look — even when every
     scene falls back to the procedural drawings. Returns the chosen family name.
     """
-    global ACCENT, GOLD, BG_TOP, BG_BOTTOM
+    global ACCENT, GOLD, BG_TOP, BG_BOTTOM, INK
     try:
         from . import motion_presets
         chosen = (motion_presets.preset_for(preset) if preset
                   else motion_presets.choose_preset(seed_text))
         BG_TOP, BG_BOTTOM, ACCENT, GOLD = chosen.palette()
+        # Encre du texte: sombre sur les familles à fond clair (sketch_notes),
+        # blanche partout ailleurs — sinon les titres seraient illisibles.
+        INK = getattr(chosen, "ink", config.MOTION_INK)
         return chosen.name
     except Exception:
         # Fallback to the legacy palette table if presets are unavailable.

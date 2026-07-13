@@ -29,6 +29,8 @@ _FAMILY_HINTS = {
     "bebas neue": ["BebasNeue-Regular", "BebasNeue"],
     "bebas": ["BebasNeue-Regular", "BebasNeue"],
     "inter": ["Inter-Bold", "Inter"],
+    "poppins": ["Poppins-SemiBold", "Poppins-Bold", "Poppins"],
+    "caveat": ["Caveat-Bold", "Caveat"],
     "dejavusans": ["DejaVuSans-Bold"],
 }
 

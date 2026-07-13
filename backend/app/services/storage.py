@@ -207,9 +207,11 @@ def get_absolute_path(relative_path: str) -> str:
     _validate_path(relative_path)
     abs_path = os.path.abspath(os.path.join(settings.UPLOAD_DIR, relative_path))
 
-    # Ensure path is within UPLOAD_DIR
+    # Ensure path is within UPLOAD_DIR. Comparaison par SEGMENT de chemin:
+    # un simple startswith laisserait passer un sibling ("/data/uploads_evil"
+    # matche "/data/uploads").
     upload_root = os.path.abspath(settings.UPLOAD_DIR)
-    if not abs_path.startswith(upload_root):
+    if abs_path != upload_root and not abs_path.startswith(upload_root + os.sep):
         raise ValueError("Path traversal detected")
 
     return abs_path

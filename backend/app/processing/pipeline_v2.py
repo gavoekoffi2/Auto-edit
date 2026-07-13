@@ -155,6 +155,23 @@ V2_MODE_PRESETS: dict[str, dict] = {
 # Alias historique accepté pour le même mode.
 V2_MODE_PRESETS["creator_economy_mode"] = dict(V2_MODE_PRESETS["credit_saver_creator_edit"])
 
+# --- Styles Captions AI (réfs TikTok analysées image par image) --------------
+# Chaque style = template de sous-titres + thème de popups + famille motion
+# design cohérents. Comme les vidéos de référence, ils génèrent des B-rolls IA
+# quand une clé/crédits existent, et retombent proprement en économique sinon.
+for _style_mode, _style_tpl, _style_motion in (
+    ("pill_editorial", "pill_editorial", "editorial_paper"),
+    ("neon_hype", "neon_hype", "neon_social"),
+    ("handwritten_note", "handwritten_note", "sketch_notes"),
+):
+    V2_MODE_PRESETS[_style_mode] = {
+        **V2_MODE_PRESETS["credit_saver_creator_edit"],
+        "ai_broll": True,
+        "visual_mode": "auto_fallback",
+        "subtitle_template": _style_tpl,
+        "motion_preset": _style_motion,
+    }
+
 
 ProgressFn = Callable[[int, str], None]
 
@@ -199,6 +216,9 @@ MODE_TO_TEMPLATE: dict[str, str] = {
     "podcast_propre": "tiktok_yellow",
     "credit_saver_creator_edit": "tiktok_yellow",
     "creator_economy_mode": "tiktok_yellow",
+    "pill_editorial": "pill_editorial",
+    "neon_hype": "neon_hype",
+    "handwritten_note": "handwritten_note",
 }
 
 
@@ -329,7 +349,9 @@ def run_pipeline_v2(
 
     template = MODE_TO_TEMPLATE.get(mode or "", "tiktok_yellow")
     from app.autoedit_engine import config as engine_config
-    requested_tpl = (raw_opts or {}).get("subtitle_template") if isinstance(raw_opts, dict) else None
+    # Priorité: option explicite du job > preset du mode > mapping par mode.
+    # `options` fusionne déjà preset + options utilisateur (les options gagnent).
+    requested_tpl = options.get("subtitle_template")
     if requested_tpl in engine_config.ASS_TEMPLATES:
         template = requested_tpl
 

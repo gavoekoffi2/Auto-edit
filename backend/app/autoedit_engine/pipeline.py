@@ -47,6 +47,7 @@ from . import (
     motion_design,
     overlays,
     plan_overlays,
+    smart_cleanup,
     subs_ass,
     timeline,
     transcribe,
@@ -176,6 +177,17 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     _p(8, "1 transcribe")
     vu_path = vu or transcribe.transcribe(
         source, out_path=p("transcripts", f"{stem}_vu.json"))
+
+    # 1bis) Nettoyage IA du transcript — au-delà des heuristiques locales
+    # (silences/bégaiements/reprises adjacentes), un modèle léger relit le
+    # transcript horodaté et signale répétitions éloignées, hésitations,
+    # faux départs et passages incohérents. Les zones vidées deviennent des
+    # silences que build_edl coupe naturellement. Best-effort, jamais bloquant.
+    if smart_cleanup.LLM_CLEANUP_ENABLED and os.environ.get("OPENROUTER_API_KEY"):
+        _p(14, "1bis smart_cleanup")
+        vu_path, cleanup_rep = smart_cleanup.clean_vu(
+            vu_path, p("transcripts", f"{stem}_vu_clean.json"))
+        rep.update(cleanup_rep)
     vu_data = json.load(open(vu_path, encoding="utf-8"))
 
     # 2) EDL + grade + base_only --------------------------------------------
@@ -384,8 +396,12 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
             spaced_dynamics_light_times.append(t)
 
     # 8) Keyword popups ------------------------------------------------------
+    # Le thème visuel des popups suit le template de sous-titres choisi, pour
+    # que chaque style de montage reste cohérent de bout en bout.
     _p(66, "8 keyword_popup")
-    popup_res = keyword_popup.build_popups(edl_path, p("broll_clips"))
+    popup_theme = config.TEMPLATE_POPUP_THEMES.get(template, config.DEFAULT_POPUP_THEME)
+    popup_res = keyword_popup.build_popups(edl_path, p("broll_clips"), theme=popup_theme)
+    rep["popup_theme"] = popup_theme
     rep["keyword_popups"] = int(popup_res.get("added", 0))
     rep["sfx_cues"] += int(popup_res.get("sfx_added", 0))
 

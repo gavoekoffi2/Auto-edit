@@ -14,7 +14,13 @@ VALID_BROLL_DEMOGRAPHICS = {"african", "caucasian", "global"}
 VALID_MOTION_PRESETS = {
     "clean_fintech", "neon_social", "african_premium",
     "minimal_creator", "kinetic_education",
+    # Familles des styles Captions AI (réservées aux styles qui les demandent)
+    "editorial_paper", "sketch_notes",
 }
+# Source de vérité: les templates ASS du moteur (config légère, sans PIL/ffmpeg).
+from app.autoedit_engine.config import ASS_TEMPLATES as _ENGINE_ASS_TEMPLATES
+
+VALID_SUBTITLE_TEMPLATES = set(_ENGINE_ASS_TEMPLATES)
 
 
 class JobOptions(BaseModel):
@@ -39,6 +45,8 @@ class JobOptions(BaseModel):
     visual_mode: Optional[str] = None
     # Famille motion design forcée (sinon choisie par seed stable de la vidéo).
     motion_preset: Optional[str] = None
+    # Template de sous-titres animés (sinon déduit du mode choisi).
+    subtitle_template: Optional[str] = None
     cta_text: Optional[str] = Field(default=None, max_length=120)
     logo_text: Optional[str] = Field(default=None, max_length=60)
 
@@ -66,6 +74,15 @@ class JobOptions(BaseModel):
         if v is not None and v not in VALID_MOTION_PRESETS:
             raise ValueError(
                 f"motion_preset must be one of: {', '.join(sorted(VALID_MOTION_PRESETS))}"
+            )
+        return v
+
+    @field_validator("subtitle_template")
+    @classmethod
+    def validate_subtitle_template(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_SUBTITLE_TEMPLATES:
+            raise ValueError(
+                f"subtitle_template must be one of: {', '.join(sorted(VALID_SUBTITLE_TEMPLATES))}"
             )
         return v
 

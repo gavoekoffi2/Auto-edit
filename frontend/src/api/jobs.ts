@@ -8,6 +8,11 @@ export type VisualMode = 'ai_broll' | 'credit_saver' | 'auto_fallback'
 export type MotionPreset =
   | 'clean_fintech' | 'neon_social' | 'african_premium'
   | 'minimal_creator' | 'kinetic_education'
+  | 'editorial_paper' | 'sketch_notes'
+/** Templates de sous-titres animés du moteur. */
+export type SubtitleTemplate =
+  | 'tiktok_yellow' | 'neon_pop' | 'bold_box' | 'gold_lux' | 'bangers_fun'
+  | 'pill_editorial' | 'neon_hype' | 'handwritten_note'
 
 export interface JobOptions {
   remove_silence?: boolean
@@ -25,6 +30,8 @@ export interface JobOptions {
   visual_mode?: VisualMode
   /** Force une famille motion design (sinon seed stable de la vidéo). */
   motion_preset?: MotionPreset
+  /** Template de sous-titres animés (sinon déduit du mode/style choisi). */
+  subtitle_template?: SubtitleTemplate
   cta_text?: string
   logo_text?: string
 }

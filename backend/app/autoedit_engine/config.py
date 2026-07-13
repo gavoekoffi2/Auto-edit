@@ -364,6 +364,14 @@ BROLL_SFX_POOL = [
 POPUP_SFX_POOL = ["pop", "digi_blip", "snap", "bubble"]
 POPUP_SFX_MAX = 12              # cap per video
 
+# SFX assortis au THÈME des popups (styles Captions AI) — le son raconte la
+# même chose que le visuel: papier qui se déchire, glitch numérique, crayon.
+POPUP_SFX_THEME_POOLS = {
+    "editorial_collage": ["paper_rip", "impact", "paper_rip", "snap"],
+    "neon_glitch": ["glitch", "digi_blip", "bass_hit", "glitch"],
+    "sketch": ["pen_scribble", "pop", "pen_scribble", "click"],
+}
+
 # Gap-fill SFX pool (Règle PRO #3).
 GAPFILL_SFX_POOL = ["ding", "transition", "click", "swoosh_up", "chime"]
 
@@ -392,6 +400,8 @@ SFX_NAMES = [
     # v4.2 professional additions
     "shutter_burst", "camera_focus", "pen_scribble", "tape_stop",
     "bubble", "snap", "cinematic_hit", "data_tick",
+    # v4.3 — styles Captions AI (bandeaux papier déchiré)
+    "paper_rip",
     # real (non-synthesized) asset — the user's original light-leak sound
     "light_leak_original",
 ]
@@ -404,7 +414,7 @@ SFX_GAINS = {
     "whoosh": 0.82, "camera_flash": 0.82, "camera_focus": 0.66, "transition": 0.80,
     "glitch": 0.78, "pop": 0.75, "ding": 0.72, "snap": 0.74,
     "chime": 0.72, "sparkle": 0.70, "digi_blip": 0.68, "click": 0.60,
-    "bubble": 0.70, "pen_scribble": 0.52, "data_tick": 0.62,
+    "bubble": 0.70, "pen_scribble": 0.52, "data_tick": 0.62, "paper_rip": 0.78,
     "light_leak_original": 1.0,  # real asset — keep its native level, no re-gain
 }
 
@@ -451,8 +461,49 @@ ASS_TEMPLATES = {
         "outline": "&H00000000", "outline_w": 5, "shadow": 2,
         "hl_scale": SUBS_HL_SCALE, "bold": 0,
     },
+    # ----- Styles inspirés des montages Captions AI (réfs TikTok du produit) --
+    # "Pilule éditoriale": pilule blanche, mots déjà prononcés en noir gras,
+    # mots à venir en gris clair (karaoké progressif) — réf. vidéo 1.
+    "pill_editorial": {
+        "font": "Poppins", "size": 62,
+        "primary": "&H00262626",      # near-black (spoken words)
+        "highlight": "&H00101010",    # active word: full black + slight zoom
+        "future": "&H00BBBBBB",       # light gray (words not yet spoken)
+        "outline": "&H00FFFFFF",      # white pill (BorderStyle=3 box)
+        "outline_w": 16, "shadow": 0,
+        "hl_scale": 112, "bold": -1, "box": True,
+        "progressive": True,
+    },
+    # "Néon hype": MAJUSCULES condensées, mot actif cyan avec glow — réf. vidéo 2.
+    "neon_hype": {
+        "font": "Anton", "size": 88,
+        "primary": "&H00FFFFFF", "highlight": "&H00FFE500",   # white / cyan #00E5FF
+        "outline": "&H00000000", "outline_w": 5, "shadow": 2,
+        "hl_scale": 132, "bold": 0,
+        "uppercase": True, "glow": True,
+    },
+    # "Notes manuscrites": écriture marker blanche, ombre douce — réf. vidéo 3.
+    "handwritten_note": {
+        "font": "Caveat", "size": 104,
+        "primary": "&H00FFFFFF", "highlight": "&H00F4F4F4",
+        "outline": "&H00303030", "outline_w": 2, "shadow": 3,
+        "hl_scale": 118, "bold": -1,
+    },
 }
 DEFAULT_TEMPLATE = "tiktok_yellow"
+
+# Thème des popups mots-clés par template de sous-titres — chaque style de
+# montage garde une identité visuelle cohérente de bout en bout.
+#   gold_chip          pilule dorée historique (défaut)
+#   editorial_collage  bandeau "papier déchiré" bleu + barre noire (réf. vidéo 1)
+#   neon_glitch        gros mot MAJUSCULE glow cyan + jitter chromatique (réf. vidéo 2)
+#   sketch             mot manuscrit entouré d'un cercle dessiné à la main (réf. vidéo 3)
+TEMPLATE_POPUP_THEMES = {
+    "pill_editorial": "editorial_collage",
+    "neon_hype": "neon_glitch",
+    "handwritten_note": "sketch",
+}
+DEFAULT_POPUP_THEME = "gold_chip"
 
 # --------------------------------------------------------------------------- #
 # FINAL RENDER — qualité visible (master net pour TikTok/Reels)

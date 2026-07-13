@@ -37,6 +37,28 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Standard hardening headers on every API response.
+
+    Le proxy (Caddy/nginx) peut aussi les poser, mais l'API doit rester sûre
+    même exposée directement (dev, docker-compose sans proxy).
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        response: Response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault(
+            "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
+        )
+        if settings.is_production:
+            response.headers.setdefault(
+                "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+            )
+        return response
+
+
 app = FastAPI(
     title="CutForge API",
     description="AI-powered automatic video editing SaaS platform",
@@ -45,8 +67,9 @@ app = FastAPI(
     redoc_url="/api/redoc",
 )
 
-# Request ID middleware
+# Request ID + security headers middlewares
 app.add_middleware(RequestIDMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 # CORS - use configured origins, not wildcard
 app.add_middleware(
@@ -69,7 +92,9 @@ async def health_check():
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
-    # Check database
+    # Check database. Le détail de l'erreur part dans les logs, PAS dans la
+    # réponse: l'endpoint est public et un message d'exception peut divulguer
+    # hôtes internes / DSN / versions.
     try:
         from app.db.session import async_engine
         from sqlalchemy import text
@@ -78,7 +103,8 @@ async def health_check():
             await conn.execute(text("SELECT 1"))
         health["database"] = "connected"
     except Exception as e:
-        health["database"] = f"error: {str(e)}"
+        logger.error("health check: database error: %s", e)
+        health["database"] = "error"
         health["status"] = "degraded"
 
     # Check Redis
@@ -88,7 +114,8 @@ async def health_check():
         await r.ping()
         health["redis"] = "connected"
     except Exception as e:
-        health["redis"] = f"error: {str(e)}"
+        logger.error("health check: redis error: %s", e)
+        health["redis"] = "error"
         health["status"] = "degraded"
 
     # Espace disque du volume d'uploads — un disque plein casse upload ET rendu.
@@ -102,6 +129,7 @@ async def health_check():
             health["status"] = "degraded"
             health["disk_warning"] = "espace disque critique"
     except Exception as e:
-        health["disk"] = f"error: {str(e)}"
+        logger.error("health check: disk error: %s", e)
+        health["disk"] = "error"
 
     return health

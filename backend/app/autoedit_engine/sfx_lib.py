@@ -295,6 +295,16 @@ def _cinematic_hit() -> np.ndarray:
     return _fade(sub + ring + crack + air, fout=0.25)
 
 
+def _paper_rip() -> np.ndarray:
+    """Paper tearing — fibrous crackle burst (les bandeaux « papier déchiré »)."""
+    t = _t(0.42)
+    n = _highpass(_noise(len(t), 41), 2)
+    # fibrous micro-tears: crackle amplitude modulated by slow noisy gate
+    gate = 0.35 + 0.65 * np.abs(_lowpass(_noise(len(t), 43), 60))
+    sweep = np.sin(np.pi * (t / t[-1]) ** 0.7)      # attack fast, release soft
+    return _fade(_lowpass(n * gate * sweep, 2), fin=0.004, fout=0.07)
+
+
 def _data_tick() -> np.ndarray:
     """Fast digital ticks — pairs with animated counters."""
     t = _t(0.30)
@@ -337,6 +347,7 @@ GENERATORS: Dict[str, Callable[[], np.ndarray]] = {
     "snap": _snap,
     "cinematic_hit": _cinematic_hit,
     "data_tick": _data_tick,
+    "paper_rip": _paper_rip,
 }
 
 

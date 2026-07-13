@@ -51,7 +51,16 @@ async def get_stream_user(
             detail="Invalid or expired token",
         )
 
-    result = await db.execute(select(User).where(User.id == UUID(payload["sub"])))
+    try:
+        user_uuid = UUID(payload["sub"])
+    except (ValueError, TypeError, AttributeError):
+        # Un `sub` malformé doit répondre 401, pas une 500 interne.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+
+    result = await db.execute(select(User).where(User.id == user_uuid))
     user = result.scalar_one_or_none()
     if user is None or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")

@@ -26,6 +26,11 @@ VALID_MODES = {
     # nouveau défaut MVP. `creator_economy_mode` est un alias historique accepté.
     "credit_saver_creator_edit",
     "creator_economy_mode",
+    # Styles de montage inspirés des montages Captions AI (réfs TikTok du
+    # produit): pilule éditoriale / néon hype / notes manuscrites.
+    "pill_editorial",
+    "neon_hype",
+    "handwritten_note",
 }
 VALID_PIPELINE_VERSIONS = {"v1", "v2"}
 VALID_IMAGE_PROVIDERS = {"openrouter", "replicate", "stability", "noop"}

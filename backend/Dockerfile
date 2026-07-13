@@ -35,6 +35,9 @@ RUN mkdir -p /usr/local/share/fonts/autoedit \
     && curl -fsSL "$base/bangers/Bangers-Regular.ttf"    -o /usr/local/share/fonts/autoedit/Bangers-Regular.ttf      || true \
     && curl -fsSL "$base/bebasneue/BebasNeue-Regular.ttf" -o /usr/local/share/fonts/autoedit/BebasNeue-Regular.ttf    || true \
     && curl -fsSL "$base/montserrat/Montserrat%5Bwght%5D.ttf" -o /usr/local/share/fonts/autoedit/Montserrat-Variable.ttf || true \
+    && curl -fsSL "$base/poppins/Poppins-SemiBold.ttf"   -o /usr/local/share/fonts/autoedit/Poppins-SemiBold.ttf     || true \
+    && curl -fsSL "$base/poppins/Poppins-Bold.ttf"       -o /usr/local/share/fonts/autoedit/Poppins-Bold.ttf         || true \
+    && curl -fsSL "$base/caveat/Caveat%5Bwght%5D.ttf"    -o /usr/local/share/fonts/autoedit/Caveat-Variable.ttf      || true \
     && fc-cache -f /usr/local/share/fonts || true
 
 # User non-root (UID/GID 1000 — match l'host pour eviter les soucis de volume)

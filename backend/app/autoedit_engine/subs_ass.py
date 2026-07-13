@@ -134,22 +134,40 @@ def _header(tpl: dict) -> str:
 
 
 def _word_state(chunk: List[dict], active: int, popin: bool, tpl: dict) -> str:
-    """Build the Text field for one karaoke state of a chunk."""
+    """Build the Text field for one karaoke state of a chunk.
+
+    Template flags (all optional):
+      * ``progressive`` + ``future``: spoken words keep the primary colour and
+        upcoming words are dimmed (Captions-AI pill look) instead of the
+        default "only the active word changes colour".
+      * ``uppercase``: render every word in capitals (hype/Beast look).
+      * ``glow``: the active word gets a soft coloured glow (\\blur + border).
+    """
     primary = _c(tpl["primary"])
     highlight = _c(tpl["highlight"])
+    future = _c(tpl["future"]) if tpl.get("future") else None
+    progressive = bool(tpl.get("progressive")) and future is not None
     hl = tpl["hl_scale"]
     pre = f"{{\\pos({config.WIDTH // 2},{config.ZONE_SUBS_Y})}}"
     parts: List[str] = []
     for j, w in enumerate(chunk):
         is_active = j == active
-        color = highlight if is_active else primary
+        if progressive:
+            # spoken (j < active): primary — active: highlight — upcoming: dimmed
+            color = highlight if is_active else (primary if j < active else future)
+        else:
+            color = highlight if is_active else primary
         target = hl if is_active else 100
+        glow = ""
+        if is_active and tpl.get("glow"):
+            glow = f"\\3c{highlight}\\bord{tpl.get('outline_w', 4) + 2}\\blur3"
         if popin:
-            ov = (f"{{\\1c{color}\\fscx{config.SUBS_POPIN_FROM}\\fscy{config.SUBS_POPIN_FROM}"
+            ov = (f"{{\\1c{color}{glow}\\fscx{config.SUBS_POPIN_FROM}\\fscy{config.SUBS_POPIN_FROM}"
                   f"\\t(0,{POPIN_MS},\\fscx{target}\\fscy{target})}}")
         else:
-            ov = f"{{\\1c{color}\\fscx{target}\\fscy{target}}}"
-        parts.append(ov + w["word"] + "{\\r}")
+            ov = f"{{\\1c{color}{glow}\\fscx{target}\\fscy{target}}}"
+        word = w["word"].upper() if tpl.get("uppercase") else w["word"]
+        parts.append(ov + word + "{\\r}")
     return pre + " ".join(parts)
 
 
