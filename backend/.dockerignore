@@ -10,3 +10,4 @@ whisper_cache
 *.mov
 *.avi
 *.log
+Dockerfile.staging

@@ -158,6 +158,22 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Planificateur des tâches périodiques (purge de rétention quotidienne).
+  # Sans lui, purge_expired_files n'est JAMAIS déclenchée automatiquement.
+  beat:
+    build: ./backend
+    command: celery -A app.workers.celery_app beat --loglevel=info
+    volumes:
+      - ./backend:/app
+    environment:
+      <<: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   frontend:
     build: ./frontend
     ports:

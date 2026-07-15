@@ -23,7 +23,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-dejavu-core \
     fonts-dejavu-extra \
     && rm -rf /var/lib/apt/lists/* \
-    && sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/' /etc/ImageMagick-6/policy.xml 2>/dev/null || true
+    && (sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/' /etc/ImageMagick-6/policy.xml 2>/dev/null || true)
+# NB: le `|| true` est PARENTHÉSÉ pour ne couvrir QUE le sed ImageMagick.
+# Avant, il s'appliquait à toute la chaîne: un échec d'apt-get (réseau…)
+# produisait une image "réussie" SANS ffmpeg/fontconfig — panne silencieuse.
+RUN command -v ffmpeg >/dev/null && command -v fc-cache >/dev/null
 
 # Les polices d'affichage (Anton/Bangers/Bebas/Montserrat/Poppins/Caveat,
 # toutes sous licence OFL) sont EMBARQUÉES dans le repo

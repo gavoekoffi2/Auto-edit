@@ -273,10 +273,11 @@ async def download_result(
 
     absolute_path = get_absolute_path(output_path)
     if not os.path.exists(absolute_path):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Output file no longer exists on disk",
-        )
+        # Fichier purgé par la rétention (ou supprimé): code stable FILE_EXPIRED
+        # (410) pour que le frontend/support comprennent, pas un 404 générique.
+        from app.services.errors import http_error
+        raise http_error("FILE_EXPIRED",
+                         getattr(request.state, "request_id", None))
 
     # Range-aware response: resumable downloads + seekable preview playback
     # (the pinned Starlette FileResponse ignores Range headers).
@@ -321,10 +322,9 @@ async def download_clip(
 
     absolute_path = get_absolute_path(clip["output_path"])
     if not os.path.exists(absolute_path):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Clip file no longer exists on disk",
-        )
+        from app.services.errors import http_error
+        raise http_error("FILE_EXPIRED",
+                         getattr(request.state, "request_id", None))
     return ranged_file_response(
         absolute_path,
         request,
