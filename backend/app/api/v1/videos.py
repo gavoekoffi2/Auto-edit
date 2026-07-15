@@ -253,5 +253,23 @@ async def delete_video(
     except Exception as e:
         logger.warning(f"Failed to delete file for video {video_id}: {e}")
 
+    # Purge aussi les répertoires de sortie des jobs de cette vidéo — la
+    # cascade DB supprime les lignes Job mais laissait leurs fichiers rendus
+    # sur le disque (confidentialité + espace).
+    try:
+        import shutil
+        from sqlalchemy import select as sa_select
+        from app.models.job import Job
+        jobs_result = await db.execute(
+            sa_select(Job.id).where(Job.video_id == video.id))
+        for (jid,) in jobs_result.all():
+            out_dir = os.path.join(
+                os.path.abspath(settings.UPLOAD_DIR),
+                str(current_user.id), "output", str(jid))
+            if os.path.isdir(out_dir):
+                shutil.rmtree(out_dir, ignore_errors=True)
+    except Exception as e:
+        logger.warning(f"Failed to purge job outputs for video {video_id}: {e}")
+
     await db.delete(video)
     await db.flush()

@@ -39,9 +39,24 @@ from . import config
 # Modèle volontairement économique — une relecture de texte, pas de génération.
 LLM_CLEANUP_ENABLED = os.getenv("ENGINE_LLM_CLEANUP", "1") not in {"0", "false", "no"}
 LLM_CLEANUP_MODEL = os.getenv("ENGINE_LLM_CLEANUP_MODEL", config.PROMPT_REFINER_MODEL)
-LLM_CLEANUP_MAX_REMOVAL = float(os.getenv("ENGINE_LLM_CLEANUP_MAX_REMOVAL", "0.30"))
+
+# Niveaux de nettoyage exposés au produit. La valeur = part maximale de la
+# parole qui peut être retirée. Le défaut est PRUDENT (light) pour les
+# premiers utilisateurs: mieux vaut laisser un « euh » que couper une idée.
+CLEANUP_LEVELS = {
+    "off": 0.0,
+    "light": 0.10,
+    "balanced": 0.20,
+    "aggressive": 0.30,
+}
+DEFAULT_CLEANUP_LEVEL = os.getenv("ENGINE_LLM_CLEANUP_LEVEL", "light")
+
 _MIN_SPAN = 0.25          # ignore les micro-spans (les pads les mangeraient)
 _TIMEOUT = 90
+# Zones protégées: jamais de coupe IA dans le hook d'ouverture ni dans la
+# conclusion/CTA — les retirer changerait le sens ou casserait la vidéo.
+PROTECT_HEAD_S = 4.0
+PROTECT_TAIL_S = 4.0
 
 _PROMPT = (
     "Tu es un monteur vidéo professionnel spécialisé dans les formats viraux "
@@ -78,13 +93,27 @@ def _spoken_duration(vu: dict) -> float:
     return total
 
 
-def _validate_spans(raw: object, vu: dict) -> List[dict]:
-    """Sanitize model output: shape, bounds, minimum length, removal cap."""
+def resolve_level(level: Optional[str]) -> str:
+    """Niveau demandé -> niveau effectif (inconnus => défaut prudent)."""
+    lv = (level or DEFAULT_CLEANUP_LEVEL or "light").lower()
+    return lv if lv in CLEANUP_LEVELS else "light"
+
+
+def _validate_spans(raw: object, vu: dict, level: str = "light") -> List[dict]:
+    """Sanitize model output: shape, bounds, minimum length, removal cap.
+
+    Garde-fous supplémentaires:
+      * budget de retrait borné par le NIVEAU choisi (jamais dépassé);
+      * zones protégées: début (hook) et fin (CTA) de la prise de parole;
+      * spans triés/écrêtés dans les bornes de la vidéo.
+    """
     if not isinstance(raw, list):
         return []
     duration = float(vu.get("duration") or 0.0) or max(
         (float(s["end"]) for s in vu.get("segments", [])), default=0.0)
-    budget = _spoken_duration(vu) * LLM_CLEANUP_MAX_REMOVAL
+    speech_end = max(
+        (float(s["end"]) for s in vu.get("segments", [])), default=duration)
+    budget = _spoken_duration(vu) * CLEANUP_LEVELS.get(level, 0.10)
     spans: List[dict] = []
     used = 0.0
     for item in raw:
@@ -95,6 +124,9 @@ def _validate_spans(raw: object, vu: dict) -> List[dict]:
             end = float(item["end"])
         except (KeyError, TypeError, ValueError):
             continue
+        # Zones protégées: le hook d'ouverture et la conclusion restent intacts.
+        start = max(start, PROTECT_HEAD_S)
+        end = min(end, max(PROTECT_HEAD_S, speech_end - PROTECT_TAIL_S))
         start, end = max(0.0, start), min(duration, end)
         if end - start < _MIN_SPAN:
             continue
@@ -110,7 +142,8 @@ def _validate_spans(raw: object, vu: dict) -> List[dict]:
 
 
 def llm_cleanup_spans(vu: dict, api_key: Optional[str] = None,
-                      model: str = LLM_CLEANUP_MODEL) -> List[dict]:
+                      model: str = LLM_CLEANUP_MODEL,
+                      level: str = "light") -> List[dict]:
     """Ask the LLM for source-time spans to remove. [] on any failure."""
     api_key = api_key or os.environ.get("OPENROUTER_API_KEY")
     transcript = _transcript_lines(vu)
@@ -132,9 +165,11 @@ def llm_cleanup_spans(vu: dict, api_key: Optional[str] = None,
         start, end = text.find("["), text.rfind("]")
         if start < 0 or end <= start:
             raise RuntimeError("no JSON array in cleanup answer")
-        return _validate_spans(json.loads(text[start:end + 1]), vu)
+        return _validate_spans(json.loads(text[start:end + 1]), vu, level=level)
     except Exception as exc:  # noqa: BLE001 - never block the render
-        print(f"[smart_cleanup] WARN LLM pass skipped: {exc}", file=sys.stderr)
+        # Journalise l'ERREUR seulement — jamais le transcript ni la réponse.
+        print(f"[smart_cleanup] WARN LLM pass skipped: {type(exc).__name__}: "
+              f"{str(exc)[:200]}", file=sys.stderr)
         return []
 
 
@@ -165,20 +200,28 @@ def apply_spans(vu: dict, spans: List[dict]) -> Tuple[dict, float]:
 
 
 def clean_vu(vu_path: str, out_path: str,
-             api_key: Optional[str] = None) -> Tuple[str, dict]:
+             api_key: Optional[str] = None,
+             level: Optional[str] = None) -> Tuple[str, dict]:
     """Full pass: LLM spans -> filtered vu written to *out_path*.
 
-    Returns ``(effective_vu_path, report)``. On failure or when nothing is
-    flagged, the ORIGINAL path is returned untouched.
+    *level* ∈ CLEANUP_LEVELS (off/light/balanced/aggressive); ``off`` ne fait
+    rien. Returns ``(effective_vu_path, report)``. On failure or when nothing
+    is flagged, the ORIGINAL path is returned untouched. Les passages retirés
+    sont listés dans le report (``llm_cleanup_removed_spans``) pour que
+    l'utilisateur puisse comprendre ce que l'IA a coupé.
     """
+    lv = resolve_level(level)
     report = {"llm_cleanup_spans": 0, "llm_cleanup_removed_s": 0.0,
-              "llm_cleanup_model": LLM_CLEANUP_MODEL}
+              "llm_cleanup_model": LLM_CLEANUP_MODEL,
+              "llm_cleanup_level": lv}
+    if lv == "off":
+        return vu_path, report
     try:
         vu = json.load(open(vu_path, encoding="utf-8"))
     except (OSError, ValueError) as exc:
         print(f"[smart_cleanup] WARN cannot read vu: {exc}", file=sys.stderr)
         return vu_path, report
-    spans = llm_cleanup_spans(vu, api_key=api_key)
+    spans = llm_cleanup_spans(vu, api_key=api_key, level=lv)
     if not spans:
         return vu_path, report
     cleaned, removed = apply_spans(vu, spans)
@@ -191,8 +234,10 @@ def clean_vu(vu_path: str, out_path: str,
         "llm_cleanup_spans": len(spans),
         "llm_cleanup_removed_s": round(removed, 2),
         "llm_cleanup_reasons": sorted({s["reason"] for s in spans}),
+        # Traçabilité: ce que l'IA a retiré, consultable dans le résultat du job.
+        "llm_cleanup_removed_spans": spans,
     })
-    print(f"[smart_cleanup] {len(spans)} passage(s) retirés par l'IA "
+    print(f"[smart_cleanup] niveau={lv}: {len(spans)} passage(s) retirés "
           f"({removed:.1f}s de parole) -> {out_path}")
     return out_path, report
 

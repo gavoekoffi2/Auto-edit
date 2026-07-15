@@ -25,20 +25,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/' /etc/ImageMagick-6/policy.xml 2>/dev/null || true
 
-# Best-effort: fetch the exact display fonts (Montserrat / Anton / Bangers /
-# Bebas Neue) used by the subtitle templates. If the network is unavailable at
-# build time the engine falls back to DejaVu, so a failure here never breaks the
-# build.
-RUN mkdir -p /usr/local/share/fonts/autoedit \
-    && base="https://github.com/google/fonts/raw/main/ofl" \
-    && curl -fsSL "$base/anton/Anton-Regular.ttf"        -o /usr/local/share/fonts/autoedit/Anton-Regular.ttf        || true \
-    && curl -fsSL "$base/bangers/Bangers-Regular.ttf"    -o /usr/local/share/fonts/autoedit/Bangers-Regular.ttf      || true \
-    && curl -fsSL "$base/bebasneue/BebasNeue-Regular.ttf" -o /usr/local/share/fonts/autoedit/BebasNeue-Regular.ttf    || true \
-    && curl -fsSL "$base/montserrat/Montserrat%5Bwght%5D.ttf" -o /usr/local/share/fonts/autoedit/Montserrat-Variable.ttf || true \
-    && curl -fsSL "$base/poppins/Poppins-SemiBold.ttf"   -o /usr/local/share/fonts/autoedit/Poppins-SemiBold.ttf     || true \
-    && curl -fsSL "$base/poppins/Poppins-Bold.ttf"       -o /usr/local/share/fonts/autoedit/Poppins-Bold.ttf         || true \
-    && curl -fsSL "$base/caveat/Caveat%5Bwght%5D.ttf"    -o /usr/local/share/fonts/autoedit/Caveat-Variable.ttf      || true \
-    && fc-cache -f /usr/local/share/fonts || true
+# Les polices d'affichage (Anton/Bangers/Bebas/Montserrat/Poppins/Caveat,
+# toutes sous licence OFL) sont EMBARQUÉES dans le repo
+# (app/autoedit_engine/assets/fonts) : le build est reproductible et ne
+# dépend d'aucun téléchargement externe. Elles sont installées dans
+# fontconfig après le COPY du code (voir plus bas).
 
 # User non-root (UID/GID 1000 — match l'host pour eviter les soucis de volume)
 RUN groupadd --system --gid 1000 app \
@@ -57,6 +48,11 @@ RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu 
     && rm -f /tmp/requirements-no-whisper.txt
 
 COPY . .
+
+# Installe les polices embarquées pour libass/fontconfig (sous-titres ASS).
+RUN mkdir -p /usr/local/share/fonts/autoedit \
+    && cp app/autoedit_engine/assets/fonts/*.ttf /usr/local/share/fonts/autoedit/ \
+    && fc-cache -f /usr/local/share/fonts
 
 # Volumes attendus + cache runtime non monte sous /app.
 # docker-compose bind-mount ./backend:/app in dev/prod-like runs, so anything

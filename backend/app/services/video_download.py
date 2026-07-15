@@ -43,6 +43,8 @@ def validate_source_url(url: str) -> str:
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"}:
         raise SourceURLError("Seules les URLs http(s) sont acceptées.")
+    if parsed.username or parsed.password:
+        raise SourceURLError("Les URLs contenant des identifiants ne sont pas acceptées.")
     host = parsed.hostname
     if not host:
         raise SourceURLError("URL invalide (hôte manquant).")
@@ -64,12 +66,17 @@ def validate_source_url(url: str) -> str:
     return url
 
 
-def probe_source(url: str) -> dict:
-    """Fetch metadata (title/duration) WITHOUT downloading. Raises SourceURLError."""
+def probe_source(url: str, max_duration_s: Optional[float] = None) -> dict:
+    """Fetch metadata (title/duration) WITHOUT downloading. Raises SourceURLError.
+
+    Applique les limites AVANT tout téléchargement: durée maximale (globale
+    et/ou celle du plan via *max_duration_s*) et refus des directs.
+    """
     import yt_dlp
 
     opts = {
         "quiet": True, "no_warnings": True, "noplaylist": True,
+        "playlist_items": "1",
         "skip_download": True, "socket_timeout": 30,
     }
     try:
@@ -77,6 +84,10 @@ def probe_source(url: str) -> dict:
             info = ydl.extract_info(url, download=False)
     except Exception as exc:  # noqa: BLE001 - yt-dlp raises many types
         logger.warning("probe_source failed for %s: %s", url, exc)
+        msg = str(exc).lower()
+        if "private" in msg or "login" in msg or "sign in" in msg:
+            raise SourceURLError(
+                "Cette vidéo est privée ou inaccessible. Utilise une vidéo publique.")
         raise SourceURLError(
             "Impossible de lire cette URL. Vérifie que la vidéo est publique."
         )
@@ -85,11 +96,16 @@ def probe_source(url: str) -> dict:
         if not entries:
             raise SourceURLError("Cette URL ne contient aucune vidéo.")
         info = entries[0]
-    duration = float(info.get("duration") or 0.0)
-    if duration and duration > MAX_SOURCE_DURATION_S:
+    if info.get("is_live"):
         raise SourceURLError(
-            f"Vidéo trop longue ({duration / 60:.0f} min). "
-            f"Maximum: {MAX_SOURCE_DURATION_S // 3600} h."
+            "Les directs ne sont pas pris en charge. Attends la fin du live.")
+    duration = float(info.get("duration") or 0.0)
+    cap = min(MAX_SOURCE_DURATION_S,
+              max_duration_s if max_duration_s else MAX_SOURCE_DURATION_S)
+    if duration and duration > cap:
+        raise SourceURLError(
+            f"Vidéo trop longue ({duration / 60:.0f} min) — maximum "
+            f"{cap / 60:.0f} min pour ton plan."
         )
     return {
         "title": (info.get("title") or "video")[:500],
@@ -123,6 +139,8 @@ def download_source(
 
     opts = {
         "quiet": True, "no_warnings": True, "noplaylist": True,
+        "playlist_items": "1",
+        "max_downloads": 1,
         "outtmpl": base + ".%(ext)s",
         "format": (
             f"bv*[height<={_DOWNLOAD_HEIGHT_CAP}]+ba/"

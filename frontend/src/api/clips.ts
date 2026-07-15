@@ -17,6 +17,17 @@ export interface ClipResult {
   error?: string
 }
 
+/** Un moment proposé par l'analyse (étape 1), avant sélection. */
+export interface MomentSuggestion {
+  start: number
+  end: number
+  title: string
+  hook?: string
+  reason?: string
+  score: number
+  excerpt?: string
+}
+
 export interface ClipsCreateData {
   source_url?: string
   video_id?: string
@@ -26,6 +37,25 @@ export interface ClipsCreateData {
 
 export async function createClipsJob(data: ClipsCreateData) {
   const res = await client.post('/clips', data)
+  return res.data
+}
+
+/** Étape 2 : rendre uniquement les extraits sélectionnés/ajustés. */
+export interface ClipsRenderData {
+  clips: Array<{
+    start: number
+    end: number
+    title?: string
+    hook?: string
+    reason?: string
+    score?: number
+  }>
+  mode?: string
+  options?: JobOptions
+}
+
+export async function renderSelectedClips(analyzeJobId: string, data: ClipsRenderData) {
+  const res = await client.post(`/clips/${analyzeJobId}/render`, data)
   return res.data
 }
 

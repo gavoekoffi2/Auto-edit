@@ -451,6 +451,8 @@ def run_pipeline_v2(
         visual_mode=visual_mode,
         motion_preset=motion_preset,
         disable_paid_images=disable_paid_images,
+        cleanup_level=options.get("cleanup_level"),
+        smart_crop_mode=options.get("smart_crop_mode"),
         progress_callback=progress,
         report=montage_report,
     )

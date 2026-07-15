@@ -83,6 +83,41 @@ app.add_middleware(
 app.include_router(api_router, prefix="/api/v1")
 
 
+@app.get("/api/health/live")
+async def liveness():
+    """Liveness: le process répond. Aucune dépendance vérifiée."""
+    return {"status": "alive"}
+
+
+@app.get("/api/health/ready")
+async def readiness():
+    """Readiness: dépendances critiques prêtes (DB + Redis). 503 sinon."""
+    from fastapi.responses import JSONResponse
+    ready = True
+    checks = {}
+    try:
+        from app.db.session import async_engine
+        from sqlalchemy import text
+        async with async_engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        checks["database"] = "ok"
+    except Exception as e:
+        logger.error("readiness: database error: %s", e)
+        checks["database"] = "error"
+        ready = False
+    try:
+        from app.services.rate_limiter import _get_redis
+        r = await _get_redis()
+        await r.ping()
+        checks["redis"] = "ok"
+    except Exception as e:
+        logger.error("readiness: redis error: %s", e)
+        checks["redis"] = "error"
+        ready = False
+    body = {"status": "ready" if ready else "not_ready", **checks}
+    return JSONResponse(status_code=200 if ready else 503, content=body)
+
+
 @app.get("/api/health")
 async def health_check():
     """Health check with dependency verification."""

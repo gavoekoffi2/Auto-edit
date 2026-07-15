@@ -206,6 +206,42 @@ async def cancel_job(
     return job
 
 
+@router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_job(
+    job_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Supprime un job ET tous ses fichiers (rendus, transcriptions, clips).
+
+    Confidentialité: l'utilisateur peut retirer ses contenus du serveur.
+    La ligne Job est effacée; la vidéo source (ligne Video) reste gérée par
+    DELETE /videos/{id}.
+    """
+    result = await db.execute(
+        select(Job).where(Job.id == job_id, Job.user_id == current_user.id)
+    )
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    if job.status in ("pending", "processing"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Annule d'abord le traitement avant de le supprimer.",
+        )
+
+    import shutil
+    from app.config import settings
+    out_dir = os.path.join(
+        os.path.abspath(settings.UPLOAD_DIR), str(job.user_id), "output", str(job.id))
+    if os.path.isdir(out_dir):
+        shutil.rmtree(out_dir, ignore_errors=True)
+
+    await db.delete(job)
+    await db.flush()
+    logger.info(f"Job {job_id} and its files deleted by user {current_user.id}")
+
+
 @router.get("/{job_id}/download")
 async def download_result(
     job_id: UUID,

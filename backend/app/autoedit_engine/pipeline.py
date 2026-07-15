@@ -132,6 +132,8 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
         do_motion: bool = True, broll_demographic: str = "african",
         visual_mode: str = "auto_fallback", motion_preset: Optional[str] = None,
         style_seed_text: Optional[str] = None, disable_paid_images: bool = False,
+        cleanup_level: Optional[str] = None,
+        smart_crop_mode: Optional[str] = None,
         progress_callback=None, report: Optional[dict] = None,
         cleanup: bool = True) -> str:
     os.makedirs(workdir, exist_ok=True)
@@ -183,18 +185,23 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     # transcript horodaté et signale répétitions éloignées, hésitations,
     # faux départs et passages incohérents. Les zones vidées deviennent des
     # silences que build_edl coupe naturellement. Best-effort, jamais bloquant.
-    if smart_cleanup.LLM_CLEANUP_ENABLED and os.environ.get("OPENROUTER_API_KEY"):
-        _p(14, "1bis smart_cleanup")
+    effective_cleanup = smart_cleanup.resolve_level(cleanup_level)
+    if (smart_cleanup.LLM_CLEANUP_ENABLED and effective_cleanup != "off"
+            and os.environ.get("OPENROUTER_API_KEY")):
+        _p(14, "1bis smart_cleanup", f"niveau={effective_cleanup}")
         vu_path, cleanup_rep = smart_cleanup.clean_vu(
-            vu_path, p("transcripts", f"{stem}_vu_clean.json"))
+            vu_path, p("transcripts", f"{stem}_vu_clean.json"),
+            level=effective_cleanup)
         rep.update(cleanup_rep)
     vu_data = json.load(open(vu_path, encoding="utf-8"))
 
     # 2) EDL + grade + base_only --------------------------------------------
     _p(20, "2 build_edl")
     edl_path = p("edl.json")
-    build_res = build_edl.build(source, vu_path, outdir=workdir, encode=True)
+    build_res = build_edl.build(source, vu_path, outdir=workdir, encode=True,
+                                smart_crop_mode=smart_crop_mode)
     base_only = build_res["base_only"]
+    rep["smart_crop"] = build_res.get("smart_crop", {})
     # Preuve de découpe: durée d'origine vs gardée (silences/répétitions retirés).
     orig = float(vu_data.get("duration") or 0.0)
     kept = float(build_res.get("output_duration") or 0.0)

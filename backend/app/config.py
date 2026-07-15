@@ -75,6 +75,24 @@ class Settings(BaseSettings):
     MAX_VIDEO_DURATION_PRO: int = 3600  # 60 min
     MAX_VIDEOS_PER_MONTH_FREE: int = 2
 
+    # ---------------------------------------------------------------------
+    # Fonctionnalité Clips (vidéo longue -> shorts) — limites par plan.
+    # Source de vérité consommée par app/services/plans.py UNIQUEMENT.
+    # ---------------------------------------------------------------------
+    CLIPS_MAX_SOURCE_DURATION_FREE: int = 1800       # 30 min
+    CLIPS_MAX_SOURCE_DURATION_PRO: int = 5400        # 90 min
+    CLIPS_MAX_SOURCE_DURATION_BUSINESS: int = 10800  # 3 h
+    CLIPS_MAX_PER_JOB_FREE: int = 3
+    CLIPS_MAX_PER_JOB_PRO: int = 10
+    CLIPS_MAX_PER_JOB_BUSINESS: int = 15
+
+    # ---------------------------------------------------------------------
+    # Rétention des fichiers (purge automatique). 0 = ne jamais purger.
+    # ---------------------------------------------------------------------
+    RETENTION_OUTPUT_DAYS: int = 14        # rendus terminés (clips, montages)
+    RETENTION_SOURCE_DAYS: int = 7         # sources importées par URL
+    RETENTION_FAILED_JOB_DAYS: int = 2     # répertoires des jobs échoués
+
     # Long video processing
     # A 3-4 minute mobile video can take far longer than its playback duration
     # once Whisper, generated visuals, FFmpeg compositing and SFX are chained.

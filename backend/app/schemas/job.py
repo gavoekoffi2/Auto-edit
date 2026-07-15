@@ -49,6 +49,10 @@ class JobOptions(BaseModel):
     subtitle_template: Optional[str] = None
     # Fonctionnalité Clips: nombre maximum de shorts extraits d'une vidéo longue.
     max_clips: Optional[int] = Field(default=None, ge=1, le=10)
+    # Nettoyage IA du transcript: off | light (défaut) | balanced | aggressive.
+    cleanup_level: Optional[str] = None
+    # Recadrage vertical: auto (suivi de visage) | center | left | right.
+    smart_crop_mode: Optional[str] = None
     cta_text: Optional[str] = Field(default=None, max_length=120)
     logo_text: Optional[str] = Field(default=None, max_length=60)
 
@@ -77,6 +81,22 @@ class JobOptions(BaseModel):
             raise ValueError(
                 f"motion_preset must be one of: {', '.join(sorted(VALID_MOTION_PRESETS))}"
             )
+        return v
+
+    @field_validator("smart_crop_mode")
+    @classmethod
+    def validate_smart_crop_mode(cls, v: Optional[str]) -> Optional[str]:
+        allowed = {"auto", "center", "left", "right"}
+        if v is not None and v not in allowed:
+            raise ValueError(f"smart_crop_mode must be one of: {', '.join(sorted(allowed))}")
+        return v
+
+    @field_validator("cleanup_level")
+    @classmethod
+    def validate_cleanup_level(cls, v: Optional[str]) -> Optional[str]:
+        allowed = {"off", "light", "balanced", "aggressive"}
+        if v is not None and v not in allowed:
+            raise ValueError(f"cleanup_level must be one of: {', '.join(sorted(allowed))}")
         return v
 
     @field_validator("subtitle_template")
@@ -152,6 +172,32 @@ class ClipsCreate(BaseModel):
         if self.video_id is not None and self.source_url:
             raise ValueError("Provide only one of source_url or video_id")
         return self
+
+
+class ClipSelection(BaseModel):
+    """Un extrait sélectionné (bornes ajustées + titre éventuellement modifié)."""
+
+    start: float = Field(ge=0)
+    end: float = Field(gt=0)
+    title: Optional[str] = Field(default=None, max_length=120)
+    hook: Optional[str] = Field(default=None, max_length=200)
+    reason: Optional[str] = Field(default=None, max_length=300)
+    score: Optional[int] = Field(default=None, ge=0, le=100)
+
+
+class ClipsRenderRequest(BaseModel):
+    """Étape 2 de Clips: rendu des extraits sélectionnés par l'utilisateur."""
+
+    clips: list[ClipSelection] = Field(min_length=1, max_length=15)
+    mode: Optional[str] = None
+    options: Optional[JobOptions] = None
+
+    @field_validator("mode")
+    @classmethod
+    def validate_mode(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_MODES:
+            raise ValueError(f"mode must be one of: {', '.join(sorted(VALID_MODES))}")
+        return v
 
 
 class JobResponse(BaseModel):

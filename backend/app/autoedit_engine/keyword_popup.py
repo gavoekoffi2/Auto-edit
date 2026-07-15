@@ -48,6 +48,8 @@ _POPUP_BLOCKLIST = {
     "dire", "dit", "dis", "parler", "tellement", "probablement", "voir", "vu",
     "passer", "passe", "vient", "venir", "semaine", "derriere", "derrière",
     "created", "create", "make", "thing", "things",
+    "parce", "quand", "comme", "alors", "encore", "chose", "choses",
+    "vraiment", "aussi", "toujours",
 }
 
 

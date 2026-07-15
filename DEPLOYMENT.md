@@ -380,3 +380,84 @@ cd frontend && npm audit --production
 
 Une fois ces 11 cases cochées : **ouvre l'inscription, commence par 10
 utilisateurs cibles, observe pendant 48h, scale**.
+
+---
+
+## 12. Fonctionnalité « Clips » + moteur v4.3 — spécificités de déploiement
+
+### 12.1 Nouvelles dépendances (image backend/worker à reconstruire)
+
+| Dépendance | Source | Version | Rôle |
+| --- | --- | --- | --- |
+| `yt-dlp` | requirements.txt | `>=2025.1.15` | import de vidéos par URL. Mettre à jour régulièrement (les extracteurs de plateformes cassent avec le temps) mais TESTER avant de déployer — jamais de mise à jour automatique silencieuse. |
+| `opencv-python-headless` | requirements.txt | `>=4.9,<5` (épinglé: 5.x retire l'API Haar) | recadrage vertical intelligent (suivi de visage) |
+| Polices OFL (Anton, Bangers, Bebas, Montserrat, Poppins, Caveat) | **embarquées dans le repo** `backend/app/autoedit_engine/assets/fonts/` | figées par commit | sous-titres des styles. Plus aucun téléchargement réseau au build. Licence: `OFL-LICENSE.txt` dans le même dossier. |
+
+```bash
+docker compose build backend worker && docker compose up -d
+# Vérifier :
+docker compose exec backend python -c "import cv2, yt_dlp, whisper; print('deps ok')"
+docker compose exec backend fc-list | grep -iE "poppins|caveat|anton"
+```
+
+### 12.2 Purge de rétention (celery beat)
+
+La purge automatique des fichiers (rendus > `RETENTION_OUTPUT_DAYS`, sources
+URL > `RETENTION_SOURCE_DAYS`, jobs échoués > `RETENTION_FAILED_JOB_DAYS`)
+tourne via **celery beat**. Ajouter un service beat au compose :
+
+```yaml
+  beat:
+    build: ./backend
+    command: celery -A app.workers.celery_app beat --loglevel=info
+    env_file: .env
+    depends_on: [redis]
+```
+
+Sans beat, exécuter à la main / via cron :
+`docker compose exec worker celery -A app.workers.celery_app call purge_expired_files`
+
+### 12.3 Endpoints de santé
+
+- `GET /api/health/live` — liveness (jamais de dépendance)
+- `GET /api/health/ready` — readiness DB + Redis (503 si KO) → à utiliser
+  dans le health-check du proxy/orchestrateur
+- `GET /api/health` — état global + disque (les détails d'erreur vont dans
+  les logs, pas dans la réponse publique)
+
+### 12.4 Nouvelles variables d'environnement
+
+Voir `.env.example` (sections « Nettoyage IA », « Fonctionnalité Clips »,
+« Rétention », « Recadrage vertical ») : `ENGINE_LLM_CLEANUP*`,
+`ENGINE_VIRAL_MOMENTS_MODEL`, `CLIPS_MAX_*`, `RETENTION_*`, `SMART_CROP_MODE`.
+Toutes ont des valeurs par défaut saines — rien n'est obligatoire.
+
+### 12.5 Limites documentées (MVP Clips)
+
+- Rendu final vertical 1080x1920 uniquement (MP4/H.264/AAC — compatible
+  TikTok / Reels / Shorts).
+- Recadrage intelligent : un cadrage par segment d'EDL (pas de panoramique
+  continu dans un segment), visage dominant par segment, pas encore de
+  split-screen deux intervenants ni de diarisation. Fallback centre journalisé
+  (`result.montage.smart_crop`).
+- La sélection des extraits (étape 2) réutilise la transcription de l'analyse ;
+  si les fichiers d'analyse ont été purgés, le rendu retranscrit la source.
+- Les libellés fins de progression ne sont pas persistés en base (le
+  pourcentage par étape l'est).
+
+## 13. Checklist complémentaire — lancement Clips / premiers utilisateurs
+
+En plus de la checklist §11 :
+
+- [ ] Image backend/worker reconstruite (yt-dlp + OpenCV + polices) et vérifiée (§12.1)
+- [ ] Service `beat` actif → purge de rétention observée dans les logs (§12.2)
+- [ ] `GET /api/health/ready` branché sur le health-check du proxy
+- [ ] Quotas par plan revus (`CLIPS_MAX_*`) et testés : dépassement → erreur `[QUOTA_*]` claire
+- [ ] Test réel : URL YouTube publique → analyse → sélection → rendu → téléchargement
+- [ ] Test réel : fichier importé depuis un téléphone (réseau mobile)
+- [ ] Test négatif : URL privée, URL invalide, vidéo sans parole → messages d'erreur codifiés
+- [ ] Tentative de téléchargement du clip d'un autre compte → 404 (ownership)
+- [ ] Consentement « droits sur la vidéo » visible dans l'interface Clips
+- [ ] PRIVACY.md reflété dans la politique de confidentialité publiée (fournisseurs IA, rétention, suppression)
+- [ ] Espace disque : alerte < 10 % libre + rétention adaptée au trafic attendu
+- [ ] Rotation des clés testée (OpenRouter/ElevenLabs) : §9
