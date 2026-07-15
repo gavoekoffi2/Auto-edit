@@ -27,7 +27,15 @@ _DOWNLOAD_HEIGHT_CAP = 1080               # inutile de télécharger de la 4K
 
 
 class SourceURLError(ValueError):
-    """URL source invalide ou interdite (message montrable à l'utilisateur)."""
+    """URL source invalide ou interdite (message montrable à l'utilisateur).
+
+    ``code`` = code d'erreur produit stable (app.services.errors) pour que le
+    worker préfixe error_message par ``[CODE]`` — contrat frontend/support.
+    """
+
+    def __init__(self, message: str, code: str = "URL_UNSUPPORTED"):
+        super().__init__(message)
+        self.code = code
 
 
 def validate_source_url(url: str) -> str:
@@ -37,24 +45,24 @@ def validate_source_url(url: str) -> str:
     """
     url = (url or "").strip()
     if not url:
-        raise SourceURLError("URL manquante.")
+        raise SourceURLError("URL manquante.", code="URL_INVALID")
     if len(url) > MAX_URL_LENGTH:
-        raise SourceURLError("URL trop longue.")
+        raise SourceURLError("URL trop longue.", code="URL_INVALID")
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"}:
-        raise SourceURLError("Seules les URLs http(s) sont acceptées.")
+        raise SourceURLError("Seules les URLs http(s) sont acceptées.", code="URL_INVALID")
     if parsed.username or parsed.password:
-        raise SourceURLError("Les URLs contenant des identifiants ne sont pas acceptées.")
+        raise SourceURLError("Les URLs contenant des identifiants ne sont pas acceptées.", code="URL_INVALID")
     host = parsed.hostname
     if not host:
-        raise SourceURLError("URL invalide (hôte manquant).")
+        raise SourceURLError("URL invalide (hôte manquant).", code="URL_INVALID")
 
     # Anti-SSRF: refuse loopback / réseaux privés / link-local, que l'hôte
     # soit une IP littérale ou un nom qui y résout.
     try:
         addrs = {info[4][0] for info in socket.getaddrinfo(host, None)}
     except socket.gaierror:
-        raise SourceURLError("Impossible de résoudre l'hôte de cette URL.")
+        raise SourceURLError("Impossible de résoudre l'hôte de cette URL.", code="URL_INVALID")
     for addr in addrs:
         try:
             ip = ipaddress.ip_address(addr)
@@ -62,7 +70,7 @@ def validate_source_url(url: str) -> str:
             continue
         if (ip.is_private or ip.is_loopback or ip.is_link_local
                 or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
-            raise SourceURLError("Cette URL pointe vers un réseau interdit.")
+            raise SourceURLError("Cette URL pointe vers un réseau interdit.", code="URL_FORBIDDEN_HOST")
     return url
 
 
@@ -87,25 +95,28 @@ def probe_source(url: str, max_duration_s: Optional[float] = None) -> dict:
         msg = str(exc).lower()
         if "private" in msg or "login" in msg or "sign in" in msg:
             raise SourceURLError(
-                "Cette vidéo est privée ou inaccessible. Utilise une vidéo publique.")
+                "Cette vidéo est privée ou inaccessible. Utilise une vidéo publique.",
+                code="SOURCE_PRIVATE")
         raise SourceURLError(
             "Impossible de lire cette URL. Vérifie que la vidéo est publique."
         )
     if info.get("_type") == "playlist":
         entries = info.get("entries") or []
         if not entries:
-            raise SourceURLError("Cette URL ne contient aucune vidéo.")
+            raise SourceURLError("Cette URL ne contient aucune vidéo.", code="URL_UNSUPPORTED")
         info = entries[0]
     if info.get("is_live"):
         raise SourceURLError(
-            "Les directs ne sont pas pris en charge. Attends la fin du live.")
+            "Les directs ne sont pas pris en charge. Attends la fin du live.",
+            code="SOURCE_LIVE")
     duration = float(info.get("duration") or 0.0)
     cap = min(MAX_SOURCE_DURATION_S,
               max_duration_s if max_duration_s else MAX_SOURCE_DURATION_S)
     if duration and duration > cap:
         raise SourceURLError(
             f"Vidéo trop longue ({duration / 60:.0f} min) — maximum "
-            f"{cap / 60:.0f} min pour ton plan."
+            f"{cap / 60:.0f} min pour ton plan.",
+            code="SOURCE_TOO_LONG",
         )
     return {
         "title": (info.get("title") or "video")[:500],
@@ -152,13 +163,24 @@ def download_source(
         "retries": 3,
         "progress_hooks": [_hook],
     }
+    info: dict = {}
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+            info = ydl.extract_info(url, download=True) or {}
+    except yt_dlp.utils.MaxDownloadsReached:
+        # max_downloads=1 fait LEVER cette exception une fois le 1er (et seul)
+        # téléchargement terminé — c'est un SUCCÈS, pas un échec. Le garde-fou
+        # anti-playlist reste actif; on récupère les métadonnées sans re-télécharger.
+        try:
+            with yt_dlp.YoutubeDL({**opts, "skip_download": True}) as ydl:
+                info = ydl.extract_info(url, download=False) or {}
+        except Exception:  # noqa: BLE001 - métadonnées best-effort
+            info = {}
     except Exception as exc:  # noqa: BLE001
         logger.warning("download_source failed for %s: %s", url, exc)
         raise SourceURLError(
-            "Le téléchargement de la vidéo a échoué. Vérifie l'URL et réessaie."
+            "Le téléchargement de la vidéo a échoué. Vérifie l'URL et réessaie.",
+            code="DOWNLOAD_FAILED",
         )
 
     final_path = base + ".mp4"
@@ -167,7 +189,7 @@ def download_source(
         candidates = [base + ext for ext in (".mkv", ".webm", ".mov")]
         final_path = next((c for c in candidates if os.path.exists(c)), final_path)
     if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
-        raise SourceURLError("Le téléchargement n'a produit aucun fichier vidéo.")
+        raise SourceURLError("Le téléchargement n'a produit aucun fichier vidéo.", code="DOWNLOAD_FAILED")
 
     return final_path, {
         "title": (info.get("title") or "video")[:500],

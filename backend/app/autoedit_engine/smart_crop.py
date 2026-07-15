@@ -47,6 +47,11 @@ FIXED_CENTERS = {"center": 0.5, "left": 0.33, "right": 0.67}
 def _cv2():
     try:
         import cv2  # noqa: PLC0415 - optional dependency
+        # OpenCV 5.x retire l'API Haar (CascadeClassifier) — un cv2 sans elle
+        # équivaut à "OpenCV indisponible" pour ce module (fallback centre),
+        # au lieu d'un AttributeError qui tuerait le rendu.
+        if not hasattr(cv2, "CascadeClassifier") or not hasattr(cv2, "data"):
+            return None
         return cv2
     except Exception:  # noqa: BLE001 - absence d'OpenCV = fallback centre
         return None

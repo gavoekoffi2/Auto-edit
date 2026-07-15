@@ -66,3 +66,17 @@ def test_job_options_accept_smart_crop_mode():
     assert JobOptions(smart_crop_mode="auto").smart_crop_mode == "auto"
     with pytest.raises(ValueError):
         JobOptions(smart_crop_mode="diagonal")
+
+
+def test_broken_cv2_without_haar_is_treated_as_unavailable(monkeypatch):
+    """Non-régression: OpenCV 5.x (sans CascadeClassifier) => fallback centre,
+    jamais un AttributeError qui tuerait le rendu (vu en staging Docker où
+    scenedetect[opencv] tirait opencv-python 5.x par-dessus le headless <5)."""
+    import sys, types
+    fake = types.ModuleType("cv2")          # cv2 sans API Haar
+    monkeypatch.setitem(sys.modules, "cv2", fake)
+    assert sc.opencv_available() is False
+    monkeypatch.setattr(sc, "source_is_landscape", lambda _s: True)
+    centers, report = sc.plan_crop_centers("x.mp4", [{"start": 0, "end": 5}], mode="auto")
+    assert centers == [0.5]
+    assert report["fallback"] == "opencv_unavailable"

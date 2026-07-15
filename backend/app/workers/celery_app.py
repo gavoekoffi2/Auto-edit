@@ -30,6 +30,11 @@ celery_app.conf.update(
     # lieu de la perdre silencieusement (le job restait « processing » à vie).
     task_acks_late=True,
     task_reject_on_worker_lost=True,
+    # Délai de redélivrance des messages non-ack (broker Redis). DOIT rester
+    # supérieur à la durée du plus long rendu pour éviter la double exécution.
+    broker_transport_options={
+        "visibility_timeout": settings.CELERY_VISIBILITY_TIMEOUT_SECONDS,
+    },
     # Purge de rétention quotidienne (idempotente). Nécessite `celery beat`
     # (voir DEPLOYMENT.md) — sans beat, la tâche reste appelable à la main.
     beat_schedule={

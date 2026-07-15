@@ -73,10 +73,13 @@ async def _lock_user_and_check_quotas(
     if count_monthly and rules.max_videos_per_month is not None:
         month_start = datetime.now(timezone.utc).replace(
             day=1, hour=0, minute=0, second=0, microsecond=0)
+        # Les imports ÉCHOUÉS (URL invalide, vidéo trop longue…) ne consomment
+        # pas le quota: leur ligne Video passe en statut `error` par le worker.
         monthly = (await db.execute(
             select(func.count()).select_from(Video).where(
                 Video.user_id == user.id,
                 Video.created_at >= month_start,
+                Video.status != "error",
             )
         )).scalar() or 0
         if monthly >= rules.max_videos_per_month:

@@ -309,6 +309,10 @@ def process_clips_task(self, job_id: str):
 
     except Exception as e:
         logger.error(f"Clips job {job_id} failed: {e}", exc_info=True)
+        # Erreurs de source URL: préfixe le code produit stable pour le
+        # frontend/support ([SOURCE_TOO_LONG] Vidéo trop longue…).
+        if isinstance(e, video_download.SourceURLError):
+            e = RuntimeError(f"[{getattr(e, 'code', 'URL_UNSUPPORTED')}] {e}")
         if output_dir:
             try:
                 from app.autoedit_engine.pipeline import cleanup_intermediates

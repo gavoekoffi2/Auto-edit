@@ -147,3 +147,39 @@ def test_job_options_max_clips_bounds():
         JobOptions(max_clips=0)
     with pytest.raises(ValueError):
         JobOptions(max_clips=11)
+
+
+def test_download_source_treats_max_downloads_as_success(tmp_path, monkeypatch):
+    """Non-régression (vu en staging): yt-dlp LÈVE MaxDownloadsReached après
+    le 1er téléchargement quand max_downloads=1 — c'est un succès, pas un
+    échec. Chaque import URL échouait à cause de ça."""
+    import sys, types
+    from app.services import video_download as vd
+
+    class MaxDownloadsReached(Exception):
+        pass
+
+    dest = tmp_path / "src.mp4"
+
+    class FakeYDL:
+        def __init__(self, opts):
+            self.opts = opts
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def extract_info(self, url, download=True):
+            if download:
+                dest.write_bytes(b"x" * 2048)      # le fichier EST téléchargé
+                raise MaxDownloadsReached()
+            return {"title": "Vidéo test", "duration": 42.0, "extractor_key": "Fake"}
+
+    fake = types.ModuleType("yt_dlp")
+    fake.YoutubeDL = FakeYDL
+    fake.utils = types.SimpleNamespace(MaxDownloadsReached=MaxDownloadsReached)
+    monkeypatch.setitem(sys.modules, "yt_dlp", fake)
+
+    path, info = vd.download_source("https://example.com/v", str(dest))
+    assert path == str(dest)
+    assert info["title"] == "Vidéo test"
+    assert info["duration"] == 42.0

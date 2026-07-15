@@ -100,6 +100,12 @@ class Settings(BaseSettings):
     # of a fixed worker/subprocess timeout. Set to 0 to disable the Celery limit.
     CELERY_TASK_TIME_LIMIT_SECONDS: int = 0
     CELERY_TASK_SOFT_TIME_LIMIT_SECONDS: int = 0
+    # Redis + acks_late: une tâche d'un worker MORT n'est redélivrée qu'après
+    # ce délai. Trop court => double exécution des rendus longs; trop long =>
+    # job « gelé » après un crash. 3 h par défaut (>= au plus long rendu
+    # attendu). Constaté en staging: avec le défaut Celery (1 h), un kill -9
+    # du worker laissait le job invisible pendant une heure.
+    CELERY_VISIBILITY_TIMEOUT_SECONDS: int = 10800
     FFMPEG_COMMAND_TIMEOUT_SECONDS: int = 21600  # 6h per heavy command
 
     # FedaPay

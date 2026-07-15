@@ -93,10 +93,12 @@ async def upload_video(
     # Check monthly video quota for free users
     if current_plan == "free":
         month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        # Les imports échoués (statut `error`) ne consomment pas le quota.
         count_result = await db.execute(
             select(func.count()).select_from(Video).where(
                 Video.user_id == current_user.id,
                 Video.created_at >= month_start,
+                Video.status != "error",
             )
         )
         monthly_count = count_result.scalar() or 0
