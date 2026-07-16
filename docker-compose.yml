@@ -1,5 +1,3 @@
-version: "3.9"
-
 # =========================================================================
 # Compose de DEVELOPPEMENT.
 # Pour la prod: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`
@@ -184,6 +182,10 @@ services:
   beat:
     image: autoeditprod-backend:latest
     command: celery -A app.workers.celery_app beat --loglevel=info
+    # L'image partagée porte le healthcheck HTTP du backend. Beat n'expose pas
+    # Uvicorn : désactiver ce check évite un faux statut unhealthy.
+    healthcheck:
+      disable: true
     volumes:
       - ./backend:/app
     environment:
