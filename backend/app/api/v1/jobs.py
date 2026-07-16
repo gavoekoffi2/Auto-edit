@@ -39,7 +39,16 @@ async def get_media_user(
             detail="Invalid or expired token",
         )
 
-    result = await db.execute(select(User).where(User.id == UUID(payload["sub"])))
+    try:
+        user_uuid = UUID(payload["sub"])
+    except (ValueError, TypeError, AttributeError):
+        # Un `sub` malformé doit répondre 401, pas une 500 interne.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+
+    result = await db.execute(select(User).where(User.id == user_uuid))
     user = result.scalar_one_or_none()
     if user is None or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
@@ -197,6 +206,42 @@ async def cancel_job(
     return job
 
 
+@router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_job(
+    job_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Supprime un job ET tous ses fichiers (rendus, transcriptions, clips).
+
+    Confidentialité: l'utilisateur peut retirer ses contenus du serveur.
+    La ligne Job est effacée; la vidéo source (ligne Video) reste gérée par
+    DELETE /videos/{id}.
+    """
+    result = await db.execute(
+        select(Job).where(Job.id == job_id, Job.user_id == current_user.id)
+    )
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    if job.status in ("pending", "processing"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Annule d'abord le traitement avant de le supprimer.",
+        )
+
+    import shutil
+    from app.config import settings
+    out_dir = os.path.join(
+        os.path.abspath(settings.UPLOAD_DIR), str(job.user_id), "output", str(job.id))
+    if os.path.isdir(out_dir):
+        shutil.rmtree(out_dir, ignore_errors=True)
+
+    await db.delete(job)
+    await db.flush()
+    logger.info(f"Job {job_id} and its files deleted by user {current_user.id}")
+
+
 @router.get("/{job_id}/download")
 async def download_result(
     job_id: UUID,
@@ -228,10 +273,11 @@ async def download_result(
 
     absolute_path = get_absolute_path(output_path)
     if not os.path.exists(absolute_path):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Output file no longer exists on disk",
-        )
+        # Fichier purgé par la rétention (ou supprimé): code stable FILE_EXPIRED
+        # (410) pour que le frontend/support comprennent, pas un 404 générique.
+        from app.services.errors import http_error
+        raise http_error("FILE_EXPIRED",
+                         getattr(request.state, "request_id", None))
 
     # Range-aware response: resumable downloads + seekable preview playback
     # (the pinned Starlette FileResponse ignores Range headers).
@@ -240,4 +286,48 @@ async def download_result(
         request,
         media_type="video/mp4",
         filename=f"cutforge_{job_id}.mp4",
+    )
+
+
+@router.get("/{job_id}/clips/{clip_index}/download")
+async def download_clip(
+    job_id: UUID,
+    clip_index: int,
+    request: Request,
+    access_token: str | None = Query(None),
+    credentials: HTTPAuthorizationCredentials | None = Depends(optional_security),
+    db: AsyncSession = Depends(get_db),
+):
+    """Télécharge UN clip d'un job « Clips » (vidéo longue -> shorts viraux)."""
+    current_user = await get_media_user(db, credentials, access_token)
+    result = await db.execute(
+        select(Job).where(Job.id == job_id, Job.user_id == current_user.id)
+    )
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    if job.status != "completed" or not job.result:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Job not completed yet",
+        )
+
+    clips = job.result.get("clips") or []
+    clip = next(
+        (c for c in clips if c.get("index") == clip_index and c.get("output_path")),
+        None,
+    )
+    if clip is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clip not found")
+
+    absolute_path = get_absolute_path(clip["output_path"])
+    if not os.path.exists(absolute_path):
+        from app.services.errors import http_error
+        raise http_error("FILE_EXPIRED",
+                         getattr(request.state, "request_id", None))
+    return ranged_file_response(
+        absolute_path,
+        request,
+        media_type="video/mp4",
+        filename=f"cutforge_{job_id}_clip{clip_index + 1}.mp4",
     )

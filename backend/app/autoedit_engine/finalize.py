@@ -28,7 +28,15 @@ def _escape_filter_path(path: str) -> str:
 
 def burn_subs(video: str, ass_path: str, out_path: str) -> str:
     ffmpeg_utils.ensure_ffmpeg()
+    # fontsdir: libass résout les familles via fontconfig; en pointant AUSSI
+    # les polices OFL embarquées dans le repo, le style est garanti même sur
+    # une machine où elles ne sont pas installées système (pas de fallback
+    # silencieux vers une sans-serif générique).
+    fonts_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             "assets", "fonts")
     vf = f"ass={_escape_filter_path(ass_path)}"
+    if os.path.isdir(fonts_dir):
+        vf += f":fontsdir={_escape_filter_path(fonts_dir)}"
     ffmpeg_utils.run([
         ffmpeg_utils.FFMPEG, "-y", "-i", video,
         "-vf", vf,

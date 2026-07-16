@@ -35,6 +35,7 @@ class MotionDesignPreset:
     gold: RGBA            # secondary ink (highlights / counters)
     shape_density: float  # 0..1 — how many decorative shapes/cards appear
     style: str            # free-form flavour tag for renderers/tests
+    ink: RGBA = (255, 255, 255, 255)  # text ink — dark for light backgrounds
 
     def palette(self) -> Tuple[RGB, RGB, RGBA, RGBA]:
         """The engine palette tuple consumed by motion_design.select_palette."""
@@ -73,10 +74,35 @@ PRESETS: List[MotionDesignPreset] = [
         accent=(255, 199, 64, 255), gold=(90, 170, 255, 255),
         shape_density=0.9, style="arrows_circles_underlines",
     ),
+    # Réf. vidéo 1 (Captions AI) — collage éditorial: papier bleu froissé,
+    # barres noires, blanc cassé. Sert le style "pill_editorial".
+    MotionDesignPreset(
+        name="editorial_paper",
+        bg_top=(38, 84, 200), bg_bottom=(24, 58, 156),
+        accent=(245, 242, 234, 255), gold=(255, 224, 130, 255),
+        shape_density=0.55, style="paper_collage_bars",
+    ),
+    # Réf. vidéo 3 (Captions AI) — carnet crème, encre noire au pinceau,
+    # écriture manuscrite. Sert le style "handwritten_note".
+    MotionDesignPreset(
+        name="sketch_notes",
+        bg_top=(247, 243, 233), bg_bottom=(240, 234, 220),
+        accent=(24, 24, 24, 255), gold=(43, 98, 226, 255),
+        shape_density=0.5, style="brush_bars_handwriting",
+        ink=(20, 20, 20, 255),
+    ),
 ]
 
 PRESETS_BY_NAME: Dict[str, MotionDesignPreset] = {p.name: p for p in PRESETS}
 DEFAULT_PRESET = PRESETS[0].name
+
+# Familles réservées aux styles de montage qui les demandent explicitement.
+# Elles ne participent PAS à la rotation aléatoire par seed: leur fond clair /
+# encre sombre casserait le look des templates classiques.
+STYLE_ONLY_PRESETS = {"editorial_paper", "sketch_notes"}
+_ROTATION: List[MotionDesignPreset] = [
+    p for p in PRESETS if p.name not in STYLE_ONLY_PRESETS
+]
 
 
 def style_seed(*parts: object) -> int:
@@ -92,9 +118,13 @@ def style_seed(*parts: object) -> int:
 
 
 def choose_preset(*parts: object) -> MotionDesignPreset:
-    """Deterministically pick a preset family from a stable seed of *parts*."""
+    """Deterministically pick a preset family from a stable seed of *parts*.
+
+    Only rotation-safe families are eligible; the light-background families
+    (STYLE_ONLY_PRESETS) must be requested explicitly via ``preset_for``.
+    """
     seed = style_seed(*parts)
-    return PRESETS[seed % len(PRESETS)]
+    return _ROTATION[seed % len(_ROTATION)]
 
 
 def preset_for(name: str | None) -> MotionDesignPreset:

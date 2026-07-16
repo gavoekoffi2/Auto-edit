@@ -268,18 +268,27 @@ def write_edl(ranges: List[dict], vu_path: str, out_path: str) -> str:
     return out_path
 
 
-def encode_segments(source: str, ranges: List[dict], clips_dir: str) -> List[str]:
+def encode_segments(source: str, ranges: List[dict], clips_dir: str,
+                    crop_centers: Optional[List[float]] = None) -> List[str]:
     """
     Encode each kept range as a graded 1080x1920 segment.
 
     INPUT-SIDE seek (-ss before -i) + afade in/out, libx264 crf 18, aac 48 kHz.
+    *crop_centers* (un centre 0..1 par range, cf. smart_crop) pilote le
+    recadrage 9:16 pour garder le visage dans le cadre — sans lui, le crop
+    reste centré (comportement historique).
     """
     ffmpeg_utils.ensure_ffmpeg()
     os.makedirs(clips_dir, exist_ok=True)
-    grade = f"{config.VERTICAL_COVER},{config.GRADE_WARM_CINEMATIC}"
     seg_paths: List[str] = []
 
     for i, rng in enumerate(ranges):
+        if crop_centers is not None and i < len(crop_centers):
+            from . import smart_crop
+            cover = smart_crop.crop_filter(crop_centers[i])
+        else:
+            cover = config.VERTICAL_COVER
+        grade = f"{cover},{config.GRADE_WARM_CINEMATIC}"
         dur = rng["end"] - rng["start"]
         out = os.path.join(clips_dir, f"seg_{i:04d}.mp4")
         fade_out_start = max(0.0, dur - config.AUDIO_FADE)
@@ -327,8 +336,12 @@ def concat_segments(seg_paths: List[str], out_path: str) -> str:
     return out_path
 
 
-def build(source: str, vu_path: str, outdir: str = ".", encode: bool = True) -> dict:
-    """Full step-2/3 entry point."""
+def build(source: str, vu_path: str, outdir: str = ".", encode: bool = True,
+          smart_crop_mode: Optional[str] = None) -> dict:
+    """Full step-2/3 entry point.
+
+    *smart_crop_mode*: auto (suivi de visage, défaut) | center | left | right.
+    """
     os.makedirs(outdir, exist_ok=True)
     vu = load_vu(vu_path)
     ranges = build_ranges(vu)
@@ -344,8 +357,17 @@ def build(source: str, vu_path: str, outdir: str = ".", encode: bool = True) -> 
     result = {"edl": edl_path, "ranges": ranges, "output_duration": round(kept, 3)}
 
     if encode:
+        # Recadrage 9:16 intelligent: centre de cadrage par segment basé sur
+        # la détection de visages (fallback centre contrôlé + journalisé).
+        from . import smart_crop
+        crop_centers, crop_report = smart_crop.plan_crop_centers(
+            source, ranges, mode=smart_crop_mode)
+        result["smart_crop"] = crop_report
+        print(f"[build_edl] smart_crop: {crop_report}")
+
         clips_dir = os.path.join(outdir, "clips_graded")
-        seg_paths = encode_segments(source, ranges, clips_dir)
+        seg_paths = encode_segments(source, ranges, clips_dir,
+                                    crop_centers=crop_centers)
         base = os.path.join(outdir, "base_only.mp4")
         concat_segments(seg_paths, base)
         print(f"[build_edl] encoded {len(seg_paths)} segments -> {base}")

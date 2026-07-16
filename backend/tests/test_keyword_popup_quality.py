@@ -44,7 +44,8 @@ def test_build_popups_uses_only_professional_keywords(tmp_path, monkeypatch):
     }), encoding="utf-8")
     (tmp_path / "sfx_cues.json").write_text("[]", encoding="utf-8")
 
-    monkeypatch.setattr(keyword_popup, "render_popup", lambda text, out_path: str(out_path))
+    monkeypatch.setattr(keyword_popup, "render_popup",
+                        lambda text, out_path, **kw: str(out_path))
     result = keyword_popup.build_popups(str(edl_path), str(tmp_path))
 
     assert "dire" not in result["keywords"]

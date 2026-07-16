@@ -51,7 +51,16 @@ async def get_stream_user(
             detail="Invalid or expired token",
         )
 
-    result = await db.execute(select(User).where(User.id == UUID(payload["sub"])))
+    try:
+        user_uuid = UUID(payload["sub"])
+    except (ValueError, TypeError, AttributeError):
+        # Un `sub` malformé doit répondre 401, pas une 500 interne.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+
+    result = await db.execute(select(User).where(User.id == user_uuid))
     user = result.scalar_one_or_none()
     if user is None or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
@@ -84,10 +93,12 @@ async def upload_video(
     # Check monthly video quota for free users
     if current_plan == "free":
         month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        # Les imports échoués (statut `error`) ne consomment pas le quota.
         count_result = await db.execute(
             select(func.count()).select_from(Video).where(
                 Video.user_id == current_user.id,
                 Video.created_at >= month_start,
+                Video.status != "error",
             )
         )
         monthly_count = count_result.scalar() or 0
@@ -243,6 +254,24 @@ async def delete_video(
             os.unlink(file_path)
     except Exception as e:
         logger.warning(f"Failed to delete file for video {video_id}: {e}")
+
+    # Purge aussi les répertoires de sortie des jobs de cette vidéo — la
+    # cascade DB supprime les lignes Job mais laissait leurs fichiers rendus
+    # sur le disque (confidentialité + espace).
+    try:
+        import shutil
+        from sqlalchemy import select as sa_select
+        from app.models.job import Job
+        jobs_result = await db.execute(
+            sa_select(Job.id).where(Job.video_id == video.id))
+        for (jid,) in jobs_result.all():
+            out_dir = os.path.join(
+                os.path.abspath(settings.UPLOAD_DIR),
+                str(current_user.id), "output", str(jid))
+            if os.path.isdir(out_dir):
+                shutil.rmtree(out_dir, ignore_errors=True)
+    except Exception as e:
+        logger.warning(f"Failed to purge job outputs for video {video_id}: {e}")
 
     await db.delete(video)
     await db.flush()

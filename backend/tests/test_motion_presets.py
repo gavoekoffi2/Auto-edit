@@ -4,12 +4,23 @@ from collections import Counter
 from app.autoedit_engine import motion_presets as mp
 
 
-def test_five_named_families_exist():
+def test_named_families_exist():
     names = {p.name for p in mp.PRESETS}
     assert names == {
         "clean_fintech", "neon_social", "african_premium",
         "minimal_creator", "kinetic_education",
+        # Familles des styles Captions AI (opt-in, hors rotation aléatoire)
+        "editorial_paper", "sketch_notes",
     }
+
+
+def test_style_only_presets_are_reachable_by_name_only():
+    # Fond clair / encre sombre: jamais tirés au hasard, mais disponibles
+    # quand un style de montage les demande explicitement.
+    assert mp.STYLE_ONLY_PRESETS == {"editorial_paper", "sketch_notes"}
+    assert mp.preset_for("sketch_notes").name == "sketch_notes"
+    assert mp.preset_for("sketch_notes").ink == (20, 20, 20, 255)
+    assert mp.preset_for("editorial_paper").name == "editorial_paper"
 
 
 def test_style_seed_is_reproducible_and_varies():
@@ -25,10 +36,12 @@ def test_choose_preset_is_deterministic():
     assert a.name == b.name
 
 
-def test_choose_preset_spreads_across_families():
+def test_choose_preset_spreads_across_rotation_families():
     counts = Counter(mp.choose_preset(f"job-{i}").name for i in range(300))
-    # Every family should be reachable -> videos don't all look identical.
-    assert set(counts) == {p.name for p in mp.PRESETS}
+    # Every ROTATION family should be reachable -> videos don't all look
+    # identical; the light style-only families never enter the random pick.
+    expected = {p.name for p in mp.PRESETS} - mp.STYLE_ONLY_PRESETS
+    assert set(counts) == expected
     assert min(counts.values()) > 0
 
 

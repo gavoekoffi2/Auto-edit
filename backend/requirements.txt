@@ -17,7 +17,10 @@ aiofiles==23.2.1
 # 20231117 fails to build with modern isolated setuptools (pkg_resources removed).
 openai-whisper==20250625
 moviepy==1.0.3
-scenedetect[opencv]==0.6.2
+# extra headless: l'extra [opencv] tirait opencv-python SANS borne de
+# version -> cv2 5.x écrasait le headless <5 et cassait l'API Haar du
+# recadrage visage dans l'image Docker.
+scenedetect[opencv-headless]==0.6.2
 # 23w46a is yanked/unavailable on modern PyPI indexes; keep a current stable release.
 auto-editor==29.3.1
 requests==2.31.0
@@ -31,6 +34,11 @@ python-magic==0.4.27
 # explicit. numpy capped < 2.1 for numba compatibility.)
 numpy>=1.24,<2.1
 Pillow>=10.0
+
+# Fonctionnalité Clips — téléchargement des vidéos sources depuis une URL
+yt-dlp>=2025.1.15
+# Recadrage vertical intelligent (détection de visage, CPU uniquement)
+opencv-python-headless>=4.9,<5   # 5.x retire cv2.CascadeClassifier (Haar)
 
 # Test dependencies used by backend/tests
 pytest==9.0.2

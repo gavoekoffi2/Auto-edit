@@ -20,6 +20,24 @@ x-backend-env: &backend-env
   MAX_VIDEO_DURATION_PRO: ${MAX_VIDEO_DURATION_PRO:-3600}
   CELERY_TASK_TIME_LIMIT_SECONDS: ${CELERY_TASK_TIME_LIMIT_SECONDS:-0}
   CELERY_TASK_SOFT_TIME_LIMIT_SECONDS: ${CELERY_TASK_SOFT_TIME_LIMIT_SECONDS:-0}
+  CELERY_VISIBILITY_TIMEOUT_SECONDS: ${CELERY_VISIBILITY_TIMEOUT_SECONDS:-10800}
+  # Fonctionnalité Clips — limites par plan
+  CLIPS_MAX_SOURCE_DURATION_FREE: ${CLIPS_MAX_SOURCE_DURATION_FREE:-1800}
+  CLIPS_MAX_SOURCE_DURATION_PRO: ${CLIPS_MAX_SOURCE_DURATION_PRO:-5400}
+  CLIPS_MAX_SOURCE_DURATION_BUSINESS: ${CLIPS_MAX_SOURCE_DURATION_BUSINESS:-10800}
+  CLIPS_MAX_PER_JOB_FREE: ${CLIPS_MAX_PER_JOB_FREE:-3}
+  CLIPS_MAX_PER_JOB_PRO: ${CLIPS_MAX_PER_JOB_PRO:-10}
+  CLIPS_MAX_PER_JOB_BUSINESS: ${CLIPS_MAX_PER_JOB_BUSINESS:-15}
+  # Rétention (purge automatique, jours; 0 = jamais)
+  RETENTION_OUTPUT_DAYS: ${RETENTION_OUTPUT_DAYS:-14}
+  RETENTION_SOURCE_DAYS: ${RETENTION_SOURCE_DAYS:-7}
+  RETENTION_FAILED_JOB_DAYS: ${RETENTION_FAILED_JOB_DAYS:-2}
+  # Recadrage vertical intelligent + nettoyage IA
+  SMART_CROP_MODE: ${SMART_CROP_MODE:-auto}
+  ENGINE_LLM_CLEANUP: ${ENGINE_LLM_CLEANUP:-1}
+  ENGINE_LLM_CLEANUP_LEVEL: ${ENGINE_LLM_CLEANUP_LEVEL:-light}
+  ENGINE_LLM_CLEANUP_MODEL: ${ENGINE_LLM_CLEANUP_MODEL:-google/gemini-2.5-flash-lite}
+  ENGINE_VIRAL_MOMENTS_MODEL: ${ENGINE_VIRAL_MOMENTS_MODEL:-google/gemini-2.5-flash-lite}
   FFMPEG_COMMAND_TIMEOUT_SECONDS: ${FFMPEG_COMMAND_TIMEOUT_SECONDS:-21600}
   TRANSCRIPTION_PROVIDER: ${TRANSCRIPTION_PROVIDER:-auto}
   TRANSCRIPTION_LANGUAGE: ${TRANSCRIPTION_LANGUAGE:-fr}
@@ -152,6 +170,22 @@ services:
     depends_on:
       init-uploads:
         condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Planificateur des tâches périodiques (purge de rétention quotidienne).
+  # Sans lui, purge_expired_files n'est JAMAIS déclenchée automatiquement.
+  beat:
+    build: ./backend
+    command: celery -A app.workers.celery_app beat --loglevel=info
+    volumes:
+      - ./backend:/app
+    environment:
+      <<: *backend-env
+    depends_on:
       postgres:
         condition: service_healthy
       redis:

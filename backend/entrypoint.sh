@@ -37,5 +37,27 @@ if [ "${APP_ENV:-development}" = "production" ]; then
   fi
 fi
 
+# Dépendances binaires OBLIGATOIRES: échec franc au démarrage plutôt qu'un
+# rendu qui meurt en plein job (ou une image construite sans ffmpeg).
+for bin in ffmpeg ffprobe; do
+  if ! command -v "$bin" >/dev/null; then
+    echo "[entrypoint] FATAL: dépendance obligatoire absente: $bin" >&2
+    exit 1
+  fi
+done
+python - <<'PYCHECK' || exit 1
+import importlib, sys
+for mod in ("cv2", "yt_dlp", "whisper", "PIL"):
+    try:
+        importlib.import_module(mod)
+    except Exception as exc:
+        print(f"[entrypoint] FATAL: module Python obligatoire absent: {mod} ({exc})",
+              file=sys.stderr)
+        sys.exit(1)
+PYCHECK
+if ! fc-list 2>/dev/null | grep -qi "poppins"; then
+  echo "[entrypoint] WARNING: polices de sous-titres absentes de fontconfig" >&2
+fi
+
 echo "[entrypoint] Starting application..."
 exec "$@"

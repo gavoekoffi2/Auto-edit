@@ -30,6 +30,67 @@ MODE_DEFINITIONS: list[dict] = [
             "broll_style": "tiktok_viral", "broll_demographic": "african",
         },
     },
+    # --- Styles Captions AI (réfs TikTok analysées image par image) ----------
+    {
+        "id": "pill_editorial",
+        "name": "Pilule éditoriale",
+        "icon": "🏷️",
+        "description": (
+            "Sous-titres en pilule blanche (mots prononcés en noir, à venir en "
+            "gris), bandeaux mots-clés « papier déchiré » bleu + barre noire — "
+            "le look éditorial des montages Captions AI."
+        ),
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
+            "motion_design": True,
+            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
+            "visual_mode": "auto_fallback",
+            "subtitle_template": "pill_editorial",
+            "motion_preset": "editorial_paper",
+            "broll_style": "tiktok_viral", "broll_demographic": "african",
+        },
+    },
+    {
+        "id": "neon_hype",
+        "name": "Néon hype",
+        "icon": "⚡",
+        "description": (
+            "Sous-titres MAJUSCULES condensés, mot actif cyan avec glow, "
+            "mots-clés géants avec glitch chromatique — le style énergique "
+            "des montages viraux."
+        ),
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
+            "motion_design": True,
+            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
+            "visual_mode": "auto_fallback",
+            "subtitle_template": "neon_hype",
+            "motion_preset": "neon_social",
+            "broll_style": "tiktok_viral", "broll_demographic": "african",
+        },
+    },
+    {
+        "id": "handwritten_note",
+        "name": "Notes manuscrites",
+        "icon": "✍️",
+        "description": (
+            "Sous-titres écriture manuscrite blanche, mots-clés entourés d'un "
+            "cercle dessiné à la main, scènes carnet crème + encre pinceau — "
+            "le style sketch chaleureux."
+        ),
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
+            "motion_design": True,
+            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
+            "visual_mode": "auto_fallback",
+            "subtitle_template": "handwritten_note",
+            "motion_preset": "sketch_notes",
+            "broll_style": "tiktok_viral", "broll_demographic": "african",
+        },
+    },
     {
         "id": "business_premium_african",
         "name": "Images IA + motion design",

@@ -16,6 +16,9 @@ from PIL import ImageFont
 from . import config
 
 _SEARCH_DIRS = [
+    # Polices OFL embarquées dans le repo — toujours présentes, build
+    # reproductible sans téléchargement réseau.
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "fonts"),
     os.path.expanduser("~/.fonts"),
     "/usr/share/fonts",
     "/usr/local/share/fonts",
@@ -29,6 +32,8 @@ _FAMILY_HINTS = {
     "bebas neue": ["BebasNeue-Regular", "BebasNeue"],
     "bebas": ["BebasNeue-Regular", "BebasNeue"],
     "inter": ["Inter-Bold", "Inter"],
+    "poppins": ["Poppins-SemiBold", "Poppins-Bold", "Poppins"],
+    "caveat": ["Caveat-Bold", "Caveat"],
     "dejavusans": ["DejaVuSans-Bold"],
 }
 

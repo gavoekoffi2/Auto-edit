@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 VALID_APP_ENVS = {"development", "staging", "production"}
 VALID_WHISPER_MODELS = {"tiny", "base", "small", "medium", "large"}
-VALID_JOB_TYPES = {"pipeline", "transcribe", "silence_removal", "scene_detect", "effects", "export"}
+VALID_JOB_TYPES = {"pipeline", "transcribe", "silence_removal", "scene_detect", "effects", "export", "clips"}
 VALID_MODES = {
     # Legacy modes (v1)
     "tiktok",
@@ -26,6 +26,11 @@ VALID_MODES = {
     # nouveau défaut MVP. `creator_economy_mode` est un alias historique accepté.
     "credit_saver_creator_edit",
     "creator_economy_mode",
+    # Styles de montage inspirés des montages Captions AI (réfs TikTok du
+    # produit): pilule éditoriale / néon hype / notes manuscrites.
+    "pill_editorial",
+    "neon_hype",
+    "handwritten_note",
 }
 VALID_PIPELINE_VERSIONS = {"v1", "v2"}
 VALID_IMAGE_PROVIDERS = {"openrouter", "replicate", "stability", "noop"}
@@ -70,6 +75,24 @@ class Settings(BaseSettings):
     MAX_VIDEO_DURATION_PRO: int = 3600  # 60 min
     MAX_VIDEOS_PER_MONTH_FREE: int = 2
 
+    # ---------------------------------------------------------------------
+    # Fonctionnalité Clips (vidéo longue -> shorts) — limites par plan.
+    # Source de vérité consommée par app/services/plans.py UNIQUEMENT.
+    # ---------------------------------------------------------------------
+    CLIPS_MAX_SOURCE_DURATION_FREE: int = 1800       # 30 min
+    CLIPS_MAX_SOURCE_DURATION_PRO: int = 5400        # 90 min
+    CLIPS_MAX_SOURCE_DURATION_BUSINESS: int = 10800  # 3 h
+    CLIPS_MAX_PER_JOB_FREE: int = 3
+    CLIPS_MAX_PER_JOB_PRO: int = 10
+    CLIPS_MAX_PER_JOB_BUSINESS: int = 15
+
+    # ---------------------------------------------------------------------
+    # Rétention des fichiers (purge automatique). 0 = ne jamais purger.
+    # ---------------------------------------------------------------------
+    RETENTION_OUTPUT_DAYS: int = 14        # rendus terminés (clips, montages)
+    RETENTION_SOURCE_DAYS: int = 7         # sources importées par URL
+    RETENTION_FAILED_JOB_DAYS: int = 2     # répertoires des jobs échoués
+
     # Long video processing
     # A 3-4 minute mobile video can take far longer than its playback duration
     # once Whisper, generated visuals, FFmpeg compositing and SFX are chained.
@@ -77,6 +100,12 @@ class Settings(BaseSettings):
     # of a fixed worker/subprocess timeout. Set to 0 to disable the Celery limit.
     CELERY_TASK_TIME_LIMIT_SECONDS: int = 0
     CELERY_TASK_SOFT_TIME_LIMIT_SECONDS: int = 0
+    # Redis + acks_late: une tâche d'un worker MORT n'est redélivrée qu'après
+    # ce délai. Trop court => double exécution des rendus longs; trop long =>
+    # job « gelé » après un crash. 3 h par défaut (>= au plus long rendu
+    # attendu). Constaté en staging: avec le défaut Celery (1 h), un kill -9
+    # du worker laissait le job invisible pendant une heure.
+    CELERY_VISIBILITY_TIMEOUT_SECONDS: int = 10800
     FFMPEG_COMMAND_TIMEOUT_SECONDS: int = 21600  # 6h per heavy command
 
     # FedaPay

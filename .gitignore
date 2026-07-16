@@ -30,3 +30,8 @@ frontend/.netlify/
 celerybeat-schedule
 .env.localtest
 autoedit_test.db
+docker-compose.staging.yml
+backend/Dockerfile.staging
+backend/staging-ca.crt
+frontend/Dockerfile.staging
+frontend/Dockerfile.staging.dockerignore
