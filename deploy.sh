@@ -4,7 +4,7 @@ set -euo pipefail
 # AutoEdit production deploy script.
 # Usage on the VPS:
 #   cd /root/projects/Auto-edit
-#   BACKEND_DOMAIN=autoedit.srv1305401.hstgr.cloud FRONTEND_ORIGIN=https://your-netlify-site.netlify.app ./deploy.sh
+#   BACKEND_DOMAIN=autoedit.srv1305401.hstgr.cloud FRONTEND_ORIGIN=https://autoedit.srv1305401.hstgr.cloud ./deploy.sh
 #
 # Requirements: Docker + Docker Compose plugin. On this VPS, the global Traefik
 # reverse proxy owns ports 80/443, so deploy.sh automatically layers
@@ -76,7 +76,7 @@ backend_domain = os.environ.get('BACKEND_DOMAIN') or get_key(text, 'BACKEND_DOMA
 if backend_domain:
     text = set_key(text, 'BACKEND_DOMAIN', backend_domain)
     text = set_key(text, 'PUBLIC_APP_URL', f'https://{backend_domain}')
-    # Netlify origin must be added manually if known: CORS_ORIGINS=https://your-netlify.app,https://custom-frontend.com
+    # Le frontend VPS partage normalement ce domaine avec l'API.
 
 if os.environ.get('TLS_EMAIL'):
     text = set_key(text, 'TLS_EMAIL', os.environ['TLS_EMAIL'])
@@ -163,6 +163,24 @@ for i in {1..30}; do
   fi
 done
 
+# Le frontend fait maintenant partie de la production VPS. Vérifier le shell SPA
+# dans son conteneur avant de considérer le déploiement comme terminé.
+echo "[deploy] Waiting for frontend health..."
+for i in {1..30}; do
+  if "${COMPOSE[@]}" exec -T frontend \
+       wget -qO- http://127.0.0.1/ >/tmp/autoedit-frontend.html 2>/dev/null \
+       && grep -q '<div id="root"></div>' /tmp/autoedit-frontend.html; then
+    echo "[deploy] Frontend health OK"
+    break
+  fi
+  sleep 2
+  if [ "$i" = "30" ]; then
+    echo "[deploy] ERROR: frontend never became healthy" >&2
+    "${COMPOSE[@]}" logs --tail=120 frontend >&2 || true
+    exit 1
+  fi
+done
+
 # Janitor: purge les intermédiaires de rendu accumulés dans le volume uploads.
 # Chaque montage écrivait des Go de ProRes .mov + passes mp4 jamais nettoyés;
 # disque plein => ffmpeg meurt en plein encodage ("[Errno 32] Broken pipe").
@@ -197,4 +215,5 @@ if [ -n "${BACKEND_DOMAIN:-}" ] && [ "$BACKEND_DOMAIN" != "localhost" ]; then
   fi
 fi
 
-echo "[deploy] Done. Set Netlify VITE_API_URL to: https://${BACKEND_DOMAIN:-YOUR_BACKEND_DOMAIN}/api"
+echo "[deploy] Done. Frontend VPS: https://${BACKEND_DOMAIN:-YOUR_BACKEND_DOMAIN}"
+echo "[deploy] API: https://${BACKEND_DOMAIN:-YOUR_BACKEND_DOMAIN}/api"

@@ -63,12 +63,10 @@ services:
       APP_ENV: production
 
   frontend:
-    profiles: ["local-frontend"]
     ports: !reset []
 
-  # Nginx reste disponible en reverse-proxy interne/dev, mais en production
-  # Caddy prend les ports publics 80/443 pour générer/renouveler HTTPS
-  # automatiquement avec Let's Encrypt.
+  # Le frontend applicatif est servi directement par son conteneur Nginx via
+  # Traefik. Ce proxy historique reste réservé au développement local.
   nginx:
     ports: !reset []
 
