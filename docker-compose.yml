@@ -136,6 +136,9 @@ services:
 
   backend:
     build: ./backend
+    # Une seule image applicative est construite. Worker et beat la réutilisent :
+    # exporter trois fois l'image Whisper/PyTorch (~4 Go) saturait le VPS.
+    image: autoeditprod-backend:latest
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - ./backend:/app
@@ -154,7 +157,7 @@ services:
     restart: unless-stopped
 
   worker:
-    build: ./backend
+    image: autoeditprod-backend:latest
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-2}
     volumes:
       - ./backend:/app
@@ -179,7 +182,7 @@ services:
   # Planificateur des tâches périodiques (purge de rétention quotidienne).
   # Sans lui, purge_expired_files n'est JAMAIS déclenchée automatiquement.
   beat:
-    build: ./backend
+    image: autoeditprod-backend:latest
     command: celery -A app.workers.celery_app beat --loglevel=info
     volumes:
       - ./backend:/app
