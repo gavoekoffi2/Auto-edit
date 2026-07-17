@@ -101,6 +101,15 @@ def test_plan_without_motion_keeps_legacy_behaviour(workdir):
     assert all(c["src"] != "motion" for c in res["cues"])
 
 
+def test_no_orphan_gapfill_sfx(workdir):
+    # Un SFX sans événement visible partait "dans tous les sens": le gap-fill
+    # a été retiré — chaque cue restante est liée à un visuel (ou au light-leak).
+    res = plan_overlays.plan(workdir["edl"], None, workdir["broll"],
+                             motion_json=workdir["motion"], outdir=str(workdir["tmp"]))
+    assert all(c["src"] != "gapfill" for c in res["cues"])
+    assert not hasattr(plan_overlays, "_gapfill")
+
+
 def test_sfx_cues_written_to_disk(workdir):
     plan_overlays.plan(workdir["edl"], None, None,
                        motion_json=workdir["motion"], outdir=str(workdir["tmp"]))

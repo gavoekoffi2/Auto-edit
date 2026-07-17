@@ -18,8 +18,8 @@ out the montage:
                     takeover + pop/click/ding on each animated element +
                     swoosh_down at the exit
   * After sorting, no identical SFX may immediately follow another.
-  * Gap-fill (RÈGLE PRO #3): any gap > 4 s with no visual event gets a filler
-    SFX injected at its middle.
+  * PAS de gap-fill: un SFX sans événement visible à l'écran partait "dans
+    tous les sens" — chaque son restant est synchronisé à un visuel.
 
 Outputs: patched edl.json (overlays) + sfx_cues.json.
 
@@ -168,7 +168,7 @@ def _motion_cues(motions: List[dict]) -> List[dict]:
 
 def _dedupe_consecutive(cues: List[dict]) -> List[dict]:
     """Ensure no two consecutive cues share the same SFX (swap from a pool)."""
-    alt_pool = config.GRAPHIC_SFX + config.GAPFILL_SFX_POOL
+    alt_pool = config.GRAPHIC_SFX + config.POPUP_SFX_POOL
     for i in range(1, len(cues)):
         if cues[i]["sfx"] == cues[i - 1]["sfx"]:
             for cand in alt_pool:
@@ -177,23 +177,6 @@ def _dedupe_consecutive(cues: List[dict]) -> List[dict]:
                     cues[i]["sfx"] = cand
                     break
     return cues
-
-
-def _gapfill(cues: List[dict], total: float) -> List[dict]:
-    """Inject a filler SFX in any visual gap > GAPFILL_THRESHOLD."""
-    if not cues:
-        return cues
-    times = sorted(c["t"] for c in cues)
-    fillers: List[dict] = []
-    pool_i = 0
-    bounds = [0.0] + times + [total]
-    for a, b in zip(bounds, bounds[1:]):
-        if b - a > config.GAPFILL_THRESHOLD:
-            mid = round((a + b) / 2.0, 3)
-            sfx = config.GAPFILL_SFX_POOL[pool_i % len(config.GAPFILL_SFX_POOL)]
-            pool_i += 1
-            fillers.append({"sfx": sfx, "t": mid, "src": "gapfill"})
-    return fillers
 
 
 def plan(edl_path: str, overlays_json: Optional[str], broll_json: Optional[str],
@@ -224,9 +207,6 @@ def plan(edl_path: str, overlays_json: Optional[str], broll_json: Optional[str],
                      "t": b["start"], "src": "broll"})
     cues += _motion_cues(motions)
 
-    cues.sort(key=lambda c: c["t"])
-    cues = _dedupe_consecutive(cues)
-    cues += _gapfill(cues, total)
     cues.sort(key=lambda c: c["t"])
     cues = _dedupe_consecutive(cues)
 

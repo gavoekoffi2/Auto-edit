@@ -23,6 +23,21 @@ VERTICAL_COVER = (
 )
 
 # --------------------------------------------------------------------------- #
+# STEP 0 — SOURCE SUBTITLE CLEANUP
+#
+# Si la vidéo IMPORTÉE porte déjà des sous-titres incrustés (burned-in), le
+# montage final aurait un DOUBLE sous-titrage (l'ancien + celui du moteur).
+# Un scan OpenCV détecte la bande de texte persistante dans le bas de l'image
+# et l'efface (ffmpeg delogo) AVANT le montage. Best-effort: sans détection
+# fiable, la source repart inchangée — jamais de faux positif destructif.
+# --------------------------------------------------------------------------- #
+REMOVE_SOURCE_SUBTITLES = os.getenv("ENGINE_REMOVE_SOURCE_SUBS", "1") not in {"0", "false", "no"}
+SOURCE_SUBS_SAMPLES = 24          # frames échantillonnées sur toute la durée
+SOURCE_SUBS_MIN_HIT_RATIO = 0.28  # fraction des frames où la bande doit apparaître
+SOURCE_SUBS_SCAN_FROM = 0.55      # on ne scanne que le bas du cadre (y >= H*0.55)
+SOURCE_SUBS_MARGIN = 14           # marge (px, à l'échelle de la source) autour de la bande
+
+# --------------------------------------------------------------------------- #
 # STEP 1 — TRANSCRIPTION (ElevenLabs Scribe)
 # --------------------------------------------------------------------------- #
 ELEVENLABS_STT_URL = "https://api.elevenlabs.io/v1/speech-to-text"
@@ -91,19 +106,18 @@ PUNCH_AMP = 0.08
 PUNCH_SIGMA = 0.30 / 2.5  # = 0.12
 
 # --------------------------------------------------------------------------- #
-# STEP 4bis — KEY-MOMENT CAMERA FLASH (credit-saver creator edit)
+# STEP 4bis — KEY-MOMENT PUNCH ZOOM (credit-saver creator edit)
 #
 # At each key moment (hook / number / CTA / emotional word…), the talking-head
-# frame gets a short bright "photo flash" + a synced punch zoom — the visible
-# half of the camera-capture effect (the audible half is the shutter SFX).
-# Implemented as a single time-based ffmpeg `eq=brightness:eval=frame` pulse so
-# it is robust, fast and needs no extra files or AI images.
+# frame gets a synced punch zoom. The old full-screen white "camera flash"
+# (eq brightness 0.85) and its shutter SFX were REMOVED on explicit product
+# request: the only light effect kept is the real light-leak overlay asset
+# (paired with its own original sound), so the screen never gets blindingly
+# bright and the montage stays clean and readable.
 # --------------------------------------------------------------------------- #
-FLASH_BRIGHTNESS = 0.85   # peak added luma (eq brightness, ~0..1) — strong white pop
-FLASH_SIGMA = 0.055       # seconds: half-width of the gaussian flash (≈120-180 ms visible)
-FLASH_PUNCH_AMP = 0.06    # extra synced punch-zoom amplitude at a flash
-FLASH_PUNCH_SIGMA = 0.10  # seconds: punch-zoom half-width at a flash
-FLASH_MIN_GAP = 2.5       # never two flashes closer than this (premium pacing)
+FLASH_PUNCH_AMP = 0.06    # synced punch-zoom amplitude at a key moment
+FLASH_PUNCH_SIGMA = 0.10  # seconds: punch-zoom half-width at a key moment
+FLASH_MIN_GAP = 2.5       # never two key-moment accents closer than this (premium pacing)
 
 # --------------------------------------------------------------------------- #
 # STEP 4ter — SPEECH-PAUSE LIGHT-LEAK OVERLAY (credit-saver dynamism)
@@ -129,6 +143,8 @@ LIGHT_OVERLAY_PUNCH_SIGMA = 0.16  # seconds: punch-zoom half-width
 # Real light-leak asset (the exact video + audio the user supplied) — used
 # standalone at speech-pause instants. The synthesized EQ warm-pulse is kept
 # ONLY for the motion-design transition instants (silent, per spec).
+# The asset is 16:9; it is cover-scaled to the full 1080x1920 vertical frame
+# at prepare time so the light sweep covers the WHOLE video, not a band.
 LIGHT_OVERLAY_ASSET_DIR = os.path.join(os.path.dirname(__file__), "assets")
 LIGHT_OVERLAY_ASSET_MP4 = os.path.join(LIGHT_OVERLAY_ASSET_DIR, "light_leak_original.mp4")
 LIGHT_OVERLAY_ASSET_WAV = os.path.join(LIGHT_OVERLAY_ASSET_DIR, "light_leak_original.wav")
@@ -230,14 +246,62 @@ BROLL_CHIP_Y = 250
 # keywords, numbered steps, counters — all animated, with entrance/exit
 # transitions and per-element SFX cues.
 # --------------------------------------------------------------------------- #
-MOTION_STYLE_PREFIX = (
-    "2D flat vector illustration in premium motion-design style, bold clean "
-    "outlines, vibrant saturated colors (cyan, gold, coral accents), simple "
-    "geometric shapes, friendly cartoon characters performing the action, "
-    "isolated on a very dark navy background, infographic energy, centered "
-    "composition, square format, ABSOLUTELY NO text, NO words, NO letters, "
-    "NO numbers in the image. Scene to illustrate: "
+# Rendu 3D RÉEL (demande produit): fini le "dessin animé" 2D flat — chaque
+# illustration doit ressembler à une vraie image d'animation 3D (film 3D,
+# rendu cinéma). Constante commune à tous les styles: JAMAIS de texte dans
+# l'image (le moteur pose déjà titres/compteurs par-dessus).
+_MOTION_3D_SUFFIX = (
+    " Centered composition, square format, isolated on a clean dark studio "
+    "background, ABSOLUTELY NO text, NO words, NO letters, NO numbers, NO "
+    "logos in the image. Scene to illustrate: "
 )
+
+# Plusieurs TEMPLATES de style 3D — un style est choisi PAR VIDÉO (seed stable
+# du transcript/job) pour que deux montages n'aient jamais la même patte
+# visuelle, tout en restant 100% 3D. L'index 0 sert de style signature.
+MOTION_STYLE_3D_PREFIXES = [
+    (
+        "High-end 3D animation still, cinema-quality CGI in the style of a "
+        "modern animated feature film, expressive stylised 3D characters "
+        "performing the action, soft studio lighting, subsurface scattering, "
+        "rich vibrant colors, shallow depth of field, octane render."
+        + _MOTION_3D_SUFFIX
+    ),
+    (
+        "Premium glossy 3D render, smooth rounded shapes with soft clay and "
+        "plastic materials, pastel-vibrant palette, realistic soft shadows "
+        "and global illumination, playful but photoreal 3D objects and "
+        "characters, blender cycles render."
+        + _MOTION_3D_SUFFIX
+    ),
+    (
+        "Cinematic isometric 3D diorama render, detailed miniature 3D scene "
+        "on a floating platform, physically-based materials, warm rim "
+        "lighting, crisp depth of field, unreal engine 5 quality."
+        + _MOTION_3D_SUFFIX
+    ),
+    (
+        "Photorealistic 3D product-style render, frosted glass and brushed "
+        "metal materials, elegant neon accent lighting, volumetric light "
+        "rays, dramatic dark backdrop, ray-traced reflections."
+        + _MOTION_3D_SUFFIX
+    ),
+    (
+        "Stylised 3D character animation frame, Pixar-inspired lovable 3D "
+        "characters with detailed skin and fabric shaders, golden-hour "
+        "lighting, bokeh background, ultra detailed CGI movie still."
+        + _MOTION_3D_SUFFIX
+    ),
+    (
+        "Modern 3D motion-graphics render, abstract-yet-literal 3D icons and "
+        "objects with soft-touch rubber and ceramic materials, floating "
+        "composition, studio HDRI lighting, redshift render quality."
+        + _MOTION_3D_SUFFIX
+    ),
+]
+
+# Style signature (rétro-compat: modules/tests qui référencent le préfixe unique).
+MOTION_STYLE_PREFIX = MOTION_STYLE_3D_PREFIXES[0]
 
 # Densité du motion design — le NOMBRE de scènes grandit avec la durée:
 # ~1 scène toutes les 11 s (court) / 16 s (long), rythme dense. Le plafond est
@@ -294,7 +358,7 @@ MOTION_ELEMENT_SFX = ["pop", "bubble", "snap", "data_tick", "ding", "sparkle"]
 MOTION_DRAW_SFX = "pen_scribble"   # plays while a procedural drawing draws itself
 MOTION_EXIT_SFX = ["swoosh_down", "whoosh", "tape_stop"]
 MOTION_RISER_LEAD = 0.45
-MOTION_MAX_ELEMENT_SFX = 4      # cap per scene so SFX stay accents, not noise
+MOTION_MAX_ELEMENT_SFX = 2      # cap per scene so SFX stay accents, not noise
 
 # --------------------------------------------------------------------------- #
 # STEP 7 — KEYWORD POPUPS — RÈGLE PRO #2
@@ -343,7 +407,9 @@ GRAPHIC_LEAD = 0.2             # graphics placed -0.2 s before the topic starts
 # ça attend un peu avant que le suivant vienne"). Vaut pour B-roll ET motion.
 BROLL_MIN_GAP = 0.8            # respiration entre deux B-roll
 VISUAL_MIN_GAP = 0.35         # le B-roll peut suivre une scène motion de près (pas de chevauchement)
-GAPFILL_THRESHOLD = 4.0        # gaps > 4 s without a visual get a filler SFX
+# NOTE: le "gap-fill" SFX (un son injecté au milieu des passages sans visuel)
+# a été SUPPRIMÉ — un son sans événement visible partait "dans tous les sens".
+# Chaque SFX restant est synchronisé à un élément que le spectateur VOIT.
 
 # Graphic SFX (varied, alternated).
 GRAPHIC_SFX = [
@@ -362,7 +428,7 @@ BROLL_SFX_POOL = [
 
 # Keyword popup chips get a tiny UI blip (they used to appear in silence).
 POPUP_SFX_POOL = ["pop", "digi_blip", "snap", "bubble"]
-POPUP_SFX_MAX = 12              # cap per video
+POPUP_SFX_MAX = 6               # cap per video — accents, pas une mitraillette
 
 # SFX assortis au THÈME des popups (styles Captions AI) — le son raconte la
 # même chose que le visuel: papier qui se déchire, glitch numérique, crayon.
@@ -371,9 +437,6 @@ POPUP_SFX_THEME_POOLS = {
     "neon_glitch": ["glitch", "digi_blip", "bass_hit", "glitch"],
     "sketch": ["pen_scribble", "pop", "pen_scribble", "click"],
 }
-
-# Gap-fill SFX pool (Règle PRO #3).
-GAPFILL_SFX_POOL = ["ding", "transition", "click", "swoosh_up", "chime"]
 
 # Per-cue humanisation: pitch/gain micro-variation cycled across cues so the
 # same sample never plays back twice identically (kills the "static" feel).

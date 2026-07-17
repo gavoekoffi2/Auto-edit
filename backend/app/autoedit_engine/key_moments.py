@@ -331,12 +331,20 @@ def plan_key_moments(
 
 
 def flash_times(cues: Sequence[KeyMomentCue]) -> List[float]:
-    """Source-time instants of cues that carry a white camera flash."""
+    """Source-time instants of the strongest accents ("flash"-tagged cues).
+
+    NOTE: the white full-screen camera flash itself was removed from the
+    render — these instants now only receive a synced punch-zoom.
+    """
     return [round(c.start, 3) for c in cues if "flash" in c.effects]
 
 
 def shutter_times(cues: Sequence[KeyMomentCue]) -> List[float]:
-    """Source-time instants of cues that carry a shutter / camera SFX."""
+    """Source-time instants of cues tagged with a shutter / camera SFX.
+
+    Kept for planner introspection/tests — the render no longer injects
+    shutter sounds (they were orphaned once the white flash was removed).
+    """
     return [round(c.start, 3) for c in cues if "shutter_sfx" in c.effects]
 
 
