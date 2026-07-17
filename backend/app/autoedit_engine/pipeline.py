@@ -138,6 +138,7 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
         style_seed_text: Optional[str] = None, disable_paid_images: bool = False,
         cleanup_level: Optional[str] = None,
         smart_crop_mode: Optional[str] = None,
+        scrub_source_subtitles: bool = True,
         progress_callback=None, report: Optional[dict] = None,
         cleanup: bool = True) -> str:
     os.makedirs(workdir, exist_ok=True)
@@ -169,6 +170,7 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
         "light_overlays": 0,
         "source_subtitles_detected": False,
         "source_subtitles_removed": False,
+        "source_subtitle_scrubbing_requested": bool(scrub_source_subtitles),
         "motion_transitions_lit": 0,
         "sfx_cues": 0,
     })
@@ -184,7 +186,10 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     # Si la vidéo importée porte déjà des sous-titres incrustés, on les efface
     # AVANT le montage pour éviter le double sous-titrage (les nouveaux subs
     # sont brûlés à l'étape 13). Best-effort: n'échoue jamais le render.
-    if config.REMOVE_SOURCE_SUBTITLES:
+    scrub_source_subtitles = bool(
+        scrub_source_subtitles and config.REMOVE_SOURCE_SUBTITLES
+    )
+    if scrub_source_subtitles:
         _p(4, "0 subtitle_cleanup")
         try:
             source, sub_rep = subtitle_removal.clean_source(source, workdir)
@@ -215,8 +220,14 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     # 2) EDL + grade + base_only --------------------------------------------
     _p(20, "2 build_edl")
     edl_path = p("edl.json")
-    build_res = build_edl.build(source, vu_path, outdir=workdir, encode=True,
-                                smart_crop_mode=smart_crop_mode)
+    build_res = build_edl.build(
+        source,
+        vu_path,
+        outdir=workdir,
+        encode=True,
+        smart_crop_mode=smart_crop_mode,
+        scrub_source_subtitles=scrub_source_subtitles,
+    )
     base_only = build_res["base_only"]
     rep["smart_crop"] = build_res.get("smart_crop", {})
     # Preuve de découpe: durée d'origine vs gardée (silences/répétitions retirés).
