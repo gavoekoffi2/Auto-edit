@@ -148,8 +148,23 @@ class TemplateRenderer:
         if not node_bin:
             raise RuntimeError("node not available for HyperFrames renderer")
 
-        repo_root = Path(__file__).resolve().parents[3]
-        hf_dir = repo_root / "templates" / "hyperframes"
+        # In a source checkout this module lives under
+        # ``backend/app/processing`` and the templates are at the repository
+        # root.  In the production image, however, the backend build context is
+        # copied to ``/app`` and the templates live at
+        # ``/app/templates/hyperframes``.  Resolve both layouts explicitly so a
+        # successful CI test cannot hide a broken production package.
+        configured = os.getenv("HYPERFRAMES_TEMPLATE_DIR")
+        candidates = [
+            Path(configured) if configured else None,
+            Path(__file__).resolve().parents[3] / "templates" / "hyperframes",
+            Path(__file__).resolve().parents[2] / "templates" / "hyperframes",
+            Path("/app/templates/hyperframes"),
+        ]
+        hf_dir = next(
+            (path for path in candidates if path is not None and path.is_dir()),
+            Path("/app/templates/hyperframes"),
+        )
         render_js = hf_dir / "render.js"
         template = hf_dir / "premium_overlay.html"
         if not render_js.exists() or not template.exists():

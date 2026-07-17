@@ -22,6 +22,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fontconfig \
     fonts-dejavu-core \
     fonts-dejavu-extra \
+    nodejs \
+    npm \
+    chromium \
     && rm -rf /var/lib/apt/lists/* \
     && (sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/' /etc/ImageMagick-6/policy.xml 2>/dev/null || true)
 # NB: le `|| true` est PARENTHÉSÉ pour ne couvrir QUE le sed ImageMagick.
@@ -52,6 +55,16 @@ RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu 
     && rm -f /tmp/requirements-no-whisper.txt
 
 COPY . .
+
+# HyperFrames is selected in production (VIDEO_RENDERER=hyperframes).  Keep the
+# templates and the browser runtime in the SAME backend image used by both the
+# API and Celery worker; otherwise overlays silently fall back to no clip.
+RUN cd /app/templates/hyperframes \
+    && npm ci --omit=dev --no-audit --no-fund \
+    && command -v node >/dev/null \
+    && command -v chromium >/dev/null
+ENV HYPERFRAMES_TEMPLATE_DIR=/app/templates/hyperframes \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 # Installe les polices embarquées pour libass/fontconfig (sous-titres ASS).
 RUN mkdir -p /usr/local/share/fonts/autoedit \

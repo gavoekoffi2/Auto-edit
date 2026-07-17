@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>AutoEdit Lower Third</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --accent: #f97316;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      background: transparent;
+      font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+      color: #fff;
+      overflow: hidden;
+    }
+    .container {
+      position: absolute;
+      left: 8%;
+      bottom: 16%;
+      padding: 28px 40px;
+      background: linear-gradient(135deg, rgba(0,0,0,0.78), rgba(20,20,20,0.78));
+      border-left: 6px solid var(--accent);
+      border-radius: 16px;
+      backdrop-filter: blur(12px);
+      max-width: 72%;
+      animation: slide-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      opacity: 0;
+      transform: translateX(-40px);
+    }
+    .name {
+      font-size: 56px;
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -0.5px;
+      margin: 0;
+    }
+    .role {
+      font-size: 30px;
+      font-weight: 500;
+      margin-top: 12px;
+      opacity: 0.85;
+    }
+    @keyframes slide-in {
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <p class="name">{{name}}</p>
+    <p class="role">{{role}}</p>
+  </div>
+</body>
+</html>
