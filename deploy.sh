@@ -4,7 +4,7 @@ set -euo pipefail
 # AutoEdit production deploy script.
 # Usage on the VPS:
 #   cd /root/projects/Auto-edit
-#   BACKEND_DOMAIN=autoedit.srv1305401.hstgr.cloud FRONTEND_ORIGIN=https://your-netlify-site.netlify.app ./deploy.sh
+#   BACKEND_DOMAIN=autoedit.srv1305401.hstgr.cloud FRONTEND_ORIGIN=https://autoedit.srv1305401.hstgr.cloud ./deploy.sh
 #
 # Requirements: Docker + Docker Compose plugin. On this VPS, the global Traefik
 # reverse proxy owns ports 80/443, so deploy.sh automatically layers
@@ -76,7 +76,7 @@ backend_domain = os.environ.get('BACKEND_DOMAIN') or get_key(text, 'BACKEND_DOMA
 if backend_domain:
     text = set_key(text, 'BACKEND_DOMAIN', backend_domain)
     text = set_key(text, 'PUBLIC_APP_URL', f'https://{backend_domain}')
-    # Netlify origin must be added manually if known: CORS_ORIGINS=https://your-netlify.app,https://custom-frontend.com
+    # Le frontend VPS partage normalement ce domaine avec l'API.
 
 if os.environ.get('TLS_EMAIL'):
     text = set_key(text, 'TLS_EMAIL', os.environ['TLS_EMAIL'])
@@ -129,13 +129,13 @@ if [ -z "${BACKEND_DOMAIN:-}" ] || [ "$BACKEND_DOMAIN" = "localhost" ]; then
   echo "[deploy] Example: BACKEND_DOMAIN=srv1305401.hstgr.cloud TLS_EMAIL=you@example.com ./deploy.sh"
 fi
 
-# Build sequentially. Docker Compose/BuildKit on this VPS can fail parallel builds
-# with "image ... already exists" when backend and worker share the same Dockerfile/context.
+# Build sequentially. Backend, worker et beat partagent désormais une seule image
+# applicative afin d'éviter trois exports Docker de Whisper/PyTorch (~4 Go chacun).
 export COMPOSE_PARALLEL_LIMIT="${COMPOSE_PARALLEL_LIMIT:-1}"
 
 # Old failed deploys can leave backend/worker containers detached from the current
 # Compose state; remove only stateless app containers before recreating them.
-docker rm -f "${COMPOSE_PROJECT_NAME}-backend-1" "${COMPOSE_PROJECT_NAME}-worker-1" >/dev/null 2>&1 || true
+docker rm -f "${COMPOSE_PROJECT_NAME}-backend-1" "${COMPOSE_PROJECT_NAME}-worker-1" "${COMPOSE_PROJECT_NAME}-beat-1" >/dev/null 2>&1 || true
 
 # Build and start all services.
 echo "[deploy] Building and starting AutoEdit production stack..."
@@ -159,6 +159,24 @@ for i in {1..30}; do
   if [ "$i" = "30" ]; then
     echo "[deploy] ERROR: backend /api/health never became healthy" >&2
     "${COMPOSE[@]}" logs --tail=120 backend worker >&2 || true
+    exit 1
+  fi
+done
+
+# Le frontend fait maintenant partie de la production VPS. Vérifier le shell SPA
+# dans son conteneur avant de considérer le déploiement comme terminé.
+echo "[deploy] Waiting for frontend health..."
+for i in {1..30}; do
+  if "${COMPOSE[@]}" exec -T frontend \
+       wget -qO- http://127.0.0.1/ >/tmp/autoedit-frontend.html 2>/dev/null \
+       && grep -q '<div id="root"></div>' /tmp/autoedit-frontend.html; then
+    echo "[deploy] Frontend health OK"
+    break
+  fi
+  sleep 2
+  if [ "$i" = "30" ]; then
+    echo "[deploy] ERROR: frontend never became healthy" >&2
+    "${COMPOSE[@]}" logs --tail=120 frontend >&2 || true
     exit 1
   fi
 done
@@ -197,4 +215,5 @@ if [ -n "${BACKEND_DOMAIN:-}" ] && [ "$BACKEND_DOMAIN" != "localhost" ]; then
   fi
 fi
 
-echo "[deploy] Done. Set Netlify VITE_API_URL to: https://${BACKEND_DOMAIN:-YOUR_BACKEND_DOMAIN}/api"
+echo "[deploy] Done. Frontend VPS: https://${BACKEND_DOMAIN:-YOUR_BACKEND_DOMAIN}"
+echo "[deploy] API: https://${BACKEND_DOMAIN:-YOUR_BACKEND_DOMAIN}/api"

@@ -12,14 +12,12 @@ services:
       traefik.http.routers.autoedit-api.priority: "30000"
       traefik.http.services.autoedit-api.loadbalancer.server.port: "8000"
 
-  # Frontend public servi par Netlify en production. Ce service ne doit être
-  # lancé sur le VPS que manuellement avec --profile local-frontend.
+  # Frontend public servi sur le VPS par Nginx, derrière le Traefik global.
   frontend:
-    profiles: ["local-frontend"]
     build:
       context: ./frontend
       args:
-        VITE_API_URL: https://autoedit.srv1305401.hstgr.cloud/api
+        VITE_API_URL: /api
     networks:
       - web
     labels:
