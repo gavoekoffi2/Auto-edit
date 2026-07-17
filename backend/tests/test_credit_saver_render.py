@@ -88,8 +88,10 @@ def test_credit_saver_renders_mp4_without_any_paid_call(tmp_path, monkeypatch):
     assert rep["visual_mode_used"] == "credit_saver"
     assert rep["ai_images_skipped"] is True
     assert rep["broll_images"] == 0
-    assert rep["camera_flashes"] >= 1
-    assert rep["shutter_sfx"] >= 1
+    # Flash blanc + obturateur coupés PAR DÉFAUT (un seul langage lumière:
+    # le light-leak réel) — retour utilisateur « trop d'effets, brouillard ».
+    assert rep["camera_flashes"] == 0
+    assert rep["shutter_sfx"] == 0
     assert rep["sfx_cues"] >= 1
     assert rep["effects_applied"]["cameraFlashes"] == rep["camera_flashes"]
 
@@ -122,4 +124,4 @@ def test_auto_fallback_continues_on_insufficient_credits(tmp_path, monkeypatch):
     assert rep["visual_mode_used"] == "credit_saver"
     assert rep["ai_images_skipped"] is True
     assert rep["fallback_reason"] == "insufficient_credits"
-    assert rep["camera_flashes"] >= 1
+    assert rep["camera_flashes"] == 0    # flashes coupés par défaut

@@ -99,6 +99,10 @@ PUNCH_SIGMA = 0.30 / 2.5  # = 0.12
 # Implemented as a single time-based ffmpeg `eq=brightness:eval=frame` pulse so
 # it is robust, fast and needs no extra files or AI images.
 # --------------------------------------------------------------------------- #
+# Flash blanc plein écran aux key moments — DÉSACTIVÉ par défaut: cumulé au
+# light-leak, il « embrouillait » la vidéo (retour utilisateur). Le light-leak
+# réel (avec son propre son) reste l'unique effet lumière. Réactivable par env.
+CAMERA_FLASHES_ENABLED = os.getenv("ENGINE_CAMERA_FLASHES", "0") in {"1", "true", "yes"}
 FLASH_BRIGHTNESS = 0.85   # peak added luma (eq brightness, ~0..1) — strong white pop
 FLASH_SIGMA = 0.055       # seconds: half-width of the gaussian flash (≈120-180 ms visible)
 FLASH_PUNCH_AMP = 0.06    # extra synced punch-zoom amplitude at a flash
@@ -230,14 +234,63 @@ BROLL_CHIP_Y = 250
 # keywords, numbered steps, counters — all animated, with entrance/exit
 # transitions and per-element SFX cues.
 # --------------------------------------------------------------------------- #
-MOTION_STYLE_PREFIX = (
-    "2D flat vector illustration in premium motion-design style, bold clean "
-    "outlines, vibrant saturated colors (cyan, gold, coral accents), simple "
-    "geometric shapes, friendly cartoon characters performing the action, "
-    "isolated on a very dark navy background, infographic energy, centered "
-    "composition, square format, ABSOLUTELY NO text, NO words, NO letters, "
-    "NO numbers in the image. Scene to illustrate: "
+# Contraintes communes à toutes les illustrations motion (fond sombre pour
+# s'intégrer à la scène, carré, jamais de texte incrusté).
+_MOTION_COMMON_SUFFIX = (
+    ", isolated on a very dark navy background, centered composition, square "
+    "format, ABSOLUTELY NO text, NO words, NO letters, NO numbers in the image. "
+    "Scene to illustrate: "
 )
+
+# Familles de styles 3D — le look des illustrations CHANGE d'une vidéo à
+# l'autre (choix par seed stable, cf. genimg.pick_motion_3d_style) pour que
+# deux montages ne se ressemblent pas. Fini le « dessin animé plat » unique:
+# tout est rendu 3D, avec des matières et des éclairages différents.
+MOTION_3D_STYLES = [
+    {
+        "name": "glossy_toon_3d",
+        "prefix": ("High-quality 3D cartoon render in the style of a modern animated "
+                   "film, glossy materials, expressive stylized characters performing "
+                   "the action, cinematic soft studio lighting, vibrant colors, subtle "
+                   "subsurface scattering, octane render quality" + _MOTION_COMMON_SUFFIX),
+        "refine": "cinematic 3D animated-film render",
+    },
+    {
+        "name": "soft_clay_3d",
+        "prefix": ("Soft clay 3D render, matte plasticine characters and objects "
+                   "performing the action, rounded friendly shapes, pastel colors with "
+                   "cyan and coral accents, soft diffuse studio lighting, claymation "
+                   "aesthetic, high detail" + _MOTION_COMMON_SUFFIX),
+        "refine": "soft clay 3D claymation render",
+    },
+    {
+        "name": "isometric_3d",
+        "prefix": ("Isometric 3D render, clean low-poly diorama scene showing the "
+                   "action, precise geometric facets, saturated modern color palette, "
+                   "crisp studio lighting with soft shadows, miniature scene "
+                   "aesthetic" + _MOTION_COMMON_SUFFIX),
+        "refine": "isometric low-poly 3D diorama render",
+    },
+    {
+        "name": "cinematic_3d",
+        "prefix": ("Photorealistic cinematic 3D render, detailed realistic materials "
+                   "and textures, dramatic volumetric lighting, shallow depth of "
+                   "field, physically-based rendering, movie-quality CGI of the "
+                   "action" + _MOTION_COMMON_SUFFIX),
+        "refine": "photorealistic cinematic 3D render",
+    },
+    {
+        "name": "miniature_diorama_3d",
+        "prefix": ("Miniature 3D diorama render with tilt-shift depth of field, cute "
+                   "stylized 3D characters performing the action, warm ambient "
+                   "lighting, rich textures, cozy hand-crafted look, high production "
+                   "value" + _MOTION_COMMON_SUFFIX),
+        "refine": "miniature tilt-shift 3D diorama render",
+    },
+]
+
+# Compat: préfixe historique (utilisé si aucun seed n'est fourni).
+MOTION_STYLE_PREFIX = MOTION_3D_STYLES[0]["prefix"]
 
 # Densité du motion design — le NOMBRE de scènes grandit avec la durée:
 # ~1 scène toutes les 11 s (court) / 16 s (long), rythme dense. Le plafond est

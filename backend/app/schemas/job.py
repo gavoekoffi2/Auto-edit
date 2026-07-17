@@ -53,6 +53,9 @@ class JobOptions(BaseModel):
     cleanup_level: Optional[str] = None
     # Recadrage vertical: auto (suivi de visage) | center | left | right.
     smart_crop_mode: Optional[str] = None
+    # Supprime les sous-titres DÉJÀ incrustés dans la source (défaut: activé)
+    # pour éviter le double sous-titrage avec les captions du montage.
+    remove_source_subtitles: Optional[bool] = None
     cta_text: Optional[str] = Field(default=None, max_length=120)
     logo_text: Optional[str] = Field(default=None, max_length=60)
 

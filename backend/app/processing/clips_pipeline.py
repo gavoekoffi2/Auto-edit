@@ -283,6 +283,8 @@ def _render(video_path: str, output_dir: str, vu: dict, moments: list[dict],
                 style_seed_text=f"{m['title']}|{m['start']}",
                 cleanup_level=options.get("cleanup_level"),
                 smart_crop_mode=options.get("smart_crop_mode"),
+                scrub_source_subtitles=options.get(
+                    "remove_source_subtitles", True) is not False,
                 progress_callback=clip_progress,
                 report=report,
             )

@@ -134,6 +134,7 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
         style_seed_text: Optional[str] = None, disable_paid_images: bool = False,
         cleanup_level: Optional[str] = None,
         smart_crop_mode: Optional[str] = None,
+        scrub_source_subtitles: bool = True,
         progress_callback=None, report: Optional[dict] = None,
         cleanup: bool = True) -> str:
     os.makedirs(workdir, exist_ok=True)
@@ -199,9 +200,11 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     _p(20, "2 build_edl")
     edl_path = p("edl.json")
     build_res = build_edl.build(source, vu_path, outdir=workdir, encode=True,
-                                smart_crop_mode=smart_crop_mode)
+                                smart_crop_mode=smart_crop_mode,
+                                scrub_source_subtitles=scrub_source_subtitles)
     base_only = build_res["base_only"]
     rep["smart_crop"] = build_res.get("smart_crop", {})
+    rep["source_subtitles"] = build_res.get("source_subtitles", {})
     # Preuve de découpe: durée d'origine vs gardée (silences/répétitions retirés).
     orig = float(vu_data.get("duration") or 0.0)
     kept = float(build_res.get("output_duration") or 0.0)
@@ -227,8 +230,14 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
                 spaced.append(t)
         return spaced
 
-    flash_times_out = _to_output(key_moments.flash_times(km_cues))
-    shutter_times_out = _to_output(key_moments.shutter_times(km_cues))
+    # Flash blanc + obturateur: coupés par défaut (CAMERA_FLASHES_ENABLED) —
+    # un seul langage lumière (le light-leak réel), pas de « brouillard ».
+    if config.CAMERA_FLASHES_ENABLED:
+        flash_times_out = _to_output(key_moments.flash_times(km_cues))
+        shutter_times_out = _to_output(key_moments.shutter_times(km_cues))
+    else:
+        flash_times_out = []
+        shutter_times_out = []
     rep["camera_flashes"] = len(flash_times_out)
     rep["shutter_sfx"] = len(shutter_times_out)
     n_topic_shift = sum(1 for c in km_cues if c.reason == "topic_shift")
@@ -266,14 +275,17 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
             vu_data, demographic=broll_demographic)
         rep["motion_scenes_derived"] = len(motion_scenes)
         if motion_scenes:
+            # Stable per-job look: a seed (job/video id or transcript) keeps a
+            # given render reproducible while different videos vary — palette,
+            # layouts ET style d'illustration 3D.
+            seed_text = style_seed_text or vu_data.get("text") or "".join(
+                s.get("text", "") for s in vu_data.get("segments", []))[:400]
             # AI illustrations are a PAID image call — only when the visual mode
             # allows it (never in credit_saver / when paid generation is off).
             if have_key and visual_mode != "credit_saver" and not disable_paid_images:
-                motion_scenes = genimg.generate_illustrations(motion_scenes, p("motion"))
-            # Stable per-job look: a seed (job/video id or transcript) keeps a
-            # given render reproducible while different videos vary.
-            seed_text = style_seed_text or vu_data.get("text") or "".join(
-                s.get("text", "") for s in vu_data.get("segments", []))[:400]
+                motion_scenes = genimg.generate_illustrations(
+                    motion_scenes, p("motion"), seed_text=seed_text)
+                rep["motion_3d_style"] = genimg.pick_motion_3d_style(seed_text)["name"]
             rendered_scenes = motion_design.render_all(
                 motion_scenes, p("motion_clips"),
                 preset=motion_preset, seed_text=seed_text)

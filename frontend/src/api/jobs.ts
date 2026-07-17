@@ -34,6 +34,8 @@ export interface JobOptions {
   subtitle_template?: SubtitleTemplate
   /** Fonctionnalité Clips: nombre max de shorts extraits d'une vidéo longue (1-10). */
   max_clips?: number
+  /** Supprime les sous-titres déjà incrustés dans la source (défaut: activé). */
+  remove_source_subtitles?: boolean
   cta_text?: string
   logo_text?: string
 }

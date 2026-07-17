@@ -209,7 +209,11 @@ def prepare_light_leak_overlay_clip(out_path: str) -> str:
     audio is mixed separately as the "light_leak_original" SFX cue.
     """
     ffmpeg_utils.ensure_ffmpeg()
+    # L'asset source est 16:9 (1280x720). Sans cover, l'overlay ne couvrait
+    # qu'une bande en haut du cadre vertical — il doit remplir TOUT le 9:16.
     vf = (
+        f"scale={config.WIDTH}:{config.HEIGHT}:force_original_aspect_ratio=increase,"
+        f"crop={config.WIDTH}:{config.HEIGHT},"
         "lumakey=threshold=0.12:tolerance=0.08:softness=0.15,"
         f"colorchannelmixer=aa={config.LIGHT_OVERLAY_ASSET_OPACITY},"
         f"format={config.PRORES_PIX_FMT}"

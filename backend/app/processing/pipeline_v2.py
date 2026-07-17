@@ -453,6 +453,7 @@ def run_pipeline_v2(
         disable_paid_images=disable_paid_images,
         cleanup_level=options.get("cleanup_level"),
         smart_crop_mode=options.get("smart_crop_mode"),
+        scrub_source_subtitles=options.get("remove_source_subtitles", True) is not False,
         progress_callback=progress,
         report=montage_report,
     )

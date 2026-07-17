@@ -269,7 +269,8 @@ def write_edl(ranges: List[dict], vu_path: str, out_path: str) -> str:
 
 
 def encode_segments(source: str, ranges: List[dict], clips_dir: str,
-                    crop_centers: Optional[List[float]] = None) -> List[str]:
+                    crop_centers: Optional[List[float]] = None,
+                    bottom_crop_frac: Optional[float] = None) -> List[str]:
     """
     Encode each kept range as a graded 1080x1920 segment.
 
@@ -277,10 +278,17 @@ def encode_segments(source: str, ranges: List[dict], clips_dir: str,
     *crop_centers* (un centre 0..1 par range, cf. smart_crop) pilote le
     recadrage 9:16 pour garder le visage dans le cadre — sans lui, le crop
     reste centré (comportement historique).
+    *bottom_crop_frac* retire la bande BASSE de la source AVANT la conversion
+    9:16 (suppression des sous-titres déjà incrustés, cf. subtitle_scrub).
     """
     ffmpeg_utils.ensure_ffmpeg()
     os.makedirs(clips_dir, exist_ok=True)
     seg_paths: List[str] = []
+
+    pre = ""
+    if bottom_crop_frac:
+        from . import subtitle_scrub
+        pre = subtitle_scrub.bottom_crop_filter(bottom_crop_frac) + ","
 
     for i, rng in enumerate(ranges):
         if crop_centers is not None and i < len(crop_centers):
@@ -288,7 +296,7 @@ def encode_segments(source: str, ranges: List[dict], clips_dir: str,
             cover = smart_crop.crop_filter(crop_centers[i])
         else:
             cover = config.VERTICAL_COVER
-        grade = f"{cover},{config.GRADE_WARM_CINEMATIC}"
+        grade = f"{pre}{cover},{config.GRADE_WARM_CINEMATIC}"
         dur = rng["end"] - rng["start"]
         out = os.path.join(clips_dir, f"seg_{i:04d}.mp4")
         fade_out_start = max(0.0, dur - config.AUDIO_FADE)
@@ -337,10 +345,13 @@ def concat_segments(seg_paths: List[str], out_path: str) -> str:
 
 
 def build(source: str, vu_path: str, outdir: str = ".", encode: bool = True,
-          smart_crop_mode: Optional[str] = None) -> dict:
+          smart_crop_mode: Optional[str] = None,
+          scrub_source_subtitles: bool = True) -> dict:
     """Full step-2/3 entry point.
 
     *smart_crop_mode*: auto (suivi de visage, défaut) | center | left | right.
+    *scrub_source_subtitles*: détecte et recadre les sous-titres DÉJÀ gravés
+    dans la source pour éviter le double sous-titrage (défaut: activé).
     """
     os.makedirs(outdir, exist_ok=True)
     vu = load_vu(vu_path)
@@ -365,9 +376,18 @@ def build(source: str, vu_path: str, outdir: str = ".", encode: bool = True,
         result["smart_crop"] = crop_report
         print(f"[build_edl] smart_crop: {crop_report}")
 
+        # Sous-titres déjà incrustés dans la source: détectés puis recadrés
+        # AVANT la conversion 9:16 (sinon double sous-titrage dans le rendu).
+        bottom_crop = None
+        if scrub_source_subtitles:
+            from . import subtitle_scrub
+            bottom_crop, scrub_report = subtitle_scrub.detect_burned_subtitles(source)
+            result["source_subtitles"] = scrub_report
+
         clips_dir = os.path.join(outdir, "clips_graded")
         seg_paths = encode_segments(source, ranges, clips_dir,
-                                    crop_centers=crop_centers)
+                                    crop_centers=crop_centers,
+                                    bottom_crop_frac=bottom_crop)
         base = os.path.join(outdir, "base_only.mp4")
         concat_segments(seg_paths, base)
         print(f"[build_edl] encoded {len(seg_paths)} segments -> {base}")
