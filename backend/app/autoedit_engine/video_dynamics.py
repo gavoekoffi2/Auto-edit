@@ -121,31 +121,16 @@ def build_zoom_expr(ranges: List[dict], fps: int = config.FPS,
     return nested
 
 
-def build_flash_filter(flash_times: Optional[List[float]]) -> str:
-    """A single time-based `eq` brightness pulse train = white camera flashes.
-
-    Returns '' when there is nothing to flash, so the filter chain is unchanged
-    for renders without key moments.
-    """
-    if not flash_times:
-        return ""
-    pulses = "+".join(
-        f"{config.FLASH_BRIGHTNESS}*exp(-pow((t-{tf:.3f})/{config.FLASH_SIGMA:.4f}\\,2))"
-        for tf in flash_times
-    )
-    # eval=frame so brightness is recomputed every frame (the pulse animates).
-    return f"eq=brightness='{pulses}':eval=frame"
-
-
 def build_light_overlay_filter(light_times: Optional[List[float]]) -> str:
     """Warm "light leak" sweep at each speech pause — a soft, time-based `eq`
     pulse train (brightness lift + warm gamma shift on r/b channels).
 
-    Softer and warmer than :func:`build_flash_filter` (the white camera flash):
-    the face must stay clearly visible underneath, it should read as a light
-    passing over the frame rather than a photo capture. Returns '' when there
-    is nothing to do, so the filter chain is unchanged for renders without
-    detected pauses.
+    Deliberately soft and warm: the face must stay clearly visible underneath,
+    it should read as a light passing over the frame rather than a photo
+    capture. (The old blinding white camera flash was removed on product
+    request — the light-leak is now the ONLY light effect.) Returns '' when
+    there is nothing to do, so the filter chain is unchanged for renders
+    without detected pauses.
     """
     if not light_times:
         return ""
@@ -173,8 +158,9 @@ def build_vf(ranges: List[dict], flash_times: Optional[List[float]] = None,
     does zoom-in/zoom-out plus micro-punches. This makes important moments feel
     dynamic instead of a static centered zoom.
 
-    *flash_times* (output seconds) add a synced punch zoom + a short white
-    camera flash at each key moment. *light_times* (output seconds) add a tiny
+    *flash_times* (output seconds) add a synced punch zoom at each key moment
+    (the old white full-screen camera flash was removed — the punch zoom is
+    the only accent kept there). *light_times* (output seconds) add a tiny
     punch zoom at every speech pause AND every motion-design transition cut.
     *eq_light_times* is the SUBSET that also gets the synthesized warm `eq`
     pulse: only the motion-design transition instants — pause instants now get
@@ -192,9 +178,6 @@ def build_vf(ranges: List[dict], flash_times: Optional[List[float]] = None,
         f":d=1:s={config.WIDTH}x{config.HEIGHT}:fps={config.FPS},"
         f"scale={config.WIDTH}:{config.HEIGHT}"
     )
-    flash = build_flash_filter(flash_times)
-    if flash:
-        chain += "," + flash
     light = build_light_overlay_filter(eq_light_times)
     if light:
         chain += "," + light
@@ -207,9 +190,14 @@ def prepare_light_leak_overlay_clip(out_path: str) -> str:
     whole alpha channel scaled down so the face stays visible underneath
     (reduced opacity, screen/lighten-style). Video only — the asset's real
     audio is mixed separately as the "light_leak_original" SFX cue.
+
+    The asset is a 16:9 clip while the montage is 9:16 vertical: it is
+    cover-scaled + center-cropped to the FULL 1080x1920 frame first, so the
+    light sweep covers the whole video instead of a horizontal band.
     """
     ffmpeg_utils.ensure_ffmpeg()
     vf = (
+        f"{config.VERTICAL_COVER},"
         "lumakey=threshold=0.12:tolerance=0.08:softness=0.15,"
         f"colorchannelmixer=aa={config.LIGHT_OVERLAY_ASSET_OPACITY},"
         f"format={config.PRORES_PIX_FMT}"
@@ -245,8 +233,8 @@ def apply_dynamics(base_only: str, edl_path: str, out_path: str,
     n_flash = len(flash_times or [])
     n_light = len(light_times or [])
     n_eq_light = len(eq_light_times or [])
-    print(f"[video_dynamics] Ken Burns + micro-punches + {n_flash} camera "
-          f"flashes + {n_light} pause/transition punch-zooms "
+    print(f"[video_dynamics] Ken Burns + micro-punches + {n_flash} key-moment "
+          f"punch-zooms + {n_light} pause/transition punch-zooms "
           f"({n_eq_light} with warm eq pulse) over "
           f"{output_duration(ranges):.1f}s -> {out_path}")
     return out_path

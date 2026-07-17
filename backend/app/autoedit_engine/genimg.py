@@ -141,7 +141,8 @@ def refine_prompts(items: List[dict], api_key: str, *,
     if not config.PROMPT_REFINER_ENABLED or not items:
         return items
     style = ("realistic editorial photograph" if kind == "photo"
-             else "flat vector illustration, no text in the image")
+             else "cinema-quality 3D rendered scene (CGI animation still), "
+                  "no text in the image")
     numbered = "\n".join(
         f'{i}. "{it.get("excerpt") or it["prompt"][:180]}"' for i, it in enumerate(items)
     )
@@ -210,9 +211,29 @@ def generate_brolls(ideas: List[dict], outdir: str, api_key: Optional[str] = Non
     return out
 
 
+def select_3d_style_prefix(style_seed_text: Optional[str]) -> str:
+    """Pick the 3D illustration style template for THIS video.
+
+    Seeded by the transcript/job id so a given render is reproducible while
+    different videos rotate across the MOTION_STYLE_3D_PREFIXES templates —
+    the montages never share the same motion-design illustration style.
+    """
+    prefixes = config.MOTION_STYLE_3D_PREFIXES
+    if not style_seed_text:
+        return prefixes[0]
+    import hashlib
+    h = int(hashlib.md5(style_seed_text.encode("utf-8")).hexdigest(), 16)
+    return prefixes[h % len(prefixes)]
+
+
 def generate_illustrations(scenes: List[dict], outdir: str,
-                           api_key: Optional[str] = None) -> List[dict]:
-    """Generate flat-design illustrations for the TOP-priority motion scenes.
+                           api_key: Optional[str] = None,
+                           style_seed_text: Optional[str] = None) -> List[dict]:
+    """Generate 3D-rendered illustrations for the TOP-priority motion scenes.
+
+    The visual style is a REAL 3D animation look (no more flat 2D cartoon):
+    one of several 3D style templates is chosen per video via
+    *style_seed_text* so consecutive montages don't look alike.
 
     API budget: only the MOTION_AI_ILLUSTRATIONS_MAX most important beats get
     an AI image — every other scene uses the free procedural line-art drawing.
@@ -223,6 +244,7 @@ def generate_illustrations(scenes: List[dict], outdir: str,
     if not api_key or config.MOTION_AI_ILLUSTRATIONS_MAX <= 0:
         return scenes
     os.makedirs(outdir, exist_ok=True)
+    style_prefix = select_3d_style_prefix(style_seed_text)
 
     ranked = sorted(scenes, key=lambda s: float(s.get("priority", 0.0)), reverse=True)
     chosen = {s["id"] for s in ranked[: config.MOTION_AI_ILLUSTRATIONS_MAX]}
@@ -238,7 +260,7 @@ def generate_illustrations(scenes: List[dict], outdir: str,
         png = os.path.join(outdir, f"{scene['id']}.png")
         try:
             generate_image(scene["prompt"], png, api_key,
-                           style_prefix=config.MOTION_STYLE_PREFIX)
+                           style_prefix=style_prefix)
             out.append({**scene, "image": png})
             print(f"[genimg] illustration {scene['id']} -> {png}")
         except Exception as exc:  # noqa: BLE001 - procedural fallback takes over
