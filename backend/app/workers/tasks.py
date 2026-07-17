@@ -84,8 +84,14 @@ def process_video_task(self, job_id: str):
             _update_video_status(str(video.id), "error")
             return
 
-        # Mark as processing
-        _update_job(job_id, status="processing", progress=0)
+        # Mark as processing and clear any stale failure state when a job is retried.
+        _update_job(
+            job_id,
+            status="processing",
+            progress=0,
+            error_message=None,
+            completed_at=None,
+        )
         _update_video_status(str(video.id), "processing")
 
         output_dir = get_output_dir(str(job.user_id), str(job.id))
@@ -129,6 +135,7 @@ def process_video_task(self, job_id: str):
             status="completed",
             progress=100,
             result=result,
+            error_message=None,
             completed_at=datetime.now(timezone.utc),
         )
         _update_video_status(str(video.id), "ready")
@@ -206,7 +213,13 @@ def process_clips_task(self, job_id: str):
             _update_job(job_id, status="failed", error_message="Video not found")
             return
 
-        _update_job(job_id, status="processing", progress=0)
+        _update_job(
+            job_id,
+            status="processing",
+            progress=0,
+            error_message=None,
+            completed_at=None,
+        )
         _update_video_status(str(video.id), "processing")
         output_dir = get_output_dir(str(job.user_id), str(job.id))
 
@@ -300,6 +313,7 @@ def process_clips_task(self, job_id: str):
             status="completed",
             progress=100,
             result=result,
+            error_message=None,
             completed_at=datetime.now(timezone.utc),
         )
         _update_video_status(str(video.id), "ready")
