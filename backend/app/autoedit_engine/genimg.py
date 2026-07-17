@@ -137,14 +137,12 @@ def generate_image(prompt: str, out_path: str, api_key: str,
 # what is being said at that timestamp (heuristic prompt kept as fallback).
 # --------------------------------------------------------------------------- #
 def refine_prompts(items: List[dict], api_key: str, *,
-                   kind: str = "photo", style_desc: Optional[str] = None) -> List[dict]:
+                   kind: str = "photo") -> List[dict]:
     if not config.PROMPT_REFINER_ENABLED or not items:
         return items
-    if style_desc:
-        style = style_desc + ", no text in the image"
-    else:
-        style = ("realistic editorial photograph" if kind == "photo"
-                 else "cinematic 3D render, no text in the image")
+    style = ("realistic editorial photograph" if kind == "photo"
+             else "cinema-quality 3D rendered scene (CGI animation still), "
+                  "no text in the image")
     numbered = "\n".join(
         f'{i}. "{it.get("excerpt") or it["prompt"][:180]}"' for i, it in enumerate(items)
     )
@@ -213,25 +211,40 @@ def generate_brolls(ideas: List[dict], outdir: str, api_key: Optional[str] = Non
     return out
 
 
-def pick_motion_3d_style(seed_text: Optional[str]) -> dict:
-    """Famille de style 3D pour CETTE vidéo — seed stable => reproductible,
-    vidéos différentes => styles différents (clay, toon glossy, isométrique,
-    cinématique réaliste, diorama…). Sans seed: première famille."""
-    styles = config.MOTION_3D_STYLES
-    if not seed_text:
-        return styles[0]
+def select_3d_style_prefix(style_seed_text: Optional[str]) -> str:
+    """Pick the 3D illustration style template for THIS video.
+
+    Seeded by the transcript/job id so a given render is reproducible while
+    different videos rotate across the MOTION_STYLE_3D_PREFIXES templates —
+    the montages never share the same motion-design illustration style.
+    """
+    prefixes = config.MOTION_STYLE_3D_PREFIXES
+    if not style_seed_text:
+        return prefixes[0]
     import hashlib
-    h = int(hashlib.md5(seed_text.encode("utf-8")).hexdigest(), 16)
-    return styles[h % len(styles)]
+    h = int(hashlib.md5(style_seed_text.encode("utf-8")).hexdigest(), 16)
+    return prefixes[h % len(prefixes)]
+
+
+def pick_motion_3d_style(seed_text: Optional[str]) -> dict:
+    """Retourne la vue nommée du style choisi par le nouveau sélecteur.
+
+    Cette API de compatibilité réutilise exactement la même sélection, afin
+    qu'une seed donnée conserve le même rendu dans les anciens appels.
+    """
+    prefix = select_3d_style_prefix(seed_text)
+    index = config.MOTION_STYLE_3D_PREFIXES.index(prefix)
+    return config.MOTION_3D_STYLES[index]
 
 
 def generate_illustrations(scenes: List[dict], outdir: str,
                            api_key: Optional[str] = None,
-                           seed_text: Optional[str] = None) -> List[dict]:
-    """Generate 3D-render illustrations for the TOP-priority motion scenes.
+                           style_seed_text: Optional[str] = None) -> List[dict]:
+    """Generate 3D-rendered illustrations for the TOP-priority motion scenes.
 
-    Le STYLE 3D varie d'une vidéo à l'autre (``seed_text``) pour que deux
-    montages ne partagent jamais le même look d'illustration.
+    The visual style is a REAL 3D animation look (no more flat 2D cartoon):
+    one of several 3D style templates is chosen per video via
+    *style_seed_text* so consecutive montages don't look alike.
 
     API budget: only the MOTION_AI_ILLUSTRATIONS_MAX most important beats get
     an AI image — every other scene uses the free procedural line-art drawing.
@@ -242,15 +255,12 @@ def generate_illustrations(scenes: List[dict], outdir: str,
     if not api_key or config.MOTION_AI_ILLUSTRATIONS_MAX <= 0:
         return scenes
     os.makedirs(outdir, exist_ok=True)
-
-    style = pick_motion_3d_style(seed_text)
-    print(f"[genimg] style 3D de cette vidéo: {style['name']}")
+    style_prefix = select_3d_style_prefix(style_seed_text)
 
     ranked = sorted(scenes, key=lambda s: float(s.get("priority", 0.0)), reverse=True)
     chosen = {s["id"] for s in ranked[: config.MOTION_AI_ILLUSTRATIONS_MAX]}
     to_generate = [s for s in scenes if s["id"] in chosen]
-    refined = {s["id"]: s for s in refine_prompts(
-        to_generate, api_key, kind="illustration", style_desc=style["refine"])}
+    refined = {s["id"]: s for s in refine_prompts(to_generate, api_key, kind="illustration")}
 
     out: List[dict] = []
     for scene in scenes:
@@ -261,9 +271,9 @@ def generate_illustrations(scenes: List[dict], outdir: str,
         png = os.path.join(outdir, f"{scene['id']}.png")
         try:
             generate_image(scene["prompt"], png, api_key,
-                           style_prefix=style["prefix"])
-            out.append({**scene, "image": png, "style_3d": style["name"]})
-            print(f"[genimg] illustration {scene['id']} ({style['name']}) -> {png}")
+                           style_prefix=style_prefix)
+            out.append({**scene, "image": png})
+            print(f"[genimg] illustration {scene['id']} -> {png}")
         except Exception as exc:  # noqa: BLE001 - procedural fallback takes over
             print(f"[genimg] WARN illustration {scene['id']} failed "
                   f"(procedural fallback): {exc}", file=sys.stderr)

@@ -3,6 +3,8 @@ Auto Edit — Python orchestrator (mirror of run_pipeline.sh).
 
 Runs the full viral-montage pipeline end to end:
 
+  0   subtitle_cleanup  -> _source_nosubs.mp4 (efface les sous-titres déjà
+                           incrustés sur la vidéo importée — anti double subs)
   1   transcribe        -> transcripts/<stem>_vu.json
   2   build_edl         -> edl.json, clips_graded/seg_*.mp4, base_only.mp4
   3   overlays          -> animations/*.mov  (+ _overlays.json)
@@ -49,6 +51,7 @@ from . import (
     plan_overlays,
     smart_cleanup,
     subs_ass,
+    subtitle_removal,
     timeline,
     transcribe,
     video_dynamics,
@@ -93,7 +96,8 @@ def plan_visual_mode(visual_mode: str, *, do_broll: bool, have_key: bool,
 # are kept.
 _INTERMEDIATE_DIRS = ("clips_graded", "animations", "motion_clips", "broll_clips", "sfx")
 _INTERMEDIATE_FILES = ("base_only.mp4", "base_dyn.mp4",
-                       "composite_nosfx.mp4", "composite_withsfx.mp4")
+                       "composite_nosfx.mp4", "composite_withsfx.mp4",
+                       "_source_nosubs.mp4")
 
 
 def cleanup_intermediates(workdir: str) -> int:
@@ -134,7 +138,6 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
         style_seed_text: Optional[str] = None, disable_paid_images: bool = False,
         cleanup_level: Optional[str] = None,
         smart_crop_mode: Optional[str] = None,
-        scrub_source_subtitles: bool = True,
         progress_callback=None, report: Optional[dict] = None,
         cleanup: bool = True) -> str:
     os.makedirs(workdir, exist_ok=True)
@@ -162,9 +165,10 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
         "broll_images": 0,
         "keyword_popups": 0,
         "key_moments": 0,
-        "camera_flashes": 0,
-        "shutter_sfx": 0,
+        "key_moment_punches": 0,
         "light_overlays": 0,
+        "source_subtitles_detected": False,
+        "source_subtitles_removed": False,
         "motion_transitions_lit": 0,
         "sfx_cues": 0,
     })
@@ -175,6 +179,18 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
         _log(label, msg)
         if progress_callback:
             progress_callback(pct, label)
+
+    # 0) Source subtitle cleanup ---------------------------------------------
+    # Si la vidéo importée porte déjà des sous-titres incrustés, on les efface
+    # AVANT le montage pour éviter le double sous-titrage (les nouveaux subs
+    # sont brûlés à l'étape 13). Best-effort: n'échoue jamais le render.
+    if config.REMOVE_SOURCE_SUBTITLES:
+        _p(4, "0 subtitle_cleanup")
+        try:
+            source, sub_rep = subtitle_removal.clean_source(source, workdir)
+            rep.update(sub_rep)
+        except Exception as exc:  # noqa: BLE001 - never block the render
+            print(f"[pipeline] WARN subtitle cleanup skipped: {exc}", file=sys.stderr)
 
     # 1) Transcription -------------------------------------------------------
     _p(8, "1 transcribe")
@@ -200,11 +216,9 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     _p(20, "2 build_edl")
     edl_path = p("edl.json")
     build_res = build_edl.build(source, vu_path, outdir=workdir, encode=True,
-                                smart_crop_mode=smart_crop_mode,
-                                scrub_source_subtitles=scrub_source_subtitles)
+                                smart_crop_mode=smart_crop_mode)
     base_only = build_res["base_only"]
     rep["smart_crop"] = build_res.get("smart_crop", {})
-    rep["source_subtitles"] = build_res.get("source_subtitles", {})
     # Preuve de découpe: durée d'origine vs gardée (silences/répétitions retirés).
     orig = float(vu_data.get("duration") or 0.0)
     kept = float(build_res.get("output_duration") or 0.0)
@@ -214,9 +228,12 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     rep["segments_kept"] = len(build_res.get("ranges") or [])
 
     # 2bis) Key moments — hook / numbers / CTA / emotional words / topic shifts.
-    # These drive the camera flashes + shutter SFX that make the credit-saver
-    # edit feel premium WITHOUT any AI image. Times are mapped SOURCE -> OUTPUT
-    # via the EDL ranges so they land on the cut timeline.
+    # These drive the synced punch-zooms that make the credit-saver edit feel
+    # premium WITHOUT any AI image. (Le flash blanc plein écran et son SFX
+    # shutter ont été retirés: trop brillants, ils embrouillaient l'image —
+    # la seule lumière conservée est le light-leak réel, avec son propre son.)
+    # Times are mapped SOURCE -> OUTPUT via the EDL ranges so they land on the
+    # cut timeline.
     edl_ranges = build_res.get("ranges") or []
     km_cues = key_moments.plan_key_moments(vu_data)
     rep["key_moments"] = len(km_cues)
@@ -230,16 +247,8 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
                 spaced.append(t)
         return spaced
 
-    # Flash blanc + obturateur: coupés par défaut (CAMERA_FLASHES_ENABLED) —
-    # un seul langage lumière (le light-leak réel), pas de « brouillard ».
-    if config.CAMERA_FLASHES_ENABLED:
-        flash_times_out = _to_output(key_moments.flash_times(km_cues))
-        shutter_times_out = _to_output(key_moments.shutter_times(km_cues))
-    else:
-        flash_times_out = []
-        shutter_times_out = []
-    rep["camera_flashes"] = len(flash_times_out)
-    rep["shutter_sfx"] = len(shutter_times_out)
+    punch_times_out = _to_output(key_moments.flash_times(km_cues))
+    rep["key_moment_punches"] = len(punch_times_out)
     n_topic_shift = sum(1 for c in km_cues if c.reason == "topic_shift")
 
     # 2ter) Speech-pause light-leak overlay — fires at EVERY meaningful pause
@@ -250,7 +259,7 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     light_overlay_times_out = _to_output(light_src, min_gap=config.LIGHT_OVERLAY_MIN_GAP)
     light_overlay_times_out = [
         t for t in light_overlay_times_out
-        if all(abs(t - tf) >= config.LIGHT_OVERLAY_MIN_GAP for tf in flash_times_out)
+        if all(abs(t - tf) >= config.LIGHT_OVERLAY_MIN_GAP for tf in punch_times_out)
     ]
     rep["light_overlays"] = len(light_overlay_times_out)
 
@@ -276,16 +285,16 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
         rep["motion_scenes_derived"] = len(motion_scenes)
         if motion_scenes:
             # Stable per-job look: a seed (job/video id or transcript) keeps a
-            # given render reproducible while different videos vary — palette,
-            # layouts ET style d'illustration 3D.
+            # given render reproducible while different videos vary — it picks
+            # the colour palette AND the 3D illustration style template, so
+            # two montages never share the same motion-design look.
             seed_text = style_seed_text or vu_data.get("text") or "".join(
                 s.get("text", "") for s in vu_data.get("segments", []))[:400]
             # AI illustrations are a PAID image call — only when the visual mode
             # allows it (never in credit_saver / when paid generation is off).
             if have_key and visual_mode != "credit_saver" and not disable_paid_images:
                 motion_scenes = genimg.generate_illustrations(
-                    motion_scenes, p("motion"), seed_text=seed_text)
-                rep["motion_3d_style"] = genimg.pick_motion_3d_style(seed_text)["name"]
+                    motion_scenes, p("motion"), style_seed_text=seed_text)
             rendered_scenes = motion_design.render_all(
                 motion_scenes, p("motion_clips"),
                 preset=motion_preset, seed_text=seed_text)
@@ -424,21 +433,16 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     rep["keyword_popups"] = int(popup_res.get("added", 0))
     rep["sfx_cues"] += int(popup_res.get("sfx_added", 0))
 
-    # 8bis) Key-moment shutter / camera SFX — the AUDIBLE half of the photo
-    # capture effect, synced to the white flashes. Merged into the SFX plan so
-    # mix_sfx renders them; ducking keeps them under the voice.
-    added_key_sfx = _inject_key_moment_sfx(p("sfx_cues.json"), shutter_times_out)
-    rep["sfx_cues"] += added_key_sfx
-
-    # 8ter) Speech-pause light-leak whoosh SFX — the audible half of the warm
-    # light sweep, synced to the soft flashes added below.
+    # 8bis) Speech-pause light-leak sound — the audible half of the light
+    # sweep: le SON du light-leak ne joue QUE quand sa lumière passe à
+    # l'écran (paire son+lumière intentionnelle, jamais de SFX orphelin).
     added_light_sfx = _inject_light_overlay_sfx(p("sfx_cues.json"), light_overlay_times_out)
     rep["sfx_cues"] += added_light_sfx
 
-    # 9) Dynamic zoom + key-moment camera flashes + pause light-leaks --------
+    # 9) Dynamic zoom + key-moment punch-zooms + pause light-leaks -----------
     _p(74, "9 video_dynamics")
     base_dyn = video_dynamics.apply_dynamics(
-        base_only, edl_path, p("base_dyn.mp4"), flash_times=flash_times_out,
+        base_only, edl_path, p("base_dyn.mp4"), flash_times=punch_times_out,
         light_times=spaced_dynamics_light_times,
         eq_light_times=motion_transition_times)
 
@@ -462,11 +466,11 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     # Final, truthful effect tally — proves the credit-saver edit is dynamic
     # even with zero AI images.
     rep["effects_applied"] = {
-        "cameraFlashes": rep["camera_flashes"],
-        "shutterSfx": rep["shutter_sfx"],
+        "keyMomentPunches": rep["key_moment_punches"],
         "lightOverlays": rep["light_overlays"],
         "motionTransitionsLit": rep["motion_transitions_lit"],
         "motionCards": rep["motion_scenes_rendered"],
+        "sourceSubtitlesRemoved": rep["source_subtitles_removed"],
         "transitions": (rep["motion_scenes_rendered"] + rep["broll_images"]
                         + n_topic_shift),
     }
@@ -482,38 +486,9 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     if progress_callback:
         progress_callback(100, "done")
     print(f"\n✅ Auto Edit complete ({rep['visual_mode_used']}, "
-          f"{rep['camera_flashes']} flashes, "
+          f"{rep['key_moment_punches']} punch-zooms, "
           f"{rep['light_overlays']} pause light-leaks) -> {final}")
     return final
-
-
-def _inject_key_moment_sfx(sfx_cues_path: str, shutter_times: list) -> int:
-    """Merge camera-shutter SFX at key-moment instants into the SFX plan.
-
-    Alternates the photo-capture sounds (the engine already synthesises them
-    locally — no API) so the flashes are AUDIBLE as well as visible, and avoids
-    stacking two identical SFX back-to-back. Returns the number added.
-    """
-    if not shutter_times or not os.path.exists(sfx_cues_path):
-        return 0
-    try:
-        with open(sfx_cues_path, "r", encoding="utf-8") as fh:
-            cues = json.load(fh)
-    except (OSError, ValueError):
-        return 0
-    pool = ["camera_flash", "shutter", "camera_flash", "shutter_burst"]
-    existing = {(round(float(c.get("t", -1)), 2), c.get("sfx")) for c in cues}
-    added = 0
-    for i, t in enumerate(shutter_times):
-        sfx = pool[i % len(pool)]
-        if (round(float(t), 2), sfx) in existing:
-            continue
-        cues.append({"sfx": sfx, "t": round(float(t), 3), "src": "key_moment"})
-        added += 1
-    cues.sort(key=lambda c: float(c.get("t", 0.0)))
-    with open(sfx_cues_path, "w", encoding="utf-8") as fh:
-        json.dump(cues, fh, ensure_ascii=False, indent=2)
-    return added
 
 
 def _inject_light_overlay_sfx(sfx_cues_path: str, light_times: list) -> int:
