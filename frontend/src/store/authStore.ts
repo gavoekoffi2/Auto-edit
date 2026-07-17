@@ -8,6 +8,9 @@ interface User {
   effective_plan?: string
   subscription_expires_at?: string | null
   is_admin?: boolean
+  is_super_admin?: boolean
+  video_duration_limit_s?: number | null
+  effective_video_duration_limit_s?: number | null
 }
 
 interface AuthState {

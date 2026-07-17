@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import String, DateTime, Enum as SAEnum, Boolean
+from sqlalchemy import String, DateTime, Enum as SAEnum, Boolean, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -30,6 +30,9 @@ class User(Base):
         DateTime(timezone=True), nullable=True
     )
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    is_super_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # NULL = règle du plan, 0 = illimité, valeur positive = secondes max.
+    video_duration_limit_s: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True, server_default="true")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utc_now, nullable=False

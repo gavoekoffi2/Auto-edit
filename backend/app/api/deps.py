@@ -74,3 +74,13 @@ async def get_current_admin(current_user: User = Depends(get_current_user)) -> U
             detail="Admin access required",
         )
     return current_user
+
+
+async def get_current_super_admin(current_user: User = Depends(get_current_user)) -> User:
+    configured_founder = current_user.email.lower() in settings.admin_email_set
+    if not (getattr(current_user, "is_super_admin", False) or configured_founder):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super administrator access required",
+        )
+    return current_user

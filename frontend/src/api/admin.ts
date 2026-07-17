@@ -8,7 +8,10 @@ export interface AdminUser {
   effective_plan: string
   subscription_expires_at: string | null
   is_admin: boolean
+  is_super_admin: boolean
   is_active: boolean
+  video_duration_limit_s: number | null
+  effective_video_duration_limit_s: number | null
   created_at: string
   videos_count: number
   jobs_count: number
@@ -44,6 +47,7 @@ export interface GrantSubscriptionPayload {
   full_name?: string | null
   is_admin?: boolean | null
   is_active?: boolean | null
+  video_duration_limit_minutes?: number | null
 }
 
 export interface GrantSubscriptionResult {

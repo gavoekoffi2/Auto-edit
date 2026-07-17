@@ -18,6 +18,7 @@ from app.models.user import User
 from app.models.video import Video
 from app.services.auth import hash_password
 from app.services.subscriptions import effective_plan
+from app.services.plans import effective_video_duration_limit_s
 
 router = APIRouter()
 Plan = Literal["free", "pro", "enterprise"]
@@ -31,7 +32,10 @@ class AdminUserResponse(BaseModel):
     effective_plan: str
     subscription_expires_at: datetime | None = None
     is_admin: bool
+    is_super_admin: bool
     is_active: bool
+    video_duration_limit_s: int | None = None
+    effective_video_duration_limit_s: int | None = None
     created_at: datetime
     videos_count: int = 0
     jobs_count: int = 0
@@ -72,6 +76,12 @@ class GrantSubscriptionRequest(BaseModel):
     full_name: str | None = Field(default=None, max_length=255)
     is_admin: bool | None = None
     is_active: bool | None = None
+    video_duration_limit_minutes: int | None = Field(
+        default=None,
+        ge=0,
+        le=10080,
+        description="NULL = règle du plan, 0 = illimité, sinon durée max par vidéo en minutes.",
+    )
 
     @field_validator("email")
     @classmethod
@@ -144,7 +154,10 @@ async def _to_admin_response(db: AsyncSession, user: User) -> AdminUserResponse:
         effective_plan=effective_plan(user),
         subscription_expires_at=user.subscription_expires_at,
         is_admin=bool(user.is_admin),
+        is_super_admin=bool(getattr(user, "is_super_admin", False)),
         is_active=bool(user.is_active),
+        video_duration_limit_s=getattr(user, "video_duration_limit_s", None),
+        effective_video_duration_limit_s=effective_video_duration_limit_s(user, clips=True),
         created_at=user.created_at,
         **counts,
     )
@@ -246,6 +259,11 @@ async def grant_subscription(
         user.is_admin = data.is_admin
     if data.is_active is not None:
         user.is_active = data.is_active
+    if "video_duration_limit_minutes" in data.model_fields_set:
+        user.video_duration_limit_s = (
+            None if data.video_duration_limit_minutes is None
+            else data.video_duration_limit_minutes * 60
+        )
     user.updated_at = _now()
     await db.flush()
 

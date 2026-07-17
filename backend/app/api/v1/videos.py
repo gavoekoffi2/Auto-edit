@@ -20,6 +20,7 @@ from app.services.auth import decode_token
 from app.services.storage import save_upload, get_absolute_path, get_video_duration
 from app.config import settings
 from app.services.subscriptions import effective_plan
+from app.services.plans import effective_video_duration_limit_s
 
 logger = logging.getLogger(__name__)
 
@@ -87,8 +88,9 @@ async def upload_video(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Filename is required",
         )
-
-    current_plan = effective_plan(current_user)
+    # Check monthly limit for free users. Le fondateur est toujours Enterprise
+    # effectif afin qu'aucun quota mensuel ne puisse le bloquer.
+    current_plan = "enterprise" if bool(getattr(current_user, "is_super_admin", False)) else effective_plan(current_user)
 
     # Check monthly video quota for free users
     if current_plan == "free":
@@ -126,30 +128,18 @@ async def upload_video(
     abs_path = get_absolute_path(relative_path)
     duration = get_video_duration(abs_path)
 
-    # Check duration limits
-    if duration is not None and current_plan == "free":
-        if duration > settings.MAX_VIDEO_DURATION_FREE:
-            # Clean up uploaded file
-            try:
-                os.unlink(abs_path)
-            except OSError:
-                pass
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Free plan limited to {settings.MAX_VIDEO_DURATION_FREE // 60} min videos. "
-                       f"Your video is {duration / 60:.1f} min. Upgrade to Pro.",
-            )
-    elif duration is not None and current_plan == "pro":
-        if duration > settings.MAX_VIDEO_DURATION_PRO:
-            try:
-                os.unlink(abs_path)
-            except OSError:
-                pass
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Pro plan limited to {settings.MAX_VIDEO_DURATION_PRO // 60} min videos. "
-                       f"Upgrade to Enterprise for unlimited.",
-            )
+    # Limite centrale: super-admin/Enterprise illimités, ou quota personnalisé.
+    duration_limit_s = effective_video_duration_limit_s(current_user, clips=False)
+    if duration is not None and duration_limit_s is not None and duration > duration_limit_s:
+        try:
+            os.unlink(abs_path)
+        except OSError:
+            pass
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(f"Ce compte accepte des vidéos de {duration_limit_s / 60:g} min maximum. "
+                    f"Cette vidéo dure {duration / 60:.1f} min."),
+        )
 
     video = Video(
         user_id=current_user.id,

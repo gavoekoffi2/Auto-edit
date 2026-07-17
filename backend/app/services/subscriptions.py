@@ -35,4 +35,4 @@ def effective_plan(user: User) -> str:
 
 
 def has_unlimited_access(user: User) -> bool:
-    return effective_plan(user) == "enterprise"
+    return bool(getattr(user, "is_super_admin", False)) or effective_plan(user) == "enterprise"

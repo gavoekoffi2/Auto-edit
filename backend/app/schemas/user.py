@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Optional
 
 from app.services.subscriptions import effective_plan
+from app.services.plans import effective_video_duration_limit_s
 
 
 class UserCreate(BaseModel):
@@ -60,6 +61,9 @@ class UserResponse(BaseModel):
     effective_plan: str
     subscription_expires_at: Optional[datetime] = None
     is_admin: bool = False
+    is_super_admin: bool = False
+    video_duration_limit_s: Optional[int] = None
+    effective_video_duration_limit_s: Optional[int] = None
     created_at: datetime
 
     @classmethod
@@ -73,6 +77,9 @@ class UserResponse(BaseModel):
                 "effective_plan": effective_plan(obj),
                 "subscription_expires_at": obj.subscription_expires_at,
                 "is_admin": bool(getattr(obj, "is_admin", False)),
+                "is_super_admin": bool(getattr(obj, "is_super_admin", False)),
+                "video_duration_limit_s": getattr(obj, "video_duration_limit_s", None),
+                "effective_video_duration_limit_s": effective_video_duration_limit_s(obj),
                 "created_at": obj.created_at,
             }
             return super().model_validate(data, *args, **kwargs)

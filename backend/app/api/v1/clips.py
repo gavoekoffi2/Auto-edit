@@ -34,8 +34,7 @@ from app.models.user import User
 from app.models.video import Video
 from app.schemas.job import ClipsCreate, ClipsRenderRequest, JobResponse
 from app.services.errors import http_error
-from app.services.plans import rules_for
-from app.services.subscriptions import effective_plan
+from app.services.plans import rules_for_user, effective_video_duration_limit_s
 from app.services.video_download import SourceURLError, validate_source_url
 from app.services.storage import get_absolute_path
 
@@ -58,7 +57,7 @@ async def _lock_user_and_check_quotas(
     limite (check-then-create atomique).
     """
     await db.execute(select(User.id).where(User.id == user.id).with_for_update())
-    rules = rules_for(effective_plan(user))
+    rules = rules_for_user(user)
 
     if rules.max_concurrent_jobs is not None:
         active = (await db.execute(
@@ -94,7 +93,8 @@ async def create_clips_job(
     current_user: User = Depends(get_current_user),
 ):
     """Étape 1 — analyse: import + transcription + proposition des extraits."""
-    rules = rules_for(effective_plan(current_user))
+    rules = rules_for_user(current_user)
+    source_duration_limit_s = effective_video_duration_limit_s(current_user, clips=True)
 
     # ---- Résolution de la source (URL publique ou vidéo uploadée) ----------
     source_url = None
@@ -132,7 +132,8 @@ async def create_clips_job(
             raise http_error("VIDEO_NOT_FOUND", _request_id(request))
         if not os.path.exists(get_absolute_path(video.original_path)):
             raise http_error("FILE_EXPIRED", _request_id(request))
-        if (video.duration_s or 0) > rules.clips_max_source_duration_s:
+        if (source_duration_limit_s is not None
+                and (video.duration_s or 0) > source_duration_limit_s):
             raise http_error("SOURCE_TOO_LONG", _request_id(request))
         # Vidéo existante: pas de nouveau comptage mensuel (déjà comptée à
         # l'upload), mais la limite de jobs simultanés s'applique.
@@ -142,8 +143,9 @@ async def create_clips_job(
     if source_url:
         params["source_url"] = source_url
         # Le worker vérifie la durée AVANT téléchargement (probe yt-dlp) puis
-        # après téléchargement — la limite du plan voyage avec le job.
-        params["max_source_duration_s"] = rules.clips_max_source_duration_s
+        # après téléchargement — la limite effective voyage avec le job.
+        if source_duration_limit_s is not None:
+            params["max_source_duration_s"] = source_duration_limit_s
     if data.options is not None:
         opts = data.options.model_dump(exclude_none=True)
         if opts:
@@ -203,7 +205,7 @@ async def render_selected_clips(
     if not os.path.exists(get_absolute_path(video.original_path)):
         raise http_error("FILE_EXPIRED", _request_id(request))
 
-    rules = rules_for(effective_plan(current_user))
+    rules = rules_for_user(current_user)
     # Validation stricte des extraits côté serveur (bornes, durées, plan).
     from app.processing.clips_pipeline import validate_render_moments
     try:

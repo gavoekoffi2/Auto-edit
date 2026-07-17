@@ -45,9 +45,17 @@ function formatMoney(value: number) {
 }
 
 function planLabel(user: AdminUser) {
+  if (user.is_super_admin) return 'SUPER-ADMIN — SANS RESTRICTION'
   if (user.effective_plan !== user.plan) return `${user.plan.toUpperCase()} expiré → FREE`
   if (user.effective_plan === 'enterprise') return 'ENTERPRISE — ILLIMITÉ'
   return user.effective_plan.toUpperCase()
+}
+
+function videoLimitLabel(user: AdminUser) {
+  if (user.effective_video_duration_limit_s === null) return 'Vidéo : durée illimitée'
+  const hours = user.effective_video_duration_limit_s / 3600
+  if (hours < 1) return `Vidéo : ${Math.round(hours * 60)} min`
+  return `Vidéo : ${Number(hours.toFixed(2))} h`
 }
 
 function StatCard({ label, value, icon: Icon }: { label: string; value: string | number; icon: any }) {
@@ -76,6 +84,8 @@ export default function AdminDashboard() {
   const [email, setEmail] = useState('c1domefa@gmail.com')
   const [plan, setPlan] = useState<'free' | 'pro' | 'enterprise'>('enterprise')
   const [duration, setDuration] = useState('')
+  // Vide = règle du plan, 0 = illimité, valeur positive = heures par vidéo.
+  const [videoHours, setVideoHours] = useState('0')
   const [makeAdmin, setMakeAdmin] = useState(true)
   const [activateAccount, setActivateAccount] = useState(true)
   const [createIfMissing, setCreateIfMissing] = useState(true)
@@ -115,6 +125,9 @@ export default function AdminDashboard() {
     setSaving(true)
     try {
       const durationDays = duration.trim() ? Number(duration) : null
+      const videoDurationMinutes = videoHours.trim() === ''
+        ? null
+        : Math.round(Number(videoHours) * 60)
       const response = await grantSubscription({
         email,
         plan,
@@ -124,6 +137,7 @@ export default function AdminDashboard() {
         full_name: fullName.trim() || null,
         is_admin: makeAdmin,
         is_active: activateAccount,
+        video_duration_limit_minutes: videoDurationMinutes,
       })
       toast('success', response.message)
       setLastTemporaryPassword(response.temporary_password)
@@ -144,6 +158,7 @@ export default function AdminDashboard() {
     setEmail(user.email)
     setPlan(user.plan as 'free' | 'pro' | 'enterprise')
     setDuration('')
+    setVideoHours(user.video_duration_limit_s === null ? '' : String(user.video_duration_limit_s / 3600))
     setMakeAdmin(user.is_admin)
     setActivateAccount(user.is_active)
     setCreateIfMissing(false)
@@ -236,10 +251,24 @@ export default function AdminDashboard() {
           </select>
         </div>
         <div>
-          <label className="block text-sm text-dark-300 mb-2">Durée</label>
+          <label className="block text-sm text-dark-300 mb-2">Durée de l’accès</label>
           <select className="input w-full" value={duration} onChange={(e) => setDuration(e.target.value)}>
             {quickDurations.map((d) => <option key={d.label} value={d.value}>{d.label}</option>)}
           </select>
+        </div>
+        <div>
+          <label className="block text-sm text-dark-300 mb-2">Maximum par vidéo (heures)</label>
+          <input
+            className="input w-full"
+            type="number"
+            min="0"
+            max="168"
+            step="0.25"
+            value={videoHours}
+            onChange={(e) => setVideoHours(e.target.value)}
+            placeholder="Vide = règle du plan"
+          />
+          <p className="text-xs text-dark-500 mt-1">0 = durée illimitée · 1,5 = 1 h 30</p>
         </div>
 
         <div className="lg:col-span-3 flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
@@ -282,7 +311,8 @@ export default function AdminDashboard() {
                 <button onClick={() => fillUser(user)} className="text-left flex-1">
                   <div className="font-semibold flex flex-wrap items-center gap-2">
                     {user.email}
-                    {user.is_admin && <span className="text-xs px-2 py-1 rounded-full bg-primary-500/15 text-primary-300">ADMIN</span>}
+                    {user.is_super_admin && <span className="text-xs px-2 py-1 rounded-full bg-amber-500/15 text-amber-200">FONDATEUR</span>}
+                    {user.is_admin && !user.is_super_admin && <span className="text-xs px-2 py-1 rounded-full bg-primary-500/15 text-primary-300">ADMIN</span>}
                     {!user.is_active && <span className="text-xs px-2 py-1 rounded-full bg-red-500/15 text-red-300">BLOQUÉ</span>}
                   </div>
                   <div className="text-sm text-dark-500 mt-1">
@@ -291,6 +321,7 @@ export default function AdminDashboard() {
                 </button>
                 <div className="flex flex-wrap gap-3 text-sm">
                   <span className="flex items-center gap-1 text-accent-300"><Crown className="w-4 h-4" /> {planLabel(user)}</span>
+                  <span className="flex items-center gap-1 text-primary-200"><Video className="w-4 h-4" /> {videoLimitLabel(user)}</span>
                   <span className="flex items-center gap-1 text-dark-300"><Calendar className="w-4 h-4" /> {formatExpiry(user.subscription_expires_at)}</span>
                   <span className={user.is_active ? 'text-emerald-400 flex items-center gap-1' : 'text-red-400 flex items-center gap-1'}>
                     {user.is_active ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
