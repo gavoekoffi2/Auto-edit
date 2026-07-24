@@ -110,17 +110,35 @@ STROKE_W = 14                      # doodle ink width (px)
 #   diagonal_split   the frame is cut by a diagonal: illustration on one
 #                     side, headline running along the cut on the other,
 #                     a single bright diagonal seam sweeping slowly
+#   circle_spot      the illustration is masked in a big CIRCLE (spotlight)
+#                     with an accent orbit ring, headline below — breaks the
+#                     "square panel" monotony entirely
+#   polaroid_tilt    instant-photo look: white-framed tilted polaroid card,
+#                     headline hand-written under the photo, drifting
+#                     confetti in the background
+#   arch_gate        the illustration lives in an ARCH (rounded-top portal),
+#                     headline + sketch circle under the gate, faint rays
 #
-# Eight structurally different compositions means a video with several
-# motion-design beats can genuinely ALTERNATE between them instead of
-# settling on one template for its whole length — and across videos the
+# Eleven structurally different compositions — and three different image
+# MASKS (rounded panel / circle / arch / polaroid) — mean a video with
+# several motion-design beats genuinely ALTERNATES between designs instead
+# of settling on one template for its whole length; across videos the
 # sequence is reshuffled (seeded by the spoken content) so two edits rarely
 # walk through the layouts in the same order either.
 # --------------------------------------------------------------------------- #
 LAYOUTS = [
     "stage_center", "split_panel", "badge_top", "fullbleed_frame",
     "corner_stack", "ticker_strip", "frame_card", "diagonal_split",
+    "circle_spot", "polaroid_tilt", "arch_gate",
 ]
+
+# The illustration MASK each layout uses (default: rounded panel). This is
+# what kills the "toujours un carré avec l'image dedans" repetition.
+LAYOUT_ILLU_SHAPES = {
+    "circle_spot": "circle",
+    "polaroid_tilt": "polaroid",
+    "arch_gate": "arch",
+}
 
 
 def _layout_sequence(seed_text: str, n: int) -> List[str]:
@@ -568,6 +586,42 @@ def _diagonal_seam_layer(t: float) -> Image.Image:
     return layer
 
 
+def _orbits_layer(t: float) -> Image.Image:
+    """circle_spot motif: slow rotating dashed orbit rings around the frame."""
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    cx, cy = W // 2, 640
+    spin = t * 0.25
+    for radius in (430, 560, 700):
+        n_dash = max(10, radius // 34)
+        for k in range(n_dash):
+            a0 = spin + k * (2 * math.pi / n_dash)
+            a1 = a0 + (math.pi / n_dash) * 0.9
+            pts = [(cx + radius * math.cos(a), cy + radius * math.sin(a))
+                   for a in (a0, (a0 + a1) / 2, a1)]
+            d.line(pts, fill=(255, 255, 255, 14), width=3)
+    return layer
+
+
+def _confetti_layer(t: float) -> Image.Image:
+    """polaroid_tilt motif: small tilted paper squares drifting downward."""
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    fall = (t * 26) % 260
+    for gy in range(-130, H, 260):
+        for gx in range(50, W, 190):
+            y = gy + fall
+            wob = 14.0 * math.sin(t * 0.7 + gx * 0.05)
+            x = gx + wob
+            s = 9 + (gx // 190 + gy // 260) % 3 * 4
+            ang = 0.6 * math.sin(t * 0.5 + gx)
+            ca, sa = math.cos(ang), math.sin(ang)
+            pts = [(x + ca * dx - sa * dy, y + sa * dx + ca * dy)
+                   for dx, dy in ((-s, -s), (s, -s), (s, s), (-s, s))]
+            d.polygon(pts, outline=(255, 255, 255, 16))
+    return layer
+
+
 def _bg_motif(layout: str, t: float) -> Image.Image:
     if layout == "split_panel":
         return _lines_layer(t)
@@ -583,6 +637,12 @@ def _bg_motif(layout: str, t: float) -> Image.Image:
         return _scanlines_layer(t)
     if layout == "diagonal_split":
         return _diagonal_seam_layer(t)
+    if layout == "circle_spot":
+        return _orbits_layer(t)
+    if layout == "polaroid_tilt":
+        return _confetti_layer(t)
+    if layout == "arch_gate":
+        return _rays_layer(t)
     return _dots_layer(t)
 
 
@@ -660,6 +720,12 @@ def _illu_box(kind: str, layout: str = "stage_center") -> Tuple[int, int, int, i
         return (160, 300, W - 160, 1220)      # bracketed card, room below for headline
     if layout == "diagonal_split":
         return (340, 360, W - 60, 1300)       # right-of-seam, headline runs along the cut
+    if layout == "circle_spot":
+        return (225, 330, W - 225, 330 + (W - 450))   # perfect circle, high
+    if layout == "polaroid_tilt":
+        return (190, 330, W - 190, 1140)      # instant-photo card, room below
+    if layout == "arch_gate":
+        return (240, 290, W - 240, 1190)      # tall arch portal
     return (120, 330, W - 120, 1130)          # stage_center (signature look)
 
 
@@ -895,6 +961,31 @@ def _draw_diagonal_caption(draw: ImageDraw.ImageDraw, target: Image.Image,
         ly += 130
 
 
+def _draw_polaroid_caption(draw: ImageDraw.ImageDraw, target: Image.Image,
+                           headline: str, t: float,
+                           box: Tuple[int, int, int, int]):
+    """polaroid_tilt layout: marker-style caption under the instant photo.
+
+    The kicker chip is drawn separately at the top of the frame; the rotated
+    card overflows the box a little, so the caption stays clear of its white
+    bottom margin.
+    """
+    p = _pop(t, T_HEADLINE, 0.4)
+    if p <= 0:
+        return
+    y = min(H - 500, box[3] + 210)
+    fh = _fit_font("Caveat", 128, headline, W - 220, min_size=64)
+    a = int(255 * clamp(p * 1.6))
+    draw.text((W // 2, y), headline, font=fh, anchor="mm",
+              fill=(255, 255, 255, a), stroke_width=3, stroke_fill=(0, 0, 0, min(a, 210)))
+    up = ease_out_cube(_linear(t, T_UNDERLINE, 0.35))
+    if up > 0:
+        l, tt, r, b = draw.textbbox((W // 2, y), headline, font=fh, anchor="mm")
+        width = (r - l) * 0.85 * up
+        draw.line([(W // 2 - width / 2, b + 18), (W // 2 + width / 2, b + 18)],
+                  fill=ACCENT, width=8)
+
+
 def _draw_sparkles(draw: ImageDraw.ImageDraw, t: float, box: Tuple[int, int, int, int]):
     x0, y0, x1, y1 = box
     spots = [(x0 + 30, y0 - 40, 1.30), (x1 - 40, y1 - 20, 1.55), (x0 + 80, y1 + 40, 1.80)]
@@ -973,9 +1064,21 @@ def _draw_spoken_line(draw: ImageDraw.ImageDraw, target: Image.Image,
     target.alpha_composite(layer)
 
 
+def _arch_mask(bw: int, bh: int) -> Image.Image:
+    """Rounded-top "portal" mask: half-circle top + straight sides/bottom."""
+    mask = Image.new("L", (bw, bh), 0)
+    dm = ImageDraw.Draw(mask)
+    dm.ellipse((0, 0, bw, min(bw, bh)), fill=255)
+    if bh > bw // 2:
+        dm.rectangle((0, bw // 2, bw, bh), fill=255)
+    return mask
+
+
 def _paste_illustration(canvas: Image.Image, illu: Image.Image, t: float, dur: float,
-                        box: Tuple[int, int, int, int]):
-    """AI illustration: rounded panel + glow border, pop + float + Ken Burns."""
+                        box: Tuple[int, int, int, int], shape: str = "rounded"):
+    """AI illustration with pop + float + Ken Burns, masked per-layout:
+    rounded panel (signature), full circle, arch portal, or tilted polaroid.
+    """
     x0, y0, x1, y1 = box
     bw, bh = x1 - x0, y1 - y0
     p = _pop(t, T_ILLU, 0.5)
@@ -989,10 +1092,58 @@ def _paste_illustration(canvas: Image.Image, illu: Image.Image, t: float, dur: f
     img = illu.resize((max(1, iw), max(1, ih)), _RESAMPLE)
     left, top = (img.width - bw) // 2, (img.height - bh) // 2
     img = img.crop((left, top, left + bw, top + bh))
-    img = _rounded_image(img)
 
     float_y = int(8 * math.sin(2 * math.pi * 0.4 * t))
     px, py = x0, y0 + float_y
+
+    if shape == "circle":
+        mask = Image.new("L", (bw, bh), 0)
+        ImageDraw.Draw(mask).ellipse((0, 0, bw, bh), fill=255)
+        cut = Image.new("RGBA", (bw, bh), (0, 0, 0, 0))
+        cut.paste(img, (0, 0), mask)
+        glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        dg = ImageDraw.Draw(glow)
+        for grow, alpha in ((26, 28), (14, 55)):
+            dg.ellipse((px - grow, py - grow, px + bw + grow, py + bh + grow),
+                       outline=(ACCENT[0], ACCENT[1], ACCENT[2], alpha), width=grow)
+        canvas.alpha_composite(glow)
+        canvas.alpha_composite(cut, (px, py))
+        d = ImageDraw.Draw(canvas)
+        d.ellipse((px, py, px + bw, py + bh), outline=ACCENT, width=6)
+        return
+
+    if shape == "arch":
+        mask = _arch_mask(bw, bh)
+        cut = Image.new("RGBA", (bw, bh), (0, 0, 0, 0))
+        cut.paste(img, (0, 0), mask)
+        canvas.alpha_composite(cut, (px, py))
+        d = ImageDraw.Draw(canvas)
+        d.arc((px, py, px + bw, py + bw), 180, 360, fill=ACCENT, width=6)
+        d.line([(px, py + bw // 2), (px, py + bh)], fill=ACCENT, width=6)
+        d.line([(px + bw, py + bw // 2), (px + bw, py + bh)], fill=ACCENT, width=6)
+        d.line([(px, py + bh), (px + bw, py + bh)], fill=GOLD, width=8)
+        return
+
+    if shape == "polaroid":
+        border, bottom = 26, 130
+        card = Image.new("RGBA", (bw + 2 * border, bh + border + bottom),
+                         (250, 248, 242, 255))
+        card.paste(img, (border, border))
+        # settle from a stronger tilt to the resting angle as it pops in
+        angle = -3.2 - 6.0 * (1.0 - min(1.0, p))
+        card = card.rotate(angle, expand=True, resample=Image.BICUBIC)
+        cw, ch = card.size
+        cx, cy = (x0 + x1) // 2, (y0 + y1) // 2 + float_y
+        # soft drop shadow under the tilted card
+        sh_a = card.split()[3].point(lambda v: int(v * 0.45))
+        zero = Image.new("L", (cw, ch), 0)
+        shadow = Image.merge("RGBA", (zero, zero, zero, sh_a)).filter(
+            ImageFilter.GaussianBlur(12))
+        canvas.alpha_composite(shadow, (cx - cw // 2 + 14, cy - ch // 2 + 20))
+        canvas.alpha_composite(card, (cx - cw // 2, cy - ch // 2))
+        return
+
+    img = _rounded_image(img)
     glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     dg = ImageDraw.Draw(glow)
     for grow, alpha in ((26, 28), (14, 55)):
@@ -1006,8 +1157,13 @@ def _paste_illustration(canvas: Image.Image, illu: Image.Image, t: float, dur: f
 
 
 def _draw_icon_drawing(target: Image.Image, icon: str, t: float, dur: float,
-                       box: Tuple[int, int, int, int]):
-    """Procedural fallback: the line-art icon draws itself, whiteboard style."""
+                       box: Tuple[int, int, int, int], shape: str = "rounded"):
+    """Procedural fallback: the line-art icon draws itself, whiteboard style.
+
+    The backing panel follows the layout's illustration mask (rounded panel,
+    circle, arch, or white polaroid card) so the fallback keeps the same
+    composition variety as the AI-illustrated scenes.
+    """
     strokes = ICONS.get(icon, ICONS[content.DEFAULT_ICON])
     p = ease_in_out(_linear(t, T_ILLU, 1.1))
     if p <= 0:
@@ -1016,15 +1172,29 @@ def _draw_icon_drawing(target: Image.Image, icon: str, t: float, dur: float,
     side = min(x1 - x0, y1 - y0) - 120
     cx, cy = (x0 + x1) // 2, (y0 + y1) // 2 + int(8 * math.sin(2 * math.pi * 0.4 * t))
     d = ImageDraw.Draw(target)
-    # soft panel behind the drawing
-    d.rounded_rectangle((x0, cy - (y1 - y0) // 2, x1, cy + (y1 - y0) // 2), radius=44,
-                        fill=(16, 20, 34, 235), outline=(255, 255, 255, 36), width=3)
+    top, bot = cy - (y1 - y0) // 2, cy + (y1 - y0) // 2
+    ink, accent = INK, ACCENT
+    if shape == "circle":
+        d.ellipse((x0, top, x1, bot), fill=(16, 20, 34, 235),
+                  outline=(255, 255, 255, 36), width=3)
+    elif shape == "arch":
+        bw = x1 - x0
+        d.pieslice((x0, top, x1, top + bw), 180, 360, fill=(16, 20, 34, 235))
+        d.rectangle((x0, top + bw // 2, x1, bot), fill=(16, 20, 34, 235))
+    elif shape == "polaroid":
+        # white instant-photo card -> draw the sketch in dark ink for contrast
+        d.rounded_rectangle((x0, top, x1, bot), radius=14,
+                            fill=(250, 248, 242, 245), outline=(210, 205, 195, 255), width=2)
+        ink = (30, 30, 34, 255)
+    else:
+        d.rounded_rectangle((x0, top, x1, bot), radius=44,
+                            fill=(16, 20, 34, 235), outline=(255, 255, 255, 36), width=3)
     ibox = (cx - side / 2, cy - side / 2, cx + side / 2, cy + side / 2)
-    _draw_strokes(d, _partial_strokes(strokes, p), ibox, INK, width=STROKE_W)
-    # accent re-draw: a second colored pass chases the white ink
+    _draw_strokes(d, _partial_strokes(strokes, p), ibox, ink, width=STROKE_W)
+    # accent re-draw: a second colored pass chases the first ink pass
     p2 = ease_in_out(_linear(t, T_ILLU + 0.35, 1.1))
     if p2 > 0:
-        _draw_strokes(d, _partial_strokes(strokes, p2 * 0.999), ibox, ACCENT, width=6)
+        _draw_strokes(d, _partial_strokes(strokes, p2 * 0.999), ibox, accent, width=6)
 
 
 def _draw_steps(draw: ImageDraw.ImageDraw, steps: List[str], t: float) -> List[float]:
@@ -1144,7 +1314,7 @@ def _apply_scene_transitions(canvas: Image.Image, scene: dict,
 def _compose_frame(scene: dict, illu: Optional[Image.Image], stage: Image.Image,
                    t: float, dur: float) -> Image.Image:
     kind = scene.get("kind", "idea")
-    # The 4 distinct layouts (see LAYOUTS) only apply to plain "idea" beats —
+    # The distinct layouts (see LAYOUTS) only apply to plain "idea" beats —
     # steps/number scenes keep their own bespoke composition (pills/counter)
     # so those stay legible regardless of the layout rotation.
     layout = scene.get("layout", "stage_center") if kind == "idea" else "stage_center"
@@ -1153,8 +1323,9 @@ def _compose_frame(scene: dict, illu: Optional[Image.Image], stage: Image.Image,
     canvas.alpha_composite(_bg_motif(layout, t))
 
     box = _illu_box(kind, layout)
+    shape = LAYOUT_ILLU_SHAPES.get(layout, "rounded") if kind == "idea" else "rounded"
     if illu is not None:
-        _paste_illustration(canvas, illu, t, dur, box)
+        _paste_illustration(canvas, illu, t, dur, box, shape=shape)
 
     # All ink (panels, doodles, text) goes on its own layer composited once:
     # ImageDraw REPLACES pixels (alpha included), so drawing semi-transparent
@@ -1163,7 +1334,8 @@ def _compose_frame(scene: dict, illu: Optional[Image.Image], stage: Image.Image,
     draw = ImageDraw.Draw(fg)
 
     if illu is None:
-        _draw_icon_drawing(fg, scene.get("icon", content.DEFAULT_ICON), t, dur, box)
+        _draw_icon_drawing(fg, scene.get("icon", content.DEFAULT_ICON), t, dur, box,
+                           shape=shape)
         draw = ImageDraw.Draw(fg)
 
     kicker = scene.get("kicker", "À RETENIR")
@@ -1202,6 +1374,21 @@ def _compose_frame(scene: dict, illu: Optional[Image.Image], stage: Image.Image,
             _draw_card_caption(draw, fg, kicker, scene.get("headline", ""), t, box)
         elif layout == "diagonal_split":
             _draw_diagonal_caption(draw, fg, kicker, scene.get("headline", ""), t)
+        elif layout == "circle_spot":
+            _draw_kicker(draw, fg, kicker, t)
+            draw = ImageDraw.Draw(fg)
+            hy = min(H - 470, box[3] + 170)
+            _draw_headline(draw, scene.get("headline", ""), t, hy)
+            _draw_arrows(draw, t, box)
+        elif layout == "polaroid_tilt":
+            _draw_kicker(draw, fg, kicker, t)
+            draw = ImageDraw.Draw(fg)
+            _draw_polaroid_caption(draw, fg, scene.get("headline", ""), t, box)
+        elif layout == "arch_gate":
+            _draw_kicker(draw, fg, kicker, t)
+            draw = ImageDraw.Draw(fg)
+            hy = min(H - 470, box[3] + 175)
+            _draw_headline(draw, scene.get("headline", ""), t, hy)
         else:  # stage_center — signature look
             _draw_kicker(draw, fg, kicker, t)
             draw = ImageDraw.Draw(fg)

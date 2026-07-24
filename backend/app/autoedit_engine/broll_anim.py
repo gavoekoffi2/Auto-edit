@@ -4,13 +4,14 @@ STEP 6 (b) — B-roll animation (PIL -> ProRes 4444 RGBA).
 Each AI image becomes a full-frame cinematic clip that sits ABOVE the graphics
 during the "ballotage" (speaker -> B-roll full frame ~3 s -> speaker).
 
-Entrances cycle in this exact order:
-    punch / slide_r / slide_l / rise / glitch / flash / transition / swoosh_up
+Entrances cycle through config.BROLL_ENTRANCES (sober by product decision:
+rise / punch), and the PRESENTATION design rotates per video through
+config.BROLL_FRAME_STYLES (brackets / polaroid / circle / fullbleed) so two
+montages never frame their images the same way.
 
 Common to every clip:
   * blurred, dimmed background plate (GaussianBlur r=40, brightness 0.45x)
   * continuous Ken Burns (kb=0.10) for the whole clip
-  * CYAN corner brackets + a gold chip label (y ~ 250)
   * alpha fade 0.13 s in / 0.20 s out
   * 3.0 s standard (3.2 s for wide images)
 
@@ -136,10 +137,63 @@ def _white_flash(intensity: float) -> Image.Image:
 
 
 # --------------------------------------------------------------------------- #
+# frame styles — HOW the image is presented (rotated per video so two montages
+# never frame their B-roll the same way). See config.BROLL_FRAME_STYLES.
+# --------------------------------------------------------------------------- #
+def _prepare_main(src: Image.Image, frame_style: str) -> Image.Image:
+    """Bake the per-style presentation into the main image once per clip."""
+    if frame_style == "fullbleed":
+        return _cover(src, W, H)
+    if frame_style == "circle":
+        side = min(W - 2 * MARGIN - 40, H - 2 * MARGIN - 500)
+        img = _cover(src, side, side)
+        mask = Image.new("L", (side, side), 0)
+        ImageDraw.Draw(mask).ellipse((0, 0, side, side), fill=255)
+        out = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+        out.paste(img, (0, 0), mask)
+        ring = ImageDraw.Draw(out)
+        ring.ellipse((3, 3, side - 3, side - 3), outline=CYAN, width=7)
+        return out
+    if frame_style == "polaroid":
+        img = _fit(src, W - 2 * MARGIN - 140, H - 2 * MARGIN - 560)
+        border, bottom = 30, 140
+        card = Image.new("RGBA", (img.width + 2 * border, img.height + border + bottom),
+                         (250, 248, 242, 255))
+        card.paste(img, (border, border))
+        return card.rotate(-3.0, expand=True, resample=Image.BICUBIC)
+    return _fit(src, W - 2 * MARGIN - 40, H - 2 * MARGIN - 360)
+
+
+def _fullbleed_caption(canvas: Image.Image, label: str, reveal: float):
+    """fullbleed style: bottom gradient + bold label bar instead of the chip."""
+    grad_h = 520
+    grad = Image.new("L", (1, grad_h))
+    for y in range(grad_h):
+        grad.putpixel((0, y), int(200 * (y / grad_h) ** 1.5))
+    zero_rgb = Image.new("L", (W, grad_h), 0)
+    a = grad.resize((W, grad_h))
+    shade = Image.merge("RGBA", (zero_rgb, zero_rgb, zero_rgb, a))
+    canvas.alpha_composite(shade, (0, H - grad_h))
+    if not label:
+        return
+    d = ImageDraw.Draw(canvas)
+    font = load_font("Anton", 66)
+    l, t, r, b = d.textbbox((0, 0), label.upper(), font=font)
+    x0, y0 = 80, H - 300
+    bar_w = int((r - l) * clamp(reveal))
+    if bar_w > 4:
+        d.rectangle((x0, y0 + (b - t) + 22, x0 + bar_w, y0 + (b - t) + 32), fill=GOLD)
+    a_txt = int(255 * clamp(reveal * 1.4))
+    d.text((x0 - l, y0 - t), label.upper(), font=font,
+           fill=(255, 255, 255, a_txt), stroke_width=3, stroke_fill=(0, 0, 0, min(a_txt, 220)))
+
+
+# --------------------------------------------------------------------------- #
 # per-frame composition
 # --------------------------------------------------------------------------- #
 def _compose_frame(main: Image.Image, plate: Image.Image, label: str,
-                   entrance: str, t: float, dur: float) -> Image.Image:
+                   entrance: str, t: float, dur: float,
+                   frame_style: str = "brackets") -> Image.Image:
     ep = clamp(t / ENTRANCE_DUR)
     e = ease_out_cube(ep)
     kb = 1.0 + config.BROLL_KB * ease_in_out(clamp(t / dur))   # continuous Ken Burns
@@ -210,9 +264,17 @@ def _compose_frame(main: Image.Image, plate: Image.Image, label: str,
     py = (H - sh) // 2 + off_y
     canvas.alpha_composite(frame_main, (px, py))
 
-    draw = ImageDraw.Draw(canvas)
-    _brackets(draw)
-    _chip(canvas, label)
+    if frame_style == "fullbleed":
+        _fullbleed_caption(canvas, label, ease_out_cube(clamp((t - 0.15) / 0.45)))
+    elif frame_style == "polaroid":
+        # the white card carries the presentation — only the label chip on top
+        _chip(canvas, label)
+    elif frame_style == "circle":
+        _chip(canvas, label)
+    else:
+        draw = ImageDraw.Draw(canvas)
+        _brackets(draw)
+        _chip(canvas, label)
 
     if sweep:
         canvas.alpha_composite(_light_sweep(ep))
@@ -229,32 +291,56 @@ def _compose_frame(main: Image.Image, plate: Image.Image, label: str,
 
 
 def render_broll(image_path: str, out_path: str, label: str = "",
-                 entrance: str = "punch", fps: int = config.FPS) -> float:
+                 entrance: str = "punch", fps: int = config.FPS,
+                 frame_style: str = "brackets") -> float:
     """Render the clip; returns its duration in seconds."""
     src = Image.open(image_path).convert("RGBA")
     is_wide = src.width >= src.height
     dur = config.BROLL_DURATION_WIDE if is_wide else config.BROLL_DURATION
 
     plate = _background_plate(src)
-    main = _fit(src, W - 2 * MARGIN - 40, H - 2 * MARGIN - 360)  # leave room for chip/brackets
+    main = _prepare_main(src, frame_style)
 
     n_frames = max(1, int(round(dur * fps)))
     with ProResPipe(out_path, fps=fps) as pipe:
         for fi in range(n_frames):
-            frame = _compose_frame(main, plate, label, entrance, fi / fps, dur)
+            frame = _compose_frame(main, plate, label, entrance, fi / fps, dur,
+                                   frame_style=frame_style)
             pipe.write(frame)
     return dur
+
+
+def _video_frame_styles(images: List[dict]) -> List[str]:
+    """Per-video rotation of the presentation designs.
+
+    Seeded by the images' ids/labels so a given job is reproducible while
+    different montages START on a different design and cycle through all of
+    them — two videos never frame their B-roll the same way.
+    """
+    import hashlib
+    styles = list(getattr(config, "BROLL_FRAME_STYLES", ["brackets"]))
+    if not styles:
+        return ["brackets"] * len(images)
+    seed = "|".join(str(it.get("id", "")) + str(it.get("label", "")) for it in images)
+    h = int(hashlib.md5(seed.encode("utf-8")).hexdigest(), 16)
+    offset = h % len(styles)
+    return [styles[(offset + i) % len(styles)] for i in range(len(images))]
 
 
 def render_all(images: List[dict], outdir: str) -> List[dict]:
     os.makedirs(outdir, exist_ok=True)
     out: List[dict] = []
+    frame_styles = _video_frame_styles(images)
     for i, item in enumerate(images):
         entrance = item.get("entrance") or config.BROLL_ENTRANCES[i % len(config.BROLL_ENTRANCES)]
+        frame_style = item.get("frame_style") or frame_styles[i]
         path = os.path.join(outdir, f"br_{item.get('id', f'{i:03d}')}.mov")
-        dur = render_broll(item["image"], path, label=item.get("label", ""), entrance=entrance)
-        out.append({**item, "entrance": entrance, "mov": path, "duration": round(dur, 3)})
-        print(f"[broll_anim] {item.get('id')} {entrance:10s} ({dur:.1f}s) -> {path}")
+        dur = render_broll(item["image"], path, label=item.get("label", ""),
+                           entrance=entrance, frame_style=frame_style)
+        out.append({**item, "entrance": entrance, "frame_style": frame_style,
+                    "mov": path, "duration": round(dur, 3)})
+        print(f"[broll_anim] {item.get('id')} {entrance:10s} {frame_style:9s} "
+              f"({dur:.1f}s) -> {path}")
     return out
 
 

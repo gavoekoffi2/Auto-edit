@@ -31,6 +31,12 @@ VALID_MODES = {
     "pill_editorial",
     "neon_hype",
     "handwritten_note",
+    # Style signature (défaut produit: images IA 3D + motion design varié) et
+    # nouveaux styles viraux sélectionnables.
+    "signature_3d",
+    "beast_impact",
+    "mint_wave",
+    "bangers_comic",
 }
 VALID_PIPELINE_VERSIONS = {"v1", "v2"}
 VALID_IMAGE_PROVIDERS = {"openrouter", "replicate", "stability", "noop"}

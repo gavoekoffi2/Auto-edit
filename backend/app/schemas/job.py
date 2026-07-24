@@ -14,6 +14,8 @@ VALID_BROLL_DEMOGRAPHICS = {"african", "caucasian", "global"}
 VALID_MOTION_PRESETS = {
     "clean_fintech", "neon_social", "african_premium",
     "minimal_creator", "kinetic_education",
+    # Nouvelles familles en rotation (variété visuelle entre montages)
+    "sunset_vibes", "electric_lime",
     # Familles des styles Captions AI (réservées aux styles qui les demandent)
     "editorial_paper", "sketch_notes",
 }

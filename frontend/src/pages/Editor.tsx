@@ -30,18 +30,71 @@ interface VideoMeta {
 }
 
 // Fallback statique utilisé si l'endpoint /jobs/modes est indisponible. Le
-// PREMIER mode est le défaut produit : le montage créateur économique (rapide,
-// non bloquant, sans dépendre des images IA).
+// PREMIER mode est le défaut produit : le style Signature 3D (images IA 3D +
+// motion design varié + sous-titres karaoké lisibles). Le mode économique
+// sans images reste sélectionnable plus bas, mais n'est plus le défaut.
 const FALLBACK_MODES: ModeDescriptor[] = [
   {
-    id: 'credit_saver_creator_edit',
-    name: 'Montage créateur économique',
-    icon: '⚡',
+    id: 'signature_3d',
+    name: 'Signature 3D (recommandé)',
+    icon: '✨',
     description:
-      'Recommandé MVP : silences coupés, captions, zooms, flashs caméra, SFX, ' +
-      'transitions et motion design — sans dépendre des images IA.',
+      'Le montage vedette : illustrations 3D uniques par vidéo, scènes motion design ' +
+      'qui changent de composition (cercle, polaroid, arche…), B-roll IA, sous-titres ' +
+      'karaoké jaunes, SFX et transitions lumineuses.',
     pipeline: 'v2',
     default: true,
+    defaults: {
+      remove_silence: true, dynamic_captions: true, ai_broll: true,
+      motion_design: true,
+      music: true, sfx: true, vertical_9_16: true, final_cta: true,
+      visual_mode: 'auto_fallback',
+      subtitle_template: 'tiktok_yellow',
+      broll_style: 'tiktok_viral', broll_demographic: 'african',
+    },
+  },
+  {
+    id: 'beast_impact',
+    name: 'Impact viral',
+    icon: '🔥',
+    description:
+      'Sous-titres MAJUSCULES massifs, mot actif rouge avec glow, mots-clés glitch ' +
+      'géants — le style rétention maximale des plus gros créateurs.',
+    pipeline: 'v2',
+    defaults: {
+      remove_silence: true, dynamic_captions: true, ai_broll: true,
+      motion_design: true,
+      music: true, sfx: true, vertical_9_16: true, final_cta: true,
+      visual_mode: 'auto_fallback',
+      subtitle_template: 'beast_impact',
+      broll_style: 'tiktok_viral', broll_demographic: 'african',
+    },
+  },
+  {
+    id: 'mint_wave',
+    name: 'Menthe fraîche',
+    icon: '🌿',
+    description:
+      'Pilule sombre arrondie, karaoké progressif (mot actif menthe, mots à venir ' +
+      'estompés) — doux, premium et ultra lisible.',
+    pipeline: 'v2',
+    defaults: {
+      remove_silence: true, dynamic_captions: true, ai_broll: true,
+      motion_design: true,
+      music: true, sfx: true, vertical_9_16: true, final_cta: true,
+      visual_mode: 'auto_fallback',
+      subtitle_template: 'mint_wave',
+      broll_style: 'tiktok_viral', broll_demographic: 'african',
+    },
+  },
+  {
+    id: 'credit_saver_creator_edit',
+    name: 'Économique (sans images IA)',
+    icon: '⚡',
+    description:
+      'Économise les crédits : silences coupés, captions, zooms, SFX, transitions ' +
+      'et motion design procédural — aucune image IA payante.',
+    pipeline: 'v2',
     defaults: {
       remove_silence: true, dynamic_captions: true, ai_broll: false,
       motion_design: true,
@@ -150,7 +203,7 @@ export default function Editor() {
       .then(({ modes: list, default_mode }) => {
         if (cancelled || list.length === 0) return
         setModes(list)
-        // Choix par défaut = montage créateur économique (default_mode renvoyé
+        // Choix par défaut = style Signature 3D (default_mode renvoyé
         // par l'API, sinon le mode marqué default, sinon le premier).
         const preferred =
           list.find((m) => m.id === default_mode) ??
@@ -564,8 +617,12 @@ export default function Editor() {
                   const brollLabel = n('broll_images') > 0
                     ? `${n('broll_images')} images B-roll IA`
                     : 'Images IA non requises (mode éco)'
+                  // `camera_flashes` n'existe plus dans le rapport moteur (les
+                  // flashs blancs ont été retirés) : on affiche les punch-zooms
+                  // synchronisés et les passages de lumière réels à la place.
                   const items: Array<[string, string, boolean]> = [
-                    ['⚡', `${n('camera_flashes')} flashs caméra`, n('camera_flashes') > 0],
+                    ['⚡', `${n('key_moment_punches')} punch-zooms`, n('key_moment_punches') > 0],
+                    ['💡', `${n('light_overlays')} passages de lumière`, n('light_overlays') > 0],
                     ['🎨', `${n('motion_scenes_rendered')} scènes motion design`, n('motion_scenes_rendered') > 0],
                     ['🔊', `${n('sfx_cues')} effets sonores`, n('sfx_cues') > 0],
                     ['🏷️', `${n('keyword_popups')} mots-clés popup`, n('keyword_popups') > 0],

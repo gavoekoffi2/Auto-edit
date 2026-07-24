@@ -63,7 +63,7 @@ async def list_modes():
 
     Endpoint public — le frontend l'utilise pour rendre dynamiquement le
     selecteur de modes sans dupliquer la liste cote TS. `default_mode` indique
-    le choix par defaut (montage createur economique).
+    le choix par defaut (style Signature 3D — images IA + motion design).
     """
     return {"modes": MODE_DEFINITIONS, "default_mode": DEFAULT_MODE}
 

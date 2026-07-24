@@ -3,17 +3,40 @@ from app.api.v1 import modes
 from app.config import VALID_MODES, VALID_VISUAL_MODES
 
 
-def test_default_mode_is_credit_saver_creator_edit():
-    assert modes.DEFAULT_MODE == "credit_saver_creator_edit"
+def test_default_mode_is_signature_3d():
+    """Décision produit: le défaut est le style vedette AVEC images IA 3D —
+    jamais le mode économique sans images, ni un style manuscrit."""
+    assert modes.DEFAULT_MODE == "signature_3d"
 
 
 def test_default_mode_is_first_and_flagged():
     first = modes.MODE_DEFINITIONS[0]
-    assert first["id"] == "credit_saver_creator_edit"
+    assert first["id"] == "signature_3d"
     assert first.get("default") is True
-    assert first["defaults"].get("visual_mode") == "credit_saver"
-    # MVP default must NOT require AI images.
-    assert first["defaults"].get("ai_broll") is False
+    # Le défaut tente les images IA mais ne bloque jamais (fallback propre).
+    assert first["defaults"].get("visual_mode") == "auto_fallback"
+    assert first["defaults"].get("ai_broll") is True
+    # Le défaut n'utilise JAMAIS les sous-titres manuscrits.
+    assert first["defaults"].get("subtitle_template") != "handwritten_note"
+
+
+def test_credit_saver_mode_still_selectable_but_not_default():
+    by_id = {m["id"]: m for m in modes.MODE_DEFINITIONS}
+    eco = by_id["credit_saver_creator_edit"]
+    assert eco.get("default") is not True
+    assert eco["defaults"].get("visual_mode") == "credit_saver"
+    assert eco["defaults"].get("ai_broll") is False
+
+
+def test_new_viral_styles_are_listed():
+    by_id = {m["id"]: m for m in modes.MODE_DEFINITIONS}
+    for style, tpl in (("beast_impact", "beast_impact"),
+                       ("mint_wave", "mint_wave"),
+                       ("bangers_comic", "bangers_fun")):
+        assert style in by_id, style
+        d = by_id[style]["defaults"]
+        assert d.get("subtitle_template") == tpl
+        assert d.get("visual_mode") == "auto_fallback"
 
 
 def test_legacy_ai_broll_mode_is_preserved_and_selectable():

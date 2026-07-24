@@ -8,11 +8,13 @@ export type VisualMode = 'ai_broll' | 'credit_saver' | 'auto_fallback'
 export type MotionPreset =
   | 'clean_fintech' | 'neon_social' | 'african_premium'
   | 'minimal_creator' | 'kinetic_education'
+  | 'sunset_vibes' | 'electric_lime'
   | 'editorial_paper' | 'sketch_notes'
 /** Templates de sous-titres animés du moteur. */
 export type SubtitleTemplate =
   | 'tiktok_yellow' | 'neon_pop' | 'bold_box' | 'gold_lux' | 'bangers_fun'
   | 'pill_editorial' | 'neon_hype' | 'handwritten_note'
+  | 'beast_impact' | 'mint_wave'
 
 export interface JobOptions {
   remove_silence?: boolean

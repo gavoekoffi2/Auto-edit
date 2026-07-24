@@ -9,6 +9,8 @@ def test_named_families_exist():
     assert names == {
         "clean_fintech", "neon_social", "african_premium",
         "minimal_creator", "kinetic_education",
+        # Nouvelles familles en rotation (variété visuelle entre montages)
+        "sunset_vibes", "electric_lime",
         # Familles des styles Captions AI (opt-in, hors rotation aléatoire)
         "editorial_paper", "sketch_notes",
     }

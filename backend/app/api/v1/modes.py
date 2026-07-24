@@ -11,22 +11,85 @@ from __future__ import annotations
 #   credit_saver  -> jamais d'image IA payante (MVP rapide, non bloquant)
 #   ai_broll      -> images IA / B-roll quand possible (ancien comportement)
 #   auto_fallback -> tente l'IA, retombe en économique si crédits finis/échec
+#
+# DÉCISION PRODUIT: le défaut est le style SIGNATURE (images IA 3D + motion
+# design varié + sous-titres karaoké lisibles). Jamais le mode économique sans
+# images ni le style manuscrit — ils restent sélectionnables plus bas.
 MODE_DEFINITIONS: list[dict] = [
     {
-        "id": "credit_saver_creator_edit",
-        "name": "Montage créateur économique",
-        "icon": "⚡",
+        "id": "signature_3d",
+        "name": "Signature 3D (recommandé)",
+        "icon": "✨",
         "description": (
-            "Recommandé MVP : silences coupés, captions, zooms, flashs caméra, "
-            "SFX, transitions et motion design — sans dépendre des images IA."
+            "Le montage vedette : illustrations 3D uniques par vidéo, scènes "
+            "motion design qui changent de composition (cercle, polaroid, "
+            "arche, plein cadre…), B-roll IA, sous-titres karaoké jaunes, "
+            "SFX et transitions lumineuses."
         ),
         "pipeline": "v2",
         "default": True,
         "defaults": {
-            "remove_silence": True, "dynamic_captions": True, "ai_broll": False,
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
             "motion_design": True,
             "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
-            "visual_mode": "credit_saver",
+            "visual_mode": "auto_fallback",
+            "subtitle_template": "tiktok_yellow",
+            "broll_style": "tiktok_viral", "broll_demographic": "african",
+        },
+    },
+    # --- Nouveaux styles viraux -----------------------------------------------
+    {
+        "id": "beast_impact",
+        "name": "Impact viral",
+        "icon": "🔥",
+        "description": (
+            "Sous-titres MAJUSCULES massifs, mot actif rouge avec glow, "
+            "mots-clés glitch géants — le style rétention maximale des plus "
+            "gros créateurs."
+        ),
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
+            "motion_design": True,
+            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
+            "visual_mode": "auto_fallback",
+            "subtitle_template": "beast_impact",
+            "broll_style": "tiktok_viral", "broll_demographic": "african",
+        },
+    },
+    {
+        "id": "mint_wave",
+        "name": "Menthe fraîche",
+        "icon": "🌿",
+        "description": (
+            "Pilule sombre arrondie, karaoké progressif (mot actif menthe, "
+            "mots à venir estompés) — doux, premium et ultra lisible."
+        ),
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
+            "motion_design": True,
+            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
+            "visual_mode": "auto_fallback",
+            "subtitle_template": "mint_wave",
+            "broll_style": "tiktok_viral", "broll_demographic": "african",
+        },
+    },
+    {
+        "id": "bangers_comic",
+        "name": "Comic pop",
+        "icon": "💥",
+        "description": (
+            "Sous-titres cartoon Bangers, mot actif cyan, énergie BD — fun et "
+            "punchy pour le divertissement."
+        ),
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
+            "motion_design": True,
+            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
+            "visual_mode": "auto_fallback",
+            "subtitle_template": "bangers_fun",
             "broll_style": "tiktok_viral", "broll_demographic": "african",
         },
     },
@@ -88,6 +151,24 @@ MODE_DEFINITIONS: list[dict] = [
             "visual_mode": "auto_fallback",
             "subtitle_template": "handwritten_note",
             "motion_preset": "sketch_notes",
+            "broll_style": "tiktok_viral", "broll_demographic": "african",
+        },
+    },
+    # --- Mode économique (plus le défaut: pas d'images IA, rendu plus simple) --
+    {
+        "id": "credit_saver_creator_edit",
+        "name": "Économique (sans images IA)",
+        "icon": "⚡",
+        "description": (
+            "Économise les crédits : silences coupés, captions, zooms, SFX, "
+            "transitions et motion design procédural — aucune image IA payante."
+        ),
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": False,
+            "motion_design": True,
+            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
+            "visual_mode": "credit_saver",
             "broll_style": "tiktok_viral", "broll_demographic": "african",
         },
     },

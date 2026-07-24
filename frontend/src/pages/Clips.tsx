@@ -17,8 +17,11 @@ import {
 import { uploadVideo, validateVideoFile, getStreamUrl } from '../api/videos'
 import { toast } from '../components/ui/Toast'
 
-/** Styles proposés pour les clips (sous-ensemble des modes de montage v2). */
+/** Styles proposés pour les clips (sous-ensemble des modes de montage v2).
+ * Le style Signature 3D vient en premier (défaut produit), les nouveaux styles
+ * viraux suivent, puis les styles Captions AI et l'économique. */
 const CLIP_STYLE_IDS = [
+  'signature_3d', 'beast_impact', 'mint_wave',
   'pill_editorial', 'neon_hype', 'handwritten_note',
   'credit_saver_creator_edit', 'tiktok_viral',
 ]

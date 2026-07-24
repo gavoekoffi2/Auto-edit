@@ -233,6 +233,16 @@ BROLL_EXITS = {
     "rise": "drop",             # redescend doucement (vertical)
 }
 BROLL_EXIT_DUR = 0.5            # seconds of exit motion before the cut
+
+# DESIGNS de présentation du B-roll — la MANIÈRE dont l'image s'affiche change
+# d'une vidéo à l'autre (rotation seedée par montage) pour que deux montages
+# ne présentent jamais leurs images dans le même cadre :
+#   brackets   crochets cyan + pastille dorée (look signature historique)
+#   polaroid   photo instantanée à cadre blanc, légèrement inclinée
+#   circle     image détourée en cercle + anneau accent (spotlight)
+#   fullbleed  image plein cadre, dégradé sombre + barre de titre en bas
+BROLL_FRAME_STYLES = ["brackets", "polaroid", "circle", "fullbleed"]
+
 BROLL_DURATION = 3.0           # standard clip length
 BROLL_DURATION_WIDE = 3.2      # wide images get a touch longer
 BROLL_KB = 0.10                # continuous Ken Burns amount over the whole clip
@@ -302,6 +312,30 @@ MOTION_STYLE_3D_PREFIXES = [
         "composition, studio HDRI lighting, redshift render quality."
         + _MOTION_3D_SUFFIX
     ),
+    (
+        "Stylised low-poly 3D art render, faceted geometric 3D shapes with "
+        "flat-shaded polygons, bold complementary color blocking, long soft "
+        "shadows, miniature game-art scene, crisp 3D studio lighting."
+        + _MOTION_3D_SUFFIX
+    ),
+    (
+        "3D toon-shaded render, cel-shaded CGI with bold dark outlines and "
+        "painterly textures, anime-movie 3D lighting, vivid saturated "
+        "palette, expressive stylised 3D scene with real depth and volume."
+        + _MOTION_3D_SUFFIX
+    ),
+    (
+        "Futuristic holographic 3D render, translucent iridescent glass and "
+        "chrome 3D objects, glowing neon wireframe accents, dark void studio "
+        "with cyan-magenta rim light, ray-traced 3D reflections."
+        + _MOTION_3D_SUFFIX
+    ),
+    (
+        "Handcrafted papercraft-style 3D render, layered paper and felt 3D "
+        "shapes with visible texture, soft studio daylight, gentle drop "
+        "shadows, cozy diorama depth, stop-motion movie still quality."
+        + _MOTION_3D_SUFFIX
+    ),
 ]
 
 # Vue nommée rétro-compatible utilisée par les audits et anciens appels. La
@@ -314,6 +348,10 @@ _MOTION_STYLE_3D_NAMES = (
     "photoreal_product_3d",
     "stylised_character_3d",
     "motion_graphics_3d",
+    "low_poly_3d",
+    "toon_shaded_3d",
+    "holographic_glass_3d",
+    "papercraft_3d",
 )
 MOTION_3D_STYLES = [
     {"name": name, "prefix": prefix, "refine": name.replace("_", " ")}
@@ -572,6 +610,29 @@ ASS_TEMPLATES = {
         "outline": "&H00303030", "outline_w": 2, "shadow": 3,
         "hl_scale": 118, "bold": -1,
     },
+    # ----- Nouveaux styles viraux (sélectionnables par l'utilisateur) --------
+    # "Impact viral": MAJUSCULES massives, mot actif ROUGE avec glow — le
+    # style des montages à rétention maximale (MrBeast / Hormozi).
+    "beast_impact": {
+        "font": "Anton", "size": 98,
+        "primary": "&H00FFFFFF", "highlight": "&H001414E8",   # white / hot red
+        "outline": "&H00000000", "outline_w": 6, "shadow": 3,
+        "hl_scale": 150, "bold": 0,
+        "uppercase": True, "glow": True,
+    },
+    # "Menthe fraîche": pilule sombre arrondie, karaoké progressif — les mots
+    # prononcés restent blancs, le mot actif passe menthe, les mots à venir
+    # sont estompés. Un look doux, premium, très lisible.
+    "mint_wave": {
+        "font": "Poppins", "size": 74,
+        "primary": "&H00FFFFFF",
+        "highlight": "&H00B4FF64",    # mint green (active word)
+        "future": "&H00787878",       # dimmed gray (upcoming words)
+        "outline": "&H00141410",      # near-black pill (BorderStyle=3 box)
+        "outline_w": 14, "shadow": 0,
+        "hl_scale": 122, "bold": -1, "box": True,
+        "progressive": True,
+    },
 }
 DEFAULT_TEMPLATE = "tiktok_yellow"
 
@@ -585,6 +646,8 @@ TEMPLATE_POPUP_THEMES = {
     "pill_editorial": "editorial_collage",
     "neon_hype": "neon_glitch",
     "handwritten_note": "sketch",
+    # Impact viral: le gros mot glitché colle à l'énergie des captions rouges.
+    "beast_impact": "neon_glitch",
 }
 DEFAULT_POPUP_THEME = "gold_chip"
 

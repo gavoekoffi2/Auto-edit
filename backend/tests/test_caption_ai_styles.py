@@ -41,6 +41,8 @@ def test_popup_theme_follows_template():
         "pill_editorial": "editorial_collage",
         "neon_hype": "neon_glitch",
         "handwritten_note": "sketch",
+        # Impact viral: gros mot glitché, cohérent avec les captions rouges.
+        "beast_impact": "neon_glitch",
     }
     # Les templates historiques gardent la pilule dorée.
     assert engine_config.TEMPLATE_POPUP_THEMES.get(

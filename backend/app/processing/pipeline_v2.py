@@ -172,6 +172,24 @@ for _style_mode, _style_tpl, _style_motion in (
         "motion_preset": _style_motion,
     }
 
+# --- Style signature (défaut produit) + nouveaux styles viraux ---------------
+# Tous générent des images IA (3D) quand une clé/crédits existent et retombent
+# proprement en économique sinon. `motion_preset` absent = la famille de
+# couleurs/compositions tourne d'une vidéo à l'autre (seed stable) — c'est ce
+# qui garantit que deux montages ne partagent jamais le même look.
+for _style_mode, _style_tpl in (
+    ("signature_3d", "tiktok_yellow"),
+    ("beast_impact", "beast_impact"),
+    ("mint_wave", "mint_wave"),
+    ("bangers_comic", "bangers_fun"),
+):
+    V2_MODE_PRESETS[_style_mode] = {
+        **V2_MODE_PRESETS["credit_saver_creator_edit"],
+        "ai_broll": True,
+        "visual_mode": "auto_fallback",
+        "subtitle_template": _style_tpl,
+    }
+
 
 ProgressFn = Callable[[int, str], None]
 
@@ -219,6 +237,10 @@ MODE_TO_TEMPLATE: dict[str, str] = {
     "pill_editorial": "pill_editorial",
     "neon_hype": "neon_hype",
     "handwritten_note": "handwritten_note",
+    "signature_3d": "tiktok_yellow",
+    "beast_impact": "beast_impact",
+    "mint_wave": "mint_wave",
+    "bangers_comic": "bangers_fun",
 }
 
 

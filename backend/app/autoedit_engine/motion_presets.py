@@ -74,6 +74,18 @@ PRESETS: List[MotionDesignPreset] = [
         accent=(255, 199, 64, 255), gold=(90, 170, 255, 255),
         shape_density=0.9, style="arrows_circles_underlines",
     ),
+    MotionDesignPreset(
+        name="sunset_vibes",
+        bg_top=(30, 12, 26), bg_bottom=(52, 20, 24),
+        accent=(255, 120, 90, 255), gold=(255, 205, 110, 255),
+        shape_density=0.65, style="warm_coral_amber",
+    ),
+    MotionDesignPreset(
+        name="electric_lime",
+        bg_top=(12, 16, 14), bg_bottom=(20, 30, 20),
+        accent=(190, 255, 80, 255), gold=(140, 130, 255, 255),
+        shape_density=0.8, style="lime_violet_energy",
+    ),
     # Réf. vidéo 1 (Captions AI) — collage éditorial: papier bleu froissé,
     # barres noires, blanc cassé. Sert le style "pill_editorial".
     MotionDesignPreset(
