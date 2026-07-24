@@ -41,6 +41,7 @@ except AttributeError:  # Pillow < 9.1
 
 from . import config
 from . import content
+from . import silhouettes
 from .fonts import load_font
 from .render_utils import ProResPipe, alpha_fade, clamp, ease_in_out, ease_out_back, ease_out_cube
 
@@ -166,6 +167,16 @@ BOARD_LAYOUTS = [
 # alternent avec les cartes nues pour que le décor lui-même ne devienne pas une
 # signature figée.
 BOARD_WAVE_LAYOUTS = {"board_sandwich", "board_collage", "board_showcase"}
+
+# Compositions qui accueillent bien une SILHOUETTE plein pied: elles montrent
+# l'illustration entière. Les autres la recadrent (haut ou bas de carte) ou la
+# déforment, ce qui couperait le personnage en deux.
+BOARD_SILHOUETTE_LAYOUTS = ["board_stage", "board_sandwich", "board_annotated",
+                            "board_showcase"]
+# Idem côté compositions génériques: seules celles au masque rectangulaire
+# gardent le personnage entier (le cercle/l'arche lui couperaient tête et pieds).
+GENERIC_SILHOUETTE_LAYOUTS = {"stage_center", "fullbleed_frame", "frame_card",
+                              "split_panel", "ticker_strip"}
 
 # Géométrie du board (px, cadre 1080x1920). La carte est elle-même un 9:16 et
 # s'arrête au-dessus de la bande des sous-titres (ZONE_SUBS_Y) pour ne jamais
@@ -1961,10 +1972,48 @@ def scene_events(scene: dict) -> dict:
     }
 
 
+def _silhouette_size(scene: dict) -> Optional[Tuple[int, int]]:
+    """Taille de la plaque silhouette pour cette scène, ou None si sa
+    composition la recadrerait mal (voir *_SILHOUETTE_LAYOUTS)."""
+    layout = scene.get("layout") or "stage_center"
+    if layout in BOARD_LAYOUTS:
+        if layout not in BOARD_SILHOUETTE_LAYOUTS:
+            return None
+        x0, y0, x1, y1 = BOARD_CARD
+    else:
+        if layout not in GENERIC_SILHOUETTE_LAYOUTS:
+            return None
+        x0, y0, x1, y1 = _illu_box(scene.get("kind", "idea"), layout)
+    return (max(1, x1 - x0), max(1, y1 - y0))
+
+
+def _silhouette_plate(scene: dict) -> Optional[Image.Image]:
+    """Illustration de repli VECTORIELLE: une silhouette « papercut lumineux »
+    posée sur une plaque claire, aux couleurs de la palette du style.
+
+    Elle remplace le dessin au trait quand la composition s'y prête — c'est
+    gratuit (aucun crédit image) et strictement reproductible.
+    """
+    size = _silhouette_size(scene)
+    if size is None:
+        return None
+    pose = scene.get("silhouette") or silhouettes.pose_for_icon(scene.get("icon"))
+    custom = silhouettes.load_custom_svg(pose, *size)
+    if custom is not None:
+        plate = Image.new("RGBA", size, silhouettes.PLATE)
+        plate.alpha_composite(custom)
+        return plate
+    # Col CHAUD + liseré FROID, comme sur la référence: ACCENT porte la teinte
+    # chaude de la palette, GOLD la seconde teinte (froide sur le board).
+    return silhouettes.render_plate(pose, size[0], size[1],
+                                    body=(13, 13, 16, 255), accent=ACCENT, rim=GOLD)
+
+
 def render_scene(scene: dict, out_path: str, fps: int = config.FPS) -> dict:
     """Render one motion-design scene to ProRes 4444; returns the enriched spec."""
     dur = float(scene.get("duration", config.MOTION_SCENE_DUR))
     illu: Optional[Image.Image] = None
+    silhouette_used: Optional[str] = None
     image_path = scene.get("image")
     if image_path and os.path.exists(image_path):
         try:
@@ -1972,6 +2021,14 @@ def render_scene(scene: dict, out_path: str, fps: int = config.FPS) -> dict:
         except OSError as exc:
             print(f"[motion_design] WARN cannot read {image_path}: {exc} "
                   f"-> procedural drawing", file=sys.stderr)
+    # Une silhouette n'est PAS une image IA: le rapport du job doit continuer à
+    # ne compter que les illustrations réellement payées.
+    ai_illustrated = illu is not None
+    if illu is None and scene.get("silhouette") is not False:
+        illu = _silhouette_plate(scene)
+        if illu is not None:
+            silhouette_used = (scene.get("silhouette")
+                               or silhouettes.pose_for_icon(scene.get("icon")))
 
     stage = (_board_base() if scene.get("layout") in BOARD_LAYOUTS
              else _stage_base())
@@ -1984,7 +2041,8 @@ def render_scene(scene: dict, out_path: str, fps: int = config.FPS) -> dict:
     if illu is None:
         events["draw"] = T_ILLU       # the drawing draws itself -> pencil SFX
     return {**scene, "mov": out_path, "duration": round(dur, 3),
-            "illustrated": illu is not None, "events": events}
+            "illustrated": ai_illustrated, "silhouette": silhouette_used,
+            "events": events}
 
 
 def render_all(scenes: List[dict], outdir: str, *, preset: Optional[str] = None,
@@ -2010,11 +2068,19 @@ def render_all(scenes: List[dict], outdir: str, *, preset: Optional[str] = None,
         # designs instead of repeating one template — the rotation is
         # reshuffled per video so different edits don't even share the same
         # layout order.
+        layout = layouts[i]
+        # Sans image IA, la scène sera illustrée par une SILHOUETTE vectorielle:
+        # on l'oriente alors vers une composition qui montre le personnage en
+        # entier (board_quote reste volontairement un beat purement typographique).
+        if (layout in BOARD_LAYOUTS and layout != "board_quote"
+                and layout not in BOARD_SILHOUETTE_LAYOUTS
+                and not scene.get("image")):
+            layout = BOARD_SILHOUETTE_LAYOUTS[i % len(BOARD_SILHOUETTE_LAYOUTS)]
         scene = {
             **scene,
             "variant_in": config.MOTION_ENTRANCES[i % len(config.MOTION_ENTRANCES)],
             "variant_out": config.MOTION_EXITS[i % len(config.MOTION_EXITS)],
-            "layout": layouts[i],
+            "layout": layout,
         }
         path = os.path.join(outdir, f"{scene['id']}.mov")
         try:
@@ -2024,7 +2090,12 @@ def render_all(scenes: List[dict], outdir: str, *, preset: Optional[str] = None,
                   file=sys.stderr)
             continue
         out.append(rendered)
-        src = "AI illustration" if rendered["illustrated"] else f"drawing '{scene.get('icon')}'"
+        if rendered["illustrated"]:
+            src = "AI illustration"
+        elif rendered.get("silhouette"):
+            src = f"silhouette '{rendered['silhouette']}'"
+        else:
+            src = f"drawing '{scene.get('icon')}'"
         print(f"[motion_design] {scene['id']} {scene.get('kind', 'idea'):7s} "
               f"({rendered['duration']:.1f}s, {src}) -> {path}")
     return out
