@@ -21,7 +21,7 @@ import { toast } from '../components/ui/Toast'
  * Le style Signature 3D vient en premier (défaut produit), les nouveaux styles
  * viraux suivent, puis les styles Captions AI et l'économique. */
 const CLIP_STYLE_IDS = [
-  'signature_3d', 'beast_impact', 'mint_wave',
+  'signature_3d', 'beast_impact', 'mint_wave', 'board_pitch',
   'pill_editorial', 'neon_hype', 'handwritten_note',
   'credit_saver_creator_edit', 'tiktok_viral',
 ]

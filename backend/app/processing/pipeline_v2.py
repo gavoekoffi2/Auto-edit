@@ -163,6 +163,7 @@ for _style_mode, _style_tpl, _style_motion in (
     ("pill_editorial", "pill_editorial", "editorial_paper"),
     ("neon_hype", "neon_hype", "neon_social"),
     ("handwritten_note", "handwritten_note", "sketch_notes"),
+    ("board_pitch", "board_serif", "board_pitch"),
 ):
     V2_MODE_PRESETS[_style_mode] = {
         **V2_MODE_PRESETS["credit_saver_creator_edit"],
@@ -241,6 +242,7 @@ MODE_TO_TEMPLATE: dict[str, str] = {
     "beast_impact": "beast_impact",
     "mint_wave": "mint_wave",
     "bangers_comic": "bangers_fun",
+    "board_pitch": "board_serif",
 }
 
 

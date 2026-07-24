@@ -620,6 +620,18 @@ ASS_TEMPLATES = {
         "hl_scale": 150, "bold": 0,
         "uppercase": True, "glow": True,
     },
+    # "Board éditorial": pilule vert-noir, texte crème, mot actif vert menthe —
+    # assorti au panneau vert du style board_pitch (réf. motion design 3D).
+    "board_serif": {
+        "font": "Poppins", "size": 68,
+        "primary": "&H00F3F5F2",      # crème (mots prononcés)
+        "highlight": "&H0096CA74",    # vert menthe (mot actif)
+        "future": "&H00909C96",       # crème estompée (mots à venir)
+        "outline": "&H0020261A",      # pilule vert très sombre (BorderStyle=3)
+        "outline_w": 15, "shadow": 0,
+        "hl_scale": 126, "bold": -1, "box": True,
+        "progressive": True,
+    },
     # "Menthe fraîche": pilule sombre arrondie, karaoké progressif — les mots
     # prononcés restent blancs, le mot actif passe menthe, les mots à venir
     # sont estompés. Un look doux, premium, très lisible.

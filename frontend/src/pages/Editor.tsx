@@ -88,6 +88,24 @@ const FALLBACK_MODES: ModeDescriptor[] = [
     },
   },
   {
+    id: 'board_pitch',
+    name: 'Board de présentation',
+    icon: '🟩',
+    description:
+      'Panneau vert sapin texturé, titres serif éditoriaux et pile de flyers fixes ; ' +
+      'une grande carte 9:16 rejoue chaque idée et les éléments glissent d\'une carte ' +
+      'à l\'autre — le look des vidéos publicitaires en motion design.',
+    pipeline: 'v2',
+    defaults: {
+      remove_silence: true, dynamic_captions: true, ai_broll: true,
+      motion_design: true,
+      music: true, sfx: true, vertical_9_16: true, final_cta: true,
+      visual_mode: 'auto_fallback',
+      subtitle_template: 'board_serif', motion_preset: 'board_pitch',
+      broll_style: 'tiktok_viral', broll_demographic: 'african',
+    },
+  },
+  {
     id: 'credit_saver_creator_edit',
     name: 'Économique (sans images IA)',
     icon: '⚡',

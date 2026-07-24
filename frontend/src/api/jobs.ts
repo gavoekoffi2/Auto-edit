@@ -9,12 +9,12 @@ export type MotionPreset =
   | 'clean_fintech' | 'neon_social' | 'african_premium'
   | 'minimal_creator' | 'kinetic_education'
   | 'sunset_vibes' | 'electric_lime'
-  | 'editorial_paper' | 'sketch_notes'
+  | 'editorial_paper' | 'sketch_notes' | 'board_pitch'
 /** Templates de sous-titres animés du moteur. */
 export type SubtitleTemplate =
   | 'tiktok_yellow' | 'neon_pop' | 'bold_box' | 'gold_lux' | 'bangers_fun'
   | 'pill_editorial' | 'neon_hype' | 'handwritten_note'
-  | 'beast_impact' | 'mint_wave'
+  | 'beast_impact' | 'mint_wave' | 'board_serif'
 
 export interface JobOptions {
   remove_silence?: boolean

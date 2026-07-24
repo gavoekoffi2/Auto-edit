@@ -34,7 +34,18 @@ _FAMILY_HINTS = {
     "inter": ["Inter-Bold", "Inter"],
     "poppins": ["Poppins-SemiBold", "Poppins-Bold", "Poppins"],
     "caveat": ["Caveat-Bold", "Caveat"],
+    # Serif éditorial élégant (style affiche / board de présentation).
+    "playfair": ["PlayfairDisplay-Variable", "PlayfairDisplay"],
+    "playfair italic": ["PlayfairDisplay-Italic-Variable", "PlayfairDisplay-Italic"],
     "dejavusans": ["DejaVuSans-Bold"],
+}
+
+# Familles variables dont l'axe de graisse doit être forcé (sinon PIL rend
+# l'axe par défaut, souvent trop fin pour de la vidéo).
+_VARIATION_WEIGHTS = {
+    "montserrat": ("ExtraBold", "Bold"),
+    "playfair": ("SemiBold", "Medium"),
+    "playfair italic": ("SemiBold", "Medium"),
 }
 
 
@@ -60,17 +71,17 @@ def load_font(family: str, size: int) -> Any:
         path = config.FONT_FALLBACK
     try:
         font = ImageFont.truetype(path, size)
-        # Montserrat-Variable.ttf defaults to the THIN axis in Pillow inside the
+        # Variable fonts default to their lightest axis in Pillow inside the
         # production image. That made overlay/popup text look like hollow black
         # outlines on video. Force a strong weight for PIL-rendered graphics.
-        if "montserrat" in family.lower() and hasattr(font, "set_variation_by_name"):
-            try:
-                font.set_variation_by_name("ExtraBold")
-            except Exception:
+        key = next((k for k in _VARIATION_WEIGHTS if k in family.lower()), None)
+        if key and hasattr(font, "set_variation_by_name"):
+            for weight in _VARIATION_WEIGHTS[key]:
                 try:
-                    font.set_variation_by_name("Bold")
+                    font.set_variation_by_name(weight)
+                    break
                 except Exception:
-                    pass
+                    continue
         return font
     except OSError:
         fallback = config.FONT_FALLBACK if os.path.exists(config.FONT_FALLBACK) else _find_font_file("dejavusans")

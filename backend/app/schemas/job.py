@@ -18,6 +18,8 @@ VALID_MOTION_PRESETS = {
     "sunset_vibes", "electric_lime",
     # Familles des styles Captions AI (réservées aux styles qui les demandent)
     "editorial_paper", "sketch_notes",
+    # Famille du style « board de présentation »
+    "board_pitch",
 }
 # Source de vérité: les templates ASS du moteur (config légère, sans PIL/ffmpeg).
 from app.autoedit_engine.config import ASS_TEMPLATES as _ENGINE_ASS_TEMPLATES

@@ -37,6 +37,8 @@ VALID_MODES = {
     "beast_impact",
     "mint_wave",
     "bangers_comic",
+    # Style « board de présentation » répliqué d'une référence motion design 3D.
+    "board_pitch",
 }
 VALID_PIPELINE_VERSIONS = {"v1", "v2"}
 VALID_IMAGE_PROVIDERS = {"openrouter", "replicate", "stability", "noop"}

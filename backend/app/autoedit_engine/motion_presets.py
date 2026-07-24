@@ -103,6 +103,16 @@ PRESETS: List[MotionDesignPreset] = [
         shape_density=0.5, style="brush_bars_handwriting",
         ink=(20, 20, 20, 255),
     ),
+    # Réf. vidéo « board de présentation » (motion design 3D publicitaire) —
+    # panneau vert sapin texturé, titres serif éditoriaux, pile de flyers et
+    # grande carte-scène claire au centre. Sert le style "board_pitch".
+    MotionDesignPreset(
+        name="board_pitch",
+        bg_top=(56, 88, 77), bg_bottom=(38, 66, 58),
+        accent=(232, 196, 110, 255), gold=(116, 202, 150, 255),
+        shape_density=0.4, style="green_board_serif_cards",
+        ink=(245, 243, 236, 255),
+    ),
 ]
 
 PRESETS_BY_NAME: Dict[str, MotionDesignPreset] = {p.name: p for p in PRESETS}
@@ -111,7 +121,7 @@ DEFAULT_PRESET = PRESETS[0].name
 # Familles réservées aux styles de montage qui les demandent explicitement.
 # Elles ne participent PAS à la rotation aléatoire par seed: leur fond clair /
 # encre sombre casserait le look des templates classiques.
-STYLE_ONLY_PRESETS = {"editorial_paper", "sketch_notes"}
+STYLE_ONLY_PRESETS = {"editorial_paper", "sketch_notes", "board_pitch"}
 _ROTATION: List[MotionDesignPreset] = [
     p for p in PRESETS if p.name not in STYLE_ONLY_PRESETS
 ]

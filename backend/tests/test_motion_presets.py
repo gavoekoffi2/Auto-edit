@@ -13,13 +13,17 @@ def test_named_families_exist():
         "sunset_vibes", "electric_lime",
         # Familles des styles Captions AI (opt-in, hors rotation aléatoire)
         "editorial_paper", "sketch_notes",
+        # Famille du style « board de présentation » (opt-in également)
+        "board_pitch",
     }
 
 
 def test_style_only_presets_are_reachable_by_name_only():
-    # Fond clair / encre sombre: jamais tirés au hasard, mais disponibles
+    # Fond clair ou panneau vert: jamais tirés au hasard, mais disponibles
     # quand un style de montage les demande explicitement.
-    assert mp.STYLE_ONLY_PRESETS == {"editorial_paper", "sketch_notes"}
+    assert mp.STYLE_ONLY_PRESETS == {"editorial_paper", "sketch_notes",
+                                     "board_pitch"}
+    assert mp.preset_for("board_pitch").name == "board_pitch"
     assert mp.preset_for("sketch_notes").name == "sketch_notes"
     assert mp.preset_for("sketch_notes").ink == (20, 20, 20, 255)
     assert mp.preset_for("editorial_paper").name == "editorial_paper"

@@ -132,6 +132,51 @@ LAYOUTS = [
     "circle_spot", "polaroid_tilt", "arch_gate",
 ]
 
+# --------------------------------------------------------------------------- #
+# BOARD layouts — famille à part (style "board_pitch").
+#
+# Répliquent le langage visuel d'un board de présentation motion-design: un
+# panneau vert sapin texturé qui NE BOUGE PAS (titre serif en haut à droite,
+# label serif à gauche, pile de flyers) + une grande CARTE-SCÈNE claire au
+# format 9:16 qui joue le contenu. D'un beat à l'autre le panneau reste
+# identique et seule la carte change — c'est ce qui donne la sensation d'une
+# vraie présentation plutôt que d'une suite de vignettes sans lien.
+#
+#   board_stage   illustration plein cadre dans la carte + mot-clé en bas
+#   board_quote   pas d'image: la phrase prononcée en serif italique, le
+#                  mot-clé en gras barré/souligné dessous (grille de "+")
+#   board_number  gros chiffre serif + label au-dessus + unité en gras
+#   board_split   illustration en haut de la carte, mot-clé sur bandeau bas
+# --------------------------------------------------------------------------- #
+#   board_overflow  objet géant coupé par les bords, en diagonale opposée,
+#                    mot-clé centré par-dessus
+#   board_sandwich  serif en haut + illustration contenue au centre + serif en
+#                    bas (le « sandwich typographique » de la référence)
+#   board_collage   mini-étiquettes sombres qui pop en cascade autour de
+#                    l'illustration, question serif au centre
+#   board_annotated illustration zoomée + étiquettes d'annotation en relief
+#   board_showcase  « packshot »: visuel incliné encadré de blanc + code-barres
+BOARD_LAYOUTS = [
+    "board_stage", "board_quote", "board_split", "board_number",
+    "board_overflow", "board_sandwich", "board_collage", "board_annotated",
+    "board_showcase",
+]
+
+# Les compositions qui reçoivent les coins « vague » noirs (décor animé). Elles
+# alternent avec les cartes nues pour que le décor lui-même ne devienne pas une
+# signature figée.
+BOARD_WAVE_LAYOUTS = {"board_sandwich", "board_collage", "board_showcase"}
+
+# Géométrie du board (px, cadre 1080x1920). La carte est elle-même un 9:16 et
+# s'arrête au-dessus de la bande des sous-titres (ZONE_SUBS_Y) pour ne jamais
+# passer dessous.
+BOARD_CARD = (400, 330, 1020, 1432)      # x0, y0, x1, y1  (620 x 1102)
+BOARD_TITLE_Y = 250                      # titre serif, aligné à droite
+BOARD_LABEL_Y = 500                      # label serif, aligné à gauche
+BOARD_MARGIN = 58
+BOARD_DEFAULT_TITLE = "L'essentiel"
+BOARD_DEFAULT_LABEL = "Le point"
+
 # The illustration MASK each layout uses (default: rounded panel). This is
 # what kills the "toujours un carré avec l'image dedans" repetition.
 LAYOUT_ILLU_SHAPES = {
@@ -158,6 +203,21 @@ def _layout_sequence(seed_text: str, n: int) -> List[str]:
         seq.extend(pool)
         last = seq[-1]
     return seq[:n]
+
+
+def _board_layout_sequence(seed_text: str, n: int) -> List[str]:
+    """Rotation des compositions de CARTE pour le style board.
+
+    Le panneau ne change pas — seule la carte change — donc on alterne les
+    compositions sans jamais répéter la même deux fois de suite, en partant
+    d'un point différent selon la vidéo.
+    """
+    import hashlib
+    if n <= 0:
+        return []
+    offset = int(hashlib.md5((seed_text or "board").encode("utf-8")).hexdigest(), 16)
+    k = len(BOARD_LAYOUTS)
+    return [BOARD_LAYOUTS[(offset + i) % k] for i in range(n)]
 
 # Scene animation timeline (seconds from scene start).  These are the moments
 # plan_overlays converts into per-element SFX cues.
@@ -1239,6 +1299,472 @@ def _draw_counter(draw: ImageDraw.ImageDraw, value: float, raw: str, t: float) -
 
 
 # --------------------------------------------------------------------------- #
+# BOARD rendering — panneau fixe + carte-scène animée
+# --------------------------------------------------------------------------- #
+def _board_grain(seed: int = 7) -> Image.Image:
+    """Deterministic fine grain, so the green board reads as textured felt."""
+    import numpy as np
+    rng = np.random.default_rng(seed)
+    small = rng.integers(0, 46, size=(H // 4, W // 4), dtype="uint8")
+    layer = Image.fromarray(small, "L").resize((W, H), Image.BILINEAR)
+    zero = Image.new("L", (W, H), 0)
+    return Image.merge("RGBA", (zero, zero, zero, layer))
+
+
+def _board_base() -> Image.Image:
+    """Opaque dark-green board: vertical gradient + centre glow + vignette."""
+    grad = Image.new("RGB", (1, H))
+    px = grad.load()
+    for y in range(H):
+        f = y / (H - 1)
+        px[0, y] = tuple(int(BG_TOP[c] + (BG_BOTTOM[c] - BG_TOP[c]) * f) for c in range(3))
+    base = grad.resize((W, H)).convert("RGBA")
+
+    glow = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(glow).ellipse((-W * 0.15, -H * 0.12, W * 1.15, H * 0.72), fill=64)
+    glow = glow.filter(ImageFilter.GaussianBlur(210))
+    white = Image.new("L", (W, H), 255)
+    base = Image.alpha_composite(base, Image.merge("RGBA", (white, white, white, glow)))
+
+    base = Image.alpha_composite(base, _board_grain())
+
+    vig = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(vig).ellipse((-W * 0.30, -H * 0.16, W * 1.30, H * 1.16), fill=255)
+    shade = vig.filter(ImageFilter.GaussianBlur(170)).point(lambda v: (255 - v) * 165 // 255)
+    zero = Image.new("L", (W, H), 0)
+    return Image.alpha_composite(base, Image.merge("RGBA", (zero, zero, zero, shade)))
+
+
+# Couleur de détourage: un liseré de la teinte de la carte posé derrière le
+# texte sombre, pour qu'il reste net même au-dessus de la grille de repères.
+_CARD_KNOCK = (250, 250, 248, 255)
+
+
+def _card_plate(bw: int, bh: int) -> Image.Image:
+    """The light stage card: soft vertical gradient, brighter in the middle."""
+    grad = Image.new("RGB", (1, bh))
+    px = grad.load()
+    for y in range(bh):
+        f = abs(y / (bh - 1) - 0.42) * 2.0
+        v = int(253 - 30 * min(1.0, f) ** 1.4)
+        px[0, y] = (v, v, max(0, v - 2))
+    return grad.resize((bw, bh)).convert("RGBA")
+
+
+def _plus_grid(draw: ImageDraw.ImageDraw, bw: int, y_from: int, y_to: int,
+               alpha: int = 46):
+    """The faint '+' registration grid.
+
+    In the reference it only fills the EMPTY middle band of the card — never
+    behind the text — so the typography stays perfectly clean.
+    """
+    col = (122, 130, 134, alpha)
+    step, arm = 82, 9
+    for y in range(y_from, y_to, step):
+        for x in range(56, bw - 40, step):
+            draw.line([(x - arm, y), (x + arm, y)], fill=col, width=3)
+            draw.line([(x, y - arm), (x, y + arm)], fill=col, width=3)
+
+
+def _corner_waves(layer: Image.Image, bw: int, bh: int, p: float, flip: bool = False):
+    """Les coins « vague » noirs de la référence: deux masses organiques en
+    diagonale opposée, qui se déploient depuis les angles de la carte."""
+    if p <= 0:
+        return
+    d = ImageDraw.Draw(layer)
+    reach = int(min(bw, bh) * 0.30 * min(1.0, p))
+    corners = ((0, 0, 1, 1), (bw, bh, -1, -1)) if not flip else ((bw, 0, -1, 1), (0, bh, 1, -1))
+    for cx, cy, sx, sy in corners:
+        pts = [(cx, cy)]
+        for i in range(25):                     # bord courbe (bezier quadratique)
+            u = i / 24
+            x = (1 - u) ** 2 * (cx + sx * reach) + 2 * (1 - u) * u * (cx + sx * reach * 0.45) \
+                + u ** 2 * cx
+            y = (1 - u) ** 2 * cy + 2 * (1 - u) * u * (cy + sy * reach * 0.52) \
+                + u ** 2 * (cy + sy * reach)
+            pts.append((x, y))
+        d.polygon(pts, fill=(14, 14, 16, 255))
+
+
+def _barcode(draw: ImageDraw.ImageDraw, x: int, y: int, w: int, h: int, seed: str):
+    """Bande code-barres — le détail « packshot produit » de la référence."""
+    import random
+    rng = random.Random(seed)
+    cx = x
+    while cx < x + w - 4:
+        bar = rng.choice((3, 3, 5, 8))
+        if rng.random() < 0.62:
+            draw.rectangle((cx, y, cx + bar, y + h), fill=(18, 18, 20, 255))
+        cx += bar + rng.choice((3, 4, 6))
+
+
+def _floating_chips(draw: ImageDraw.ImageDraw, labels: List[str], bw: int, bh: int,
+                    t: float, y0: int = 150):
+    """Mini-étiquettes sombres qui pop en cascade (réf.: « C'est trop cher »,
+    « Je vais réfléchir » flottant autour de l'illustration)."""
+    import random
+    for i, label in enumerate(labels[:3]):
+        p = _pop(t, 0.55 + i * 0.28, 0.36)
+        if p <= 0:
+            continue
+        rng = random.Random(label)
+        f = load_font("Montserrat", 34)
+        l, tt, r, b = draw.textbbox((0, 0), label, font=f)
+        cw, ch = (r - l) + 46, (b - tt) + 28
+        cx = int(bw * (0.28 + 0.44 * ((i * 0.5) % 1.0))) + rng.randint(-30, 30)
+        cy = y0 + i * 96 + rng.randint(-14, 14)
+        s = min(1.0, p)
+        cw, ch = int(cw * s), int(ch * s)
+        draw.rounded_rectangle((cx - cw // 2, cy - ch // 2, cx + cw // 2, cy + ch // 2),
+                               radius=ch // 2, fill=(18, 18, 20, 235))
+        if s > 0.7:
+            draw.text((cx, cy), label, font=f, anchor="mm", fill=(244, 242, 236, 255))
+
+
+def _annotation_tags(draw: ImageDraw.ImageDraw, labels: List[str], bw: int, bh: int,
+                     t: float):
+    """Étiquettes d'annotation façon 3D qui se posent sur l'illustration
+    (réf.: « PREMIER CONTACT », « OBJECTIONS » en relief orange)."""
+    for i, label in enumerate(labels[:3]):
+        p = _pop(t, 0.6 + i * 0.30, 0.38)
+        if p <= 0:
+            continue
+        f = load_font("Anton", 38)
+        text = label.upper()
+        l, tt, r, b = draw.textbbox((0, 0), text, font=f)
+        cw, ch = (r - l) + 40, (b - tt) + 24
+        # étalées en escalier sur l'illustration, jamais empilées au centre
+        cx = int(bw * (0.56 - i * 0.13))
+        cy = int(bh * (0.24 + i * 0.22))
+        off = int((1.0 - min(1.0, p)) * 60)
+        x0, y0 = cx - cw // 2 + off, cy - ch // 2
+        draw.rectangle((x0 + 6, y0 + 7, x0 + cw + 6, y0 + ch + 7), fill=(24, 24, 26, 210))
+        draw.rectangle((x0, y0, x0 + cw, y0 + ch), fill=(18, 18, 20, 245))
+        if p > 0.6:
+            draw.text((x0 + cw // 2, y0 + ch // 2), text, font=f, anchor="mm",
+                      fill=(ACCENT[0], ACCENT[1], ACCENT[2], 255))
+
+
+def _flyer_stack(canvas: Image.Image, t: float):
+    """The little pile of product flyers pinned under the left-hand label."""
+    p = _pop(t, T_KICKER + 0.10, 0.45)
+    if p <= 0:
+        return
+    fw, fh = 322, 400
+    cx, cy = BOARD_MARGIN + fw // 2, 812
+    for k, (dx, dy, ang, shade) in enumerate(
+            ((24, 18, 3.4, 212), (11, 9, -1.8, 231), (0, 0, 1.2, 250))):
+        card = Image.new("RGBA", (fw, fh), (shade, shade, shade - 4, 255))
+        d = ImageDraw.Draw(card)
+        d.rectangle((0, 0, fw - 1, fh - 1), outline=(194, 196, 192, 255), width=2)
+        if k == 2:                       # only the top flyer carries artwork
+            # bandeau titre "produit" — deux lignes serrées façon couverture
+            d.rectangle((22, 26, 40, 96), fill=GOLD)
+            f1 = load_font("Anton", 40)
+            d.text((54, 30), "LA MÉTHODE", font=f1, fill=(28, 120, 76, 255))
+            d.text((54, 66), "COMPLÈTE", font=f1, fill=(22, 24, 23, 255))
+            # bloc "capture" sombre + lignes de texte
+            d.rounded_rectangle((22, 120, fw - 22, fh - 74), radius=10,
+                                fill=(48, 56, 52, 255))
+            for i in range(7):
+                y = 146 + i * 26
+                d.line([(42, y), (fw - 46 - (i % 3) * 30, y)],
+                       fill=(158, 168, 162, 255), width=6)
+            d.rectangle((22, fh - 60, fw - 22, fh - 26), fill=(28, 120, 76, 255))
+        rot = card.rotate(ang, expand=True, resample=Image.BICUBIC)
+        scale = 0.82 + 0.18 * min(1.0, p)
+        rw, rh = max(1, int(rot.width * scale)), max(1, int(rot.height * scale))
+        rot = rot.resize((rw, rh), _RESAMPLE)
+        sh_a = rot.split()[3].point(lambda v: int(v * 0.40))
+        zero = Image.new("L", (rw, rh), 0)
+        canvas.alpha_composite(
+            Image.merge("RGBA", (zero, zero, zero, sh_a)).filter(ImageFilter.GaussianBlur(9)),
+            (cx - rw // 2 + dx + 8, cy - rh // 2 + dy + 12))
+        canvas.alpha_composite(rot, (cx - rw // 2 + dx, cy - rh // 2 + dy))
+
+
+def _board_furniture(canvas: Image.Image, title: str, label: str, t: float):
+    """The parts of the board that never move: serif title, label, flyers."""
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+
+    pt = ease_out_cube(_linear(t, 0.0, 0.45))
+    if pt > 0:
+        ft = _fit_font("Playfair", 74, title, W - BOARD_MARGIN - 340, min_size=40)
+        d.text((W - BOARD_MARGIN, BOARD_TITLE_Y), title, font=ft, anchor="rm",
+               fill=(INK[0], INK[1], INK[2], int(255 * pt)))
+
+    pl = ease_out_cube(_linear(t, 0.14, 0.45))
+    if pl > 0:
+        fl = _fit_font("Playfair", 92, label, BOARD_CARD[0] - BOARD_MARGIN - 30, min_size=48)
+        d.text((BOARD_MARGIN, BOARD_LABEL_Y), label, font=fl, anchor="lm",
+               fill=(INK[0], INK[1], INK[2], int(255 * pl)))
+    canvas.alpha_composite(layer)
+    _flyer_stack(canvas, t)
+
+
+def _board_content_offset(t: float, dur: float, bw: int) -> Tuple[int, float]:
+    """Lateral slide of the card content: in from the right, out to the left.
+
+    Reproduces the reference's signature move — the current subject walks out
+    of the frame while the next element arrives, the card itself never moves.
+    """
+    enter = ease_out_cube(clamp((t - 0.10) / 0.48))
+    off = (1.0 - enter) * bw * 0.52
+    fade = enter
+    out = clamp((t - (dur - 0.42)) / 0.42)
+    if out > 0:
+        off -= out * out * bw * 0.75
+        fade = min(fade, 1.0 - out * out)
+    return int(off), clamp(fade)
+
+
+def _board_card_content(scene: dict, illu: Optional[Image.Image], layout: str,
+                        t: float, dur: float, bw: int, bh: int) -> Image.Image:
+    """Everything that plays INSIDE the stage card (card-local coordinates)."""
+    card = _card_plate(bw, bh)
+    d = ImageDraw.Draw(card)
+    # La grille ne sert qu'à meubler le vide d'une carte typographique; les
+    # cartes qui portent une image n'en ont pas besoin.
+    if layout == "board_quote" or illu is None:
+        _plus_grid(d, bw, int(bh * 0.44), int(bh * 0.72))
+
+    off, fade = _board_content_offset(t, dur, bw)
+    headline = (scene.get("headline") or "").strip()
+    phrase = (scene.get("spoken_line") or scene.get("excerpt") or "").strip()
+
+    body = Image.new("RGBA", (bw, bh), (0, 0, 0, 0))
+    db = ImageDraw.Draw(body)
+
+    if layout == "board_number" and scene.get("value") is not None:
+        kicker = (scene.get("kicker") or "").strip()
+        if kicker:
+            fs = _fit_font("Playfair Italic", 68, kicker, bw - 100, min_size=34)
+            db.text((bw // 2, 168), kicker, font=fs, anchor="mm", fill=(34, 38, 36, 255))
+        shown = _fmt_value(float(scene["value"]) * ease_out_cube(_linear(t, 0.25, 1.15)),
+                           scene.get("raw", ""))
+        fn = _fit_font("Playfair", 360, shown, bw - 90, min_size=140)
+        db.text((bw // 2, bh // 2 - 20), shown, font=fn, anchor="mm", fill=(18, 20, 19, 255))
+        if headline:
+            fh = _fit_font("Anton", 96, headline.upper(), bw - 90, min_size=42)
+            db.text((bw // 2, bh - 190), headline.upper(), font=fh, anchor="mm",
+                    fill=(24, 26, 25, 255))
+
+    elif layout == "board_quote" or illu is None:
+        # Beat purement typographique (réf.: « Plus jamais », « Tu veux
+        # arrêter de … »): jamais d'image, la phrase porte la carte.
+        if phrase:
+            fq = _fit_font("Playfair Italic", 88, phrase, bw - 100, min_size=40)
+            lines = _wrap_words(db, phrase, fq, bw - 100, max_lines=3)
+            y = 240                                     # zone haute, au-dessus de la grille
+            for line in lines:
+                db.text((bw // 2, y), line, font=fq, anchor="mm", fill=(30, 34, 32, 255),
+                        stroke_width=6, stroke_fill=_CARD_KNOCK)
+                y += 104
+        if headline:
+            fh = _fit_font("Anton", 104, headline.upper(), bw - 90, min_size=46)
+            hy = bh - 210                               # zone basse, sous la grille
+            db.text((bw // 2, hy), headline.upper(), font=fh, anchor="mm",
+                    fill=(20, 22, 21, 255), stroke_width=6, stroke_fill=_CARD_KNOCK)
+            up = ease_out_cube(_linear(t, 0.85, 0.42))
+            if up > 0:                                  # trait marqueur animé
+                l, tt, r, b = db.textbbox((bw // 2, hy), headline.upper(), font=fh, anchor="mm")
+                db.line([(l - 8, b + 20), (l - 8 + (r - l + 16) * up, b + 20)],
+                        fill=GOLD[:3] + (255,), width=12)
+
+    elif layout == "board_split":
+        top_h = int(bh * 0.58)
+        ratio = max(bw / illu.width, top_h / illu.height)
+        img = illu.resize((max(1, int(illu.width * ratio)), max(1, int(illu.height * ratio))),
+                          _RESAMPLE)
+        left, top = (img.width - bw) // 2, (img.height - top_h) // 2
+        body.alpha_composite(img.crop((left, top, left + bw, top + top_h)), (0, 0))
+        db.line([(0, top_h), (bw, top_h)], fill=GOLD[:3] + (255,), width=7)
+        if headline:
+            fh = _fit_font("Anton", 100, headline.upper(), bw - 90, min_size=44)
+            db.text((bw // 2, top_h + 118), headline.upper(),
+                    font=fh, anchor="mm", fill=(20, 22, 21, 255))
+        if phrase:
+            fp = _fit_font("Playfair Italic", 54, phrase, bw - 110, min_size=30)
+            lines = _wrap_words(db, phrase, fp, bw - 110, max_lines=3)
+            y = top_h + 230
+            for line in lines:
+                db.text((bw // 2, y), line, font=fp, anchor="mm", fill=(62, 66, 64, 255))
+                y += 64
+
+    elif layout == "board_overflow":
+        # Objet surdimensionné coupé par les bords, en diagonale opposée.
+        big = int(bw * 0.56)
+        thumb = _rounded_image(illu.resize((big, big), _RESAMPLE), 40)
+        grow = 0.84 + 0.16 * ease_out_cube(_linear(t, 0.15, 0.6))
+        # deux exemplaires en diagonale opposée, volontairement coupés par les
+        # bords de la carte (le masque arrondi fait la découpe)
+        for (ax, ay), sc in (((-0.16, 0.02), 1.0), ((0.60, 0.70), 1.12)):
+            s = max(1, int(big * sc * grow))
+            body.alpha_composite(thumb.resize((s, s), _RESAMPLE),
+                                 (int(bw * ax), int(bh * ay)))
+        db = ImageDraw.Draw(body)
+        if headline:
+            fh = _fit_font("Anton", 112, headline.upper(), bw - 110, min_size=48)
+            db.text((bw // 2, bh // 2), headline.upper(), font=fh, anchor="mm",
+                    fill=(20, 22, 21, 255), stroke_width=9, stroke_fill=_CARD_KNOCK)
+
+    elif layout == "board_sandwich":
+        # Serif en haut, visuel contenu au centre, serif en bas.
+        head, tail = (phrase, "") if not headline else (phrase, headline)
+        iw = int(bw * 0.66)
+        thumb = _rounded_image(illu.resize((iw, iw), _RESAMPLE), 30)
+        body.alpha_composite(thumb, ((bw - iw) // 2, (bh - iw) // 2 - 10))
+        db = ImageDraw.Draw(body)
+        # Texte rentré (bw-230) pour ne jamais mordre sur les coins « vague ».
+        if head:
+            ft = _fit_font("Playfair Italic", 68, head, bw - 230, min_size=34)
+            lines = _wrap_words(db, head, ft, bw - 230, max_lines=2)
+            y = 210
+            for line in lines:
+                db.text((bw // 2, y), line, font=ft, anchor="mm", fill=(28, 32, 30, 255))
+                y += 78
+        if tail:
+            fb = _fit_font("Playfair Italic", 62, tail, bw - 230, min_size=32)
+            db.text((bw // 2, bh - 205), tail, font=fb, anchor="mm", fill=(28, 32, 30, 255))
+
+    elif layout == "board_collage":
+        # Mini-étiquettes en cascade + illustration basse + question serif.
+        ih = int(bh * 0.42)
+        ratio = max(bw / illu.width, ih / illu.height)
+        img = illu.resize((max(1, int(illu.width * ratio)), max(1, int(illu.height * ratio))),
+                          _RESAMPLE)
+        left, top = (img.width - bw) // 2, (img.height - ih) // 2
+        body.alpha_composite(img.crop((left, top, left + bw, top + ih)), (0, bh - ih))
+        db = ImageDraw.Draw(body)
+        chips = [w for w in (phrase or "").split(",") if len(w.strip()) > 3][:3]
+        if not chips and phrase:
+            words = phrase.split()
+            chips = [" ".join(words[i:i + 3]) for i in range(0, min(9, len(words)), 3)]
+        _floating_chips(db, [c.strip()[:26] for c in chips], bw, bh, t, y0=252)
+        if headline:
+            fq = _fit_font("Playfair Italic", 76, headline, bw - 200, min_size=36)
+            db.text((bw // 2, bh - ih - 96), headline, font=fq, anchor="mm",
+                    fill=(26, 30, 28, 255), stroke_width=7, stroke_fill=_CARD_KNOCK)
+
+    elif layout == "board_annotated":
+        # Illustration zoomée + étiquettes d'annotation qui se posent dessus.
+        zoom = 1.18 + 0.06 * ease_in_out(clamp(t / dur))
+        ratio = max(bw / illu.width, bh / illu.height) * zoom
+        img = illu.resize((max(1, int(illu.width * ratio)), max(1, int(illu.height * ratio))),
+                          _RESAMPLE)
+        left, top = (img.width - bw) // 2, (img.height - bh) // 2
+        body.alpha_composite(img.crop((left, top, left + bw, top + bh)), (0, 0))
+        db = ImageDraw.Draw(body)
+        # Seuls des mots porteurs deviennent des étiquettes: un « c'est » ou un
+        # « dans » collé sur l'illustration ne raconte rien au spectateur.
+        tags = [w for w in (phrase or "").replace(",", " ").split()
+                if len(w) >= 6 and w.lower().strip("'’.,;:!?") not in config.STOPWORDS][:2]
+        if headline:
+            tags = [headline] + tags
+        _annotation_tags(db, tags, bw, bh, t)
+
+    elif layout == "board_showcase":
+        # Packshot: visuel incliné bordé de blanc + code-barres.
+        iw = int(bw * 0.70)
+        thumb = illu.resize((iw, iw), _RESAMPLE)
+        border = 22
+        cardimg = Image.new("RGBA", (iw + 2 * border, iw + 2 * border + 58),
+                            (252, 251, 247, 255))
+        cardimg.paste(thumb, (border, border))
+        cd = ImageDraw.Draw(cardimg)
+        if headline:
+            fl = _fit_font("Anton", 44, headline.upper(), iw - 20, min_size=22)
+            cd.text(((iw + 2 * border) // 2, iw + border + 28), headline.upper(),
+                    font=fl, anchor="mm", fill=(22, 118, 74, 255))
+        tilt = -4.0 + 2.5 * (1.0 - ease_out_cube(_linear(t, 0.15, 0.55)))
+        rot = cardimg.rotate(tilt, expand=True, resample=Image.BICUBIC)
+        sh_a = rot.split()[3].point(lambda v: int(v * 0.42))
+        zero = Image.new("L", rot.size, 0)
+        body.alpha_composite(
+            Image.merge("RGBA", (zero, zero, zero, sh_a)).filter(ImageFilter.GaussianBlur(11)),
+            ((bw - rot.width) // 2 + 12, int(bh * 0.20) + 16))
+        body.alpha_composite(rot, ((bw - rot.width) // 2, int(bh * 0.20)))
+        db = ImageDraw.Draw(body)
+        bp = ease_out_cube(_linear(t, 0.75, 0.4))
+        if bp > 0:
+            _barcode(db, int(bw * 0.28), bh - 150, int(bw * 0.44 * bp), 62,
+                     headline or "code")
+
+    else:                                               # board_stage
+        kb = 1.0 + 0.05 * ease_in_out(clamp(t / dur))
+        ratio = max(bw / illu.width, bh / illu.height) * kb
+        img = illu.resize((max(1, int(illu.width * ratio)), max(1, int(illu.height * ratio))),
+                          _RESAMPLE)
+        left, top = (img.width - bw) // 2, (img.height - bh) // 2
+        body.alpha_composite(img.crop((left, top, left + bw, top + bh)), (0, 0))
+        band = Image.new("L", (1, bh))
+        bp = band.load()
+        for y in range(bh):
+            f = max(0.0, (y / bh - 0.50) / 0.50)
+            bp[0, y] = int(232 * f ** 1.4)
+        zero = Image.new("L", (bw, bh), 0)
+        body.alpha_composite(Image.merge("RGBA", (zero, zero, zero, band.resize((bw, bh)))))
+        db = ImageDraw.Draw(body)
+        # La carte plein cadre ne porte QUE le mot-clé: la phrase prononcée
+        # reste lisible dans les sous-titres, inutile de la doubler ici.
+        if headline:
+            fh = _fit_font("Anton", 112, headline.upper(), bw - 80, min_size=48)
+            db.text((bw // 2, bh - 150), headline.upper(), font=fh, anchor="mm",
+                    fill=(255, 255, 255, 255), stroke_width=4, stroke_fill=(0, 0, 0, 205))
+            up = ease_out_cube(_linear(t, 0.80, 0.40))
+            if up > 0:
+                l, tt, r, b = db.textbbox((bw // 2, bh - 150), headline.upper(),
+                                          font=fh, anchor="mm")
+                db.line([(l, b + 26), (l + (r - l) * up, b + 26)],
+                        fill=GOLD[:3] + (255,), width=10)
+
+    card.alpha_composite(_apply_alpha(body, fade), (off, 0))
+    # Décor: les coins « vague » se déploient PAR-DESSUS le contenu, comme dans
+    # la référence — mais seulement sur certaines compositions, pour que le
+    # décor ne devienne pas lui-même une signature figée.
+    if layout in BOARD_WAVE_LAYOUTS:
+        waves = Image.new("RGBA", (bw, bh), (0, 0, 0, 0))
+        _corner_waves(waves, bw, bh, ease_out_cube(_linear(t, 0.05, 0.5)),
+                      flip=(layout == "board_collage"))
+        card.alpha_composite(waves)
+    return card
+
+
+def _compose_board_frame(scene: dict, illu: Optional[Image.Image], stage: Image.Image,
+                         t: float, dur: float, layout: str) -> Image.Image:
+    """Full board frame: fixed green panel + animated stage card."""
+    canvas = stage.copy()
+    _board_furniture(canvas,
+                     scene.get("board_title") or BOARD_DEFAULT_TITLE,
+                     scene.get("board_label") or BOARD_DEFAULT_LABEL, t)
+
+    x0, y0, x1, y1 = BOARD_CARD
+    bw, bh = x1 - x0, y1 - y0
+    p = ease_out_cube(_linear(t, T_ILLU, 0.42))
+    if p <= 0:
+        return canvas
+    scale = 0.94 + 0.06 * p
+    cw, ch = max(1, int(bw * scale)), max(1, int(bh * scale))
+    px, py = x0 + (bw - cw) // 2, y0 + (bh - ch) // 2
+
+    content = _board_card_content(scene, illu, layout, t, dur, bw, bh)
+    if (cw, ch) != (bw, bh):
+        content = content.resize((cw, ch), _RESAMPLE)
+    mask = Image.new("L", (cw, ch), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, cw - 1, ch - 1), radius=38, fill=255)
+    card = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
+    card.paste(content, (0, 0), mask)
+
+    sh = Image.merge("RGBA", (Image.new("L", (cw, ch), 0), Image.new("L", (cw, ch), 0),
+                              Image.new("L", (cw, ch), 0),
+                              mask.point(lambda v: int(v * 0.46))))
+    canvas.alpha_composite(sh.filter(ImageFilter.GaussianBlur(20)), (px + 10, py + 20))
+    canvas.alpha_composite(_apply_alpha(card, p), (px, py))
+    return canvas
+
+
+# --------------------------------------------------------------------------- #
 # scene entrance / exit transitions (variants cycled per scene)
 # --------------------------------------------------------------------------- #
 ENTRANCE_DUR = 0.5
@@ -1314,10 +1840,20 @@ def _apply_scene_transitions(canvas: Image.Image, scene: dict,
 def _compose_frame(scene: dict, illu: Optional[Image.Image], stage: Image.Image,
                    t: float, dur: float) -> Image.Image:
     kind = scene.get("kind", "idea")
+    # The BOARD family owns the whole frame (fixed panel + stage card), so it
+    # bypasses the generic composition tree entirely — including for steps and
+    # number beats, which the card renders in its own style.
+    raw_layout = scene.get("layout", "stage_center")
+    if raw_layout in BOARD_LAYOUTS:
+        return _apply_alpha(
+            _apply_scene_transitions(
+                _compose_board_frame(scene, illu, stage, t, dur, raw_layout), scene, t, dur),
+            alpha_fade(t, dur, fin=0.18, fout=EXIT_FADE))
+
     # The distinct layouts (see LAYOUTS) only apply to plain "idea" beats —
     # steps/number scenes keep their own bespoke composition (pills/counter)
     # so those stay legible regardless of the layout rotation.
-    layout = scene.get("layout", "stage_center") if kind == "idea" else "stage_center"
+    layout = raw_layout if kind == "idea" else "stage_center"
 
     canvas = stage.copy()
     canvas.alpha_composite(_bg_motif(layout, t))
@@ -1437,7 +1973,8 @@ def render_scene(scene: dict, out_path: str, fps: int = config.FPS) -> dict:
             print(f"[motion_design] WARN cannot read {image_path}: {exc} "
                   f"-> procedural drawing", file=sys.stderr)
 
-    stage = _stage_base()
+    stage = (_board_base() if scene.get("layout") in BOARD_LAYOUTS
+             else _stage_base())
     n_frames = max(1, int(round(dur * fps)))
     with ProResPipe(out_path, fps=fps) as pipe:
         for fi in range(n_frames):
@@ -1458,8 +1995,12 @@ def render_all(scenes: List[dict], outdir: str, *, preset: Optional[str] = None,
     # named motion-design family.
     seed = seed_text or "|".join(
         s.get("headline", "") + s.get("excerpt", "") for s in scenes)
-    select_palette(seed, preset=preset)
-    layouts = _layout_sequence(seed, len(scenes))
+    family = select_palette(seed, preset=preset)
+    # Le style "board_pitch" possède sa PROPRE famille de compositions: le
+    # panneau vert reste identique d'un beat à l'autre et seule la carte change
+    # (cf. BOARD_LAYOUTS), exactement comme un board de présentation.
+    layouts = (_board_layout_sequence(seed, len(scenes)) if family == "board_pitch"
+               else _layout_sequence(seed, len(scenes)))
     out: List[dict] = []
     for i, scene in enumerate(scenes):
         # Cycle the entrance/exit transition variants so two consecutive
