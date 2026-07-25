@@ -94,7 +94,8 @@ def plan_visual_mode(visual_mode: str, *, do_broll: bool, have_key: bool,
 # after a handful of jobs and ffmpeg dies mid-encode ("[Errno 32] Broken
 # pipe"). Light artifacts (final video, transcript, edl, .ass, B-roll PNGs)
 # are kept.
-_INTERMEDIATE_DIRS = ("clips_graded", "animations", "motion_clips", "broll_clips", "sfx")
+_INTERMEDIATE_DIRS = ("clips_graded", "animations", "motion_clips", "broll_clips",
+                      "collage_clips", "sfx")
 _INTERMEDIATE_FILES = ("base_only.mp4", "base_dyn.mp4",
                        "composite_nosfx.mp4", "composite_withsfx.mp4",
                        "_source_nosubs.mp4")
@@ -164,6 +165,10 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
         "motion_scenes_rendered": 0,
         "motion_ai_illustrations": 0,
         "broll_images": 0,
+        # Moteur Collage Premium (collage_assemble) — 0 quand il est éteint.
+        "collage_beats": 0,
+        "collage_images": 0,
+        "collage_clips": 0,
         "keyword_popups": 0,
         "key_moments": 0,
         "key_moment_punches": 0,
@@ -331,10 +336,30 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     # A failure NEVER blocks the render — it falls back to the credit-saver
     # visual plan and records WHY in the report.
     broll_json: Optional[str] = None
+    collage_json: Optional[str] = None
     attempt_ai, fallback_reason = plan_visual_mode(
         visual_mode, do_broll=do_broll, have_key=have_key,
         disable_paid_images=disable_paid_images)
     rep["fallback_reason"] = fallback_reason
+
+    # Le moteur Collage Premium tourne AVANT le B-roll photo: il prend les beats
+    # « idée abstraite / métaphore », le B-roll photo garde les scènes concrètes.
+    # Il fonctionne dans les DEUX modes: avec clé il génère ses collages, sans
+    # clé il les compose de façon procédurale (aucun appel payant).
+    collage_ideas: list = []
+    if do_broll:
+        ideas_all = content.derive_broll_ideas(
+            vu_data, demographic=broll_demographic, graphic_specs=specs,
+            avoid_spans=content.motion_scene_spans(motion_scenes),
+        )
+        collage_ideas, photo_ideas = _split_collage_ideas(ideas_all)
+        if collage_ideas:
+            _p(46, "5bis collage", f"{len(collage_ideas)} scène(s) Collage Premium")
+            collage_json, collage_rep = _run_collage(
+                collage_ideas, workdir, allow_paid_images=attempt_ai)
+            rep.update(collage_rep)
+    else:
+        photo_ideas = []
 
     if not attempt_ai:
         why = fallback_reason or "credit_saver"
@@ -342,10 +367,7 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     else:
         _p(48, "5 genimg")
         try:
-            ideas = content.derive_broll_ideas(
-                vu_data, demographic=broll_demographic, graphic_specs=specs,
-                avoid_spans=content.motion_scene_spans(motion_scenes),
-            )
+            ideas = photo_ideas
             if not ideas:
                 rep["fallback_reason"] = "no_ideas"
             else:
@@ -374,7 +396,8 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     # 7) Plan timeline + SFX cues -------------------------------------------
     _p(62, "7 plan_overlays")
     planned = plan_overlays.plan(edl_path, overlays_json, broll_json,
-                                 motion_json=motion_json, outdir=workdir)
+                                 motion_json=motion_json, outdir=workdir,
+                                 collage_json=collage_json)
     rep["sfx_cues"] = len(planned.get("cues", []))
 
     # 7bis) Motion-design transitions — bonne pratique de montage: au lieu
@@ -481,15 +504,21 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
         "lightOverlays": rep["light_overlays"],
         "motionTransitionsLit": rep["motion_transitions_lit"],
         "motionCards": rep["motion_scenes_rendered"],
+        "collageScenes": rep.get("collage_clips", 0),
         "sourceSubtitlesRemoved": rep["source_subtitles_removed"],
         "transitions": (rep["motion_scenes_rendered"] + rep["broll_images"]
-                        + n_topic_shift),
+                        + rep.get("collage_clips", 0) + n_topic_shift),
     }
     # If AI images never landed, the effective mode is credit_saver regardless
     # of what was requested (the render still happened — never blocked).
-    if rep["broll_images"] <= 0:
+    # Les collages générés par IA comptent comme des images IA livrées.
+    if rep["broll_images"] <= 0 and rep.get("collage_images", 0) <= 0:
         rep["visual_mode_used"] = "credit_saver"
         rep["ai_images_skipped"] = True
+    elif rep.get("collage_images", 0) > 0:
+        rep["visual_mode_used"] = "ai_broll"
+        rep["ai_images_skipped"] = False
+        rep["fallback_reason"] = None
 
     if cleanup and os.environ.get("ENGINE_KEEP_INTERMEDIATES") not in {"1", "true"}:
         cleanup_intermediates(workdir)
@@ -500,6 +529,75 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
           f"{rep['key_moment_punches']} punch-zooms, "
           f"{rep['light_overlays']} pause light-leaks) -> {final}")
     return final
+
+
+def _split_collage_ideas(ideas: list) -> tuple[list, list]:
+    """Route les beats B-roll: Collage Premium d'un côté, photo IA de l'autre.
+
+    La décision vient du `BrollTypeRouter` (source unique de vérité du produit,
+    partagée avec le pipeline V2 modulaire) — le moteur ne redéfinit AUCUNE
+    règle de routage. Moteur éteint ou routeur indisponible => tout part en
+    photo, c'est-à-dire exactement le comportement historique.
+    """
+    if not ideas:
+        return [], []
+    try:
+        from app.processing.broll_planner import BrollTypeRouter
+        from app.processing.collage import collage_config as ccfg
+        from app.processing.collage.collage_types import BrollType
+    except Exception as exc:  # noqa: BLE001 - jamais bloquant
+        print(f"[pipeline] WARN collage router indisponible: {exc}", file=sys.stderr)
+        return [], list(ideas)
+    ccfg.refresh()          # le worker a pu propager les réglages après l'import
+    if not ccfg.ENABLED:
+        return [], list(ideas)
+
+    router = BrollTypeRouter(collage_share=ccfg.MAX_SHARE_OF_BROLL)
+    texts = [str(i.get("excerpt") or i.get("prompt") or "") for i in ideas]
+    decisions = router.route_many(texts)
+    collage, photo = [], []
+    for idea, decision in zip(ideas, decisions):
+        if (decision.broll_type is BrollType.COLLAGE_PREMIUM
+                and len(collage) < ccfg.MAX_SCENES):
+            collage.append(idea)
+        else:
+            photo.append(idea)
+    return collage, photo
+
+
+def _run_collage(ideas: list, workdir: str, *, allow_paid_images: bool
+                 ) -> tuple[Optional[str], dict]:
+    """Exécute le moteur Collage Premium; renvoie (json des clips, rapport).
+
+    Best-effort au sens strict: toute erreur laisse le montage se poursuivre
+    sans la moindre scène collage.
+    """
+    rep = {"collage_beats": len(ideas), "collage_images": 0, "collage_clips": 0}
+    try:
+        from app.processing.collage.collage_pipeline import run_collage_for_ideas
+        result = run_collage_for_ideas(ideas, workdir,
+                                       allow_paid_images=allow_paid_images)
+    except Exception as exc:  # noqa: BLE001 - jamais bloquant
+        print(f"[pipeline] WARN collage premium ignoré: {exc}", file=sys.stderr)
+        rep["collage_error"] = str(exc)[:200]
+        return None, rep
+
+    clips = [c.to_engine_overlay() for c in result.clips]
+    rep["collage_images"] = int(result.stats.get("images", 0))
+    rep["collage_clips"] = len(clips)
+    rep["collage_stats"] = result.stats
+    rep["collage_concepts"] = [
+        {"id": c.id, "metaphor": c.metaphor, "emotion": c.emotion.value,
+         "objects": c.sequence}
+        for c in result.concepts
+    ]
+    if not clips:
+        return None, rep
+    out = os.path.join(workdir, "collage_clips", "_collage_clips.json")
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    with open(out, "w", encoding="utf-8") as fh:
+        json.dump(clips, fh, ensure_ascii=False, indent=2)
+    return out, rep
 
 
 def _inject_light_overlay_sfx(sfx_cues_path: str, light_times: list) -> int:

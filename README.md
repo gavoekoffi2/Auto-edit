@@ -72,6 +72,7 @@ Upload → Whisper (word-level) → Silence detect → EDL (filler words FR/EN)
 | **Publicité locale** | Restaurant / boutique / service local + CTA clair |
 | **Podcast propre** | Suppression silences uniquement |
 | **Formation / éducatif** | Captions lisibles + B-roll discret + horizontal |
+| **Collage Premium ✂️** | Métaphore visuelle + collage papier éditorial assemblé à l'écran ([doc](docs/COLLAGE_PREMIUM_BROLL.md)) |
 
 Les modes V1 historiques (`tiktok`, `youtube`, `podcast`) restent supportés.
 
@@ -79,6 +80,7 @@ Les modes V1 historiques (`tiktok`, `youtube`, `podcast`) restent supportés.
 
 - [`AUTOEDIT_AUDIT.md`](AUTOEDIT_AUDIT.md) — audit technique complet, bugs corrigés, manques.
 - [`docs/VIDEO_PIPELINE_ARCHITECTURE.md`](docs/VIDEO_PIPELINE_ARCHITECTURE.md) — pipeline V2, contrats, EDL, intégration HyperFrames / Remotion / video-use / OpenRouter.
+- [`docs/COLLAGE_PREMIUM_BROLL.md`](docs/COLLAGE_PREMIUM_BROLL.md) — moteur Collage Premium B-roll (`collage_assemble`) : analyse sémantique, métaphore visuelle, verrou de style, contrôle qualité automatique, routage du type de B-roll.
 
 ## Quick Start
 

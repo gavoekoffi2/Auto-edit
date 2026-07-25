@@ -98,6 +98,27 @@ MODE_DEFINITIONS: list[dict] = [
         },
     },
     {
+        "id": "collage_premium",
+        "name": "Collage Premium",
+        "icon": "✂️",
+        "description": (
+            "Le moteur qui comprend le SENS de la phrase et en fait une scène : "
+            "métaphore visuelle, collage papier éditorial (photos noir & blanc "
+            "tramées, papier coloré, contours crème) et éléments qui "
+            "s'assemblent un par un sur un fond vide. 100 % automatique."
+        ),
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
+            "motion_design": True,
+            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
+            "visual_mode": "auto_fallback",
+            "subtitle_template": "pill_editorial",
+            "collage_broll": True,
+            "broll_style": "tiktok_viral", "broll_demographic": "african",
+        },
+    },
+    {
         "id": "bangers_comic",
         "name": "Comic pop",
         "icon": "💥",

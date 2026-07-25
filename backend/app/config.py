@@ -39,6 +39,9 @@ VALID_MODES = {
     "bangers_comic",
     # Style « board de présentation » répliqué d'une référence motion design 3D.
     "board_pitch",
+    # Moteur Collage Premium (collage_assemble): métaphore visuelle + collage
+    # papier éditorial assemblé à l'écran.
+    "collage_premium",
 }
 VALID_PIPELINE_VERSIONS = {"v1", "v2"}
 VALID_IMAGE_PROVIDERS = {"openrouter", "replicate", "stability", "noop"}
@@ -160,6 +163,32 @@ class Settings(BaseSettings):
     BROLL_SHORTS_MAX_CUES_PER_VIDEO: int = 18
     BROLL_MIN_SEGMENT_DURATION: float = 2.5
     BROLL_MAX_SEGMENT_DURATION: float = 8.0
+
+    # ---------------------------------------------------------------------
+    # Collage Premium B-roll (moteur `collage_assemble`)
+    #
+    # Nouveau type de B-roll: analyse sémantique → métaphore visuelle → collage
+    # papier éditorial → assemblage animé. OPT-IN: tant que le flag est à False,
+    # les pipelines V1/V2 se comportent exactement comme avant.
+    # Le détail des réglages fins vit dans
+    # `app/processing/collage/collage_config.py` (variables d'environnement).
+    # ---------------------------------------------------------------------
+    ENABLE_COLLAGE_BROLL: bool = False
+    # Fournisseur d'images du collage. Vide => on réutilise
+    # IMAGE_GENERATION_PROVIDER. Valeurs livrées: openrouter, google_ai_studio,
+    # maxfusion, noop. D'autres s'enregistrent sans toucher au pipeline.
+    COLLAGE_IMAGE_PROVIDER: Optional[str] = None
+    COLLAGE_IMAGE_MODEL: Optional[str] = None
+    # Moteur d'animation: "local" (déterministe, gratuit) ou "http" (API
+    # image→vidéo pilotée par configuration).
+    COLLAGE_VIDEO_PROVIDER: str = "local"
+    # Plafonds coût/variété: nombre max de scènes collage et part maximale des
+    # beats B-roll qui peuvent partir en collage.
+    COLLAGE_MAX_SCENES: int = 4
+    COLLAGE_MAX_SHARE: float = 0.5
+    # Clés des fournisseurs additionnels (jamais loggées).
+    GOOGLE_AI_STUDIO_API_KEY: Optional[str] = None
+    MAXFUSION_API_KEY: Optional[str] = None
 
     # Renderer abstrait
     VIDEO_RENDERER: str = "hyperframes"

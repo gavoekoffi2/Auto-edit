@@ -473,6 +473,11 @@ def derive_broll_ideas(
             "id": f"br_{len(ideas):03d}",
             "prompt": prompt,
             "label": label,
+            # Le texte réellement prononcé accompagne l'idée: le raffineur de
+            # prompts le préfère au prompt déjà stylisé, et les moteurs qui
+            # analysent le SENS (Collage Premium) en ont besoin.
+            "excerpt": excerpt,
+            "concepts": focus[:4],
             "source_start": round(s, 3),
             "source_end": round(e, 3),
         })

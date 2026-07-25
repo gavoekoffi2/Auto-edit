@@ -179,8 +179,25 @@ def _dedupe_consecutive(cues: List[dict]) -> List[dict]:
     return cues
 
 
+def _collage_sfx_pool() -> List[str]:
+    """Vocabulaire sonore du Collage Premium — papier + claquements stop-motion.
+
+    Puisé dans les SFX EXISTANTS du moteur (`config.SFX_NAMES`): aucun nouvel
+    asset audio n'est requis pour brancher le nouveau moteur.
+    """
+    try:
+        from app.processing.collage import collage_config as ccfg
+        pool = [s for s in ccfg.SFX_POOL if s in config.SFX_NAMES]
+        if pool:
+            return pool
+    except Exception:  # noqa: BLE001 - moteur collage absent
+        pass
+    return ["paper_rip", "snap", "pop"]
+
+
 def plan(edl_path: str, overlays_json: Optional[str], broll_json: Optional[str],
-         motion_json: Optional[str] = None, outdir: str = ".") -> dict:
+         motion_json: Optional[str] = None, outdir: str = ".",
+         collage_json: Optional[str] = None) -> dict:
     with open(edl_path, "r", encoding="utf-8") as fh:
         edl = json.load(fh)
     ranges = edl["ranges"]
@@ -190,10 +207,18 @@ def plan(edl_path: str, overlays_json: Optional[str], broll_json: Optional[str],
     motions = _place_motion(_load(motion_json), ranges, total)
     motion_spans = [(m["start"], m["end"]) for m in motions]
     graphics = _place_graphics(_load(overlays_json), ranges, motion_spans)
-    brolls = _place_broll(_load(broll_json), ranges, total, motion_spans)
 
-    # Z-order = list order: graphics, then B-roll, then motion scenes on top.
-    edl["overlays"] = graphics + brolls + motions
+    # Collage Premium: placé AVANT le B-roll photo et avec la même règle
+    # d'espacement, puis traité comme un occupant de la timeline pour que les
+    # deux familles ne se marchent jamais dessus.
+    collages = _place_broll(_load(collage_json), ranges, total, motion_spans)
+    for c in collages:
+        c["kind"] = "collage"
+    busy_spans = motion_spans + [(c["start"], c["end"]) for c in collages]
+    brolls = _place_broll(_load(broll_json), ranges, total, busy_spans)
+
+    # Z-order = list order: graphics, then B-roll/collage, then motion on top.
+    edl["overlays"] = graphics + brolls + collages + motions
     with open(edl_path, "w", encoding="utf-8") as fh:
         json.dump(edl, fh, ensure_ascii=False, indent=2)
 
@@ -205,6 +230,10 @@ def plan(edl_path: str, overlays_json: Optional[str], broll_json: Optional[str],
     for i, b in enumerate(brolls):
         cues.append({"sfx": config.BROLL_SFX_POOL[i % len(config.BROLL_SFX_POOL)],
                      "t": b["start"], "src": "broll"})
+    collage_pool = _collage_sfx_pool()
+    for i, c in enumerate(collages):
+        cues.append({"sfx": collage_pool[i % len(collage_pool)],
+                     "t": c["start"], "src": "collage"})
     cues += _motion_cues(motions)
 
     cues.sort(key=lambda c: c["t"])
@@ -215,7 +244,8 @@ def plan(edl_path: str, overlays_json: Optional[str], broll_json: Optional[str],
         json.dump(cues, fh, ensure_ascii=False, indent=2)
 
     print(f"[plan_overlays] {len(graphics)} graphics + {len(brolls)} broll + "
-          f"{len(motions)} motion, {len(cues)} SFX cues -> {edl_path}, {sfx_path}")
+          f"{len(collages)} collage + {len(motions)} motion, "
+          f"{len(cues)} SFX cues -> {edl_path}, {sfx_path}")
     return {"overlays": edl["overlays"], "cues": cues}
 
 

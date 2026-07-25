@@ -191,6 +191,17 @@ for _style_mode, _style_tpl in (
         "subtitle_template": _style_tpl,
     }
 
+# --- Collage Premium (moteur `collage_assemble`) -----------------------------
+# Seul mode où le moteur de collage est allumé par défaut. Les autres modes
+# gardent exactement leur comportement actuel (le moteur reste opt-in).
+V2_MODE_PRESETS["collage_premium"] = {
+    **V2_MODE_PRESETS["credit_saver_creator_edit"],
+    "ai_broll": True,
+    "visual_mode": "auto_fallback",
+    "subtitle_template": "pill_editorial",
+    "collage_broll": True,
+}
+
 
 ProgressFn = Callable[[int, str], None]
 
@@ -243,6 +254,7 @@ MODE_TO_TEMPLATE: dict[str, str] = {
     "mint_wave": "mint_wave",
     "bangers_comic": "bangers_fun",
     "board_pitch": "board_serif",
+    "collage_premium": "pill_editorial",
 }
 
 
@@ -349,6 +361,11 @@ def run_pipeline_v2(
     settings_key = getattr(settings, "OPENROUTER_API_KEY", "") or ""
     if settings_key and not os.environ.get("OPENROUTER_API_KEY"):
         os.environ["OPENROUTER_API_KEY"] = settings_key
+
+    # Collage Premium: le moteur lit sa configuration dans os.environ (comme le
+    # reste du moteur Auto Edit). On la dérive des réglages produit + options du
+    # job pour que le flag soit pilotable par mode ET par requête.
+    _export_collage_env(options)
 
     # Visual strategy: explicit option > mode preset > env default.
     # credit_saver  -> never any paid image (MVP, non bloquant)
@@ -794,6 +811,50 @@ def run_pipeline_v2_legacy(
 
 
 # ---------------------------------------------------------------------------
+def _export_collage_env(options: dict) -> None:
+    """Réglages produit du Collage Premium → variables d'environnement.
+
+    Ordre de priorité: option explicite du job > preset du mode > réglage
+    global. Comme pour OPENROUTER_API_KEY, le moteur ne lit que `os.environ`,
+    donc le worker doit exporter avant de lancer le rendu.
+    """
+    opts = options or {}
+
+    def _pick(key: str, setting: str, default=None):
+        value = opts.get(key)
+        if value is None:
+            value = getattr(settings, setting, default)
+        return value
+
+    enabled = _pick("collage_broll", "ENABLE_COLLAGE_BROLL", False)
+    os.environ["COLLAGE_BROLL_ENABLED"] = "1" if enabled else "0"
+
+    provider = _pick("collage_image_provider", "COLLAGE_IMAGE_PROVIDER") or ""
+    if provider:
+        os.environ["COLLAGE_IMAGE_PROVIDER"] = str(provider)
+    model = _pick("collage_image_model", "COLLAGE_IMAGE_MODEL") or ""
+    if model:
+        os.environ["COLLAGE_IMAGE_MODEL"] = str(model)
+    os.environ["COLLAGE_VIDEO_PROVIDER"] = str(
+        _pick("collage_video_provider", "COLLAGE_VIDEO_PROVIDER", "local") or "local")
+    os.environ["COLLAGE_MAX_SCENES"] = str(
+        int(_pick("collage_max_scenes", "COLLAGE_MAX_SCENES", 4) or 4))
+    os.environ["COLLAGE_MAX_SHARE"] = str(
+        float(_pick("collage_max_share", "COLLAGE_MAX_SHARE", 0.5) or 0.5))
+
+    # Clés des fournisseurs additionnels (jamais loggées).
+    for env_name, setting_name in (
+        ("GOOGLE_AI_STUDIO_API_KEY", "GOOGLE_AI_STUDIO_API_KEY"),
+        ("MAXFUSION_API_KEY", "MAXFUSION_API_KEY"),
+    ):
+        value = getattr(settings, setting_name, None)
+        if value and not os.environ.get(env_name):
+            os.environ[env_name] = str(value)
+
+    # Le cache vit à côté des uploads (volume persistant en production).
+    os.environ.setdefault("UPLOAD_DIR", settings.UPLOAD_DIR)
+
+
 def _get_duration_safe(video_path: str) -> float:
     try:
         from app.services.storage import get_video_duration

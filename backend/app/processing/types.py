@@ -122,6 +122,13 @@ class BrollCue:
     image_path: Optional[str] = None
     clip_path: Optional[str] = None
     failure_reason: Optional[str] = None
+    # Famille de B-roll choisie automatiquement par le `BrollTypeRouter`
+    # (static_image | stock_video | ai_video | motion_design | collage_premium).
+    # Défaut = comportement historique: image IA + Ken Burns.
+    broll_type: str = "static_image"
+    # Texte prononcé à l'origine du cue — nécessaire aux moteurs qui analysent
+    # le SENS (collage premium) plutôt que le prompt déjà stylisé.
+    excerpt: Optional[str] = None
 
     @property
     def duration(self) -> float:
