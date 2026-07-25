@@ -63,7 +63,7 @@ async def list_modes():
 
     Endpoint public — le frontend l'utilise pour rendre dynamiquement le
     selecteur de modes sans dupliquer la liste cote TS. `default_mode` indique
-    le choix par defaut (style Signature 3D — images IA + motion design).
+    le choix par defaut (Collage Premium).
     """
     return {"modes": MODE_DEFINITIONS, "default_mode": DEFAULT_MODE}
 
@@ -116,11 +116,14 @@ async def create_job(
     from app.config import settings
     pipeline_version = data.pipeline_version or settings.PIPELINE_VERSION
 
+    # Même pour les clients API qui omettent `mode`, le moteur produit par
+    # défaut doit être explicite et persistant dans le job.
+    resolved_mode = data.mode or DEFAULT_MODE
     job = Job(
         video_id=data.video_id,
         user_id=current_user.id,
         job_type=data.job_type,
-        mode=data.mode,
+        mode=resolved_mode,
         params=merged_params,
         pipeline_version=pipeline_version,
     )
@@ -133,7 +136,7 @@ async def create_job(
     process_video_task.delay(str(job.id))
 
     logger.info(
-        f"Job created: {job.id} type={data.job_type} mode={data.mode} "
+        f"Job created: {job.id} type={data.job_type} mode={resolved_mode} "
         f"pipeline={pipeline_version} by user {current_user.id}"
     )
     return job

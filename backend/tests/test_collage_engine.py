@@ -756,4 +756,4 @@ def test_collage_mode_is_selectable_and_maps_to_the_engine():
     assert MODE_TO_TEMPLATE["collage_premium"] in ("pill_editorial",)
     by_id = {m["id"]: m for m in modes.MODE_DEFINITIONS}
     assert by_id["collage_premium"]["defaults"]["collage_broll"] is True
-    assert by_id["collage_premium"].get("default") is not True
+    assert by_id["collage_premium"].get("default") is True

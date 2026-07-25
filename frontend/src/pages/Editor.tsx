@@ -30,20 +30,36 @@ interface VideoMeta {
 }
 
 // Fallback statique utilisé si l'endpoint /jobs/modes est indisponible. Le
-// PREMIER mode est le défaut produit : le style Signature 3D (images IA 3D +
-// motion design varié + sous-titres karaoké lisibles). Le mode économique
-// sans images reste sélectionnable plus bas, mais n'est plus le défaut.
+// PREMIER mode est le défaut produit : Collage Premium. Les autres moteurs
+// restent disponibles et sélectionnables.
 const FALLBACK_MODES: ModeDescriptor[] = [
   {
+    id: 'collage_premium',
+    name: 'Collage Premium (recommandé)',
+    icon: '✂️',
+    description:
+      'Le moteur par défaut : analyse du sens, métaphore visuelle, collage papier ' +
+      'éditorial et éléments assemblés progressivement à l’écran.',
+    pipeline: 'v2',
+    default: true,
+    defaults: {
+      remove_silence: true, dynamic_captions: true, ai_broll: true,
+      motion_design: true,
+      music: true, sfx: true, vertical_9_16: true, final_cta: true,
+      visual_mode: 'auto_fallback', subtitle_template: 'pill_editorial',
+      collage_broll: true,
+      broll_style: 'tiktok_viral', broll_demographic: 'african',
+    },
+  },
+  {
     id: 'signature_3d',
-    name: 'Signature 3D (recommandé)',
+    name: 'Signature 3D',
     icon: '✨',
     description:
       'Le montage vedette : illustrations 3D uniques par vidéo, scènes motion design ' +
       'qui changent de composition (cercle, polaroid, arche…), B-roll IA, sous-titres ' +
       'karaoké jaunes, SFX et transitions lumineuses.',
     pipeline: 'v2',
-    default: true,
     defaults: {
       remove_silence: true, dynamic_captions: true, ai_broll: true,
       motion_design: true,
@@ -221,7 +237,7 @@ export default function Editor() {
       .then(({ modes: list, default_mode }) => {
         if (cancelled || list.length === 0) return
         setModes(list)
-        // Choix par défaut = style Signature 3D (default_mode renvoyé
+        // Choix par défaut = Collage Premium (`default_mode` renvoyé
         // par l'API, sinon le mode marqué default, sinon le premier).
         const preferred =
           list.find((m) => m.id === default_mode) ??

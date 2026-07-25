@@ -18,10 +18,10 @@ import { uploadVideo, validateVideoFile, getStreamUrl } from '../api/videos'
 import { toast } from '../components/ui/Toast'
 
 /** Styles proposés pour les clips (sous-ensemble des modes de montage v2).
- * Le style Signature 3D vient en premier (défaut produit), les nouveaux styles
+ * Collage Premium vient en premier (défaut produit), les nouveaux styles
  * viraux suivent, puis les styles Captions AI et l'économique. */
 const CLIP_STYLE_IDS = [
-  'signature_3d', 'beast_impact', 'mint_wave', 'board_pitch',
+  'collage_premium', 'signature_3d', 'beast_impact', 'mint_wave', 'board_pitch',
   'pill_editorial', 'neon_hype', 'handwritten_note',
   'credit_saver_creator_edit', 'tiktok_viral',
 ]
@@ -57,7 +57,7 @@ export default function Clips() {
 
   const [maxClips, setMaxClips] = useState(5)
   const [styles, setStyles] = useState<ModeDescriptor[]>([])
-  const [selectedStyle, setSelectedStyle] = useState('pill_editorial')
+  const [selectedStyle, setSelectedStyle] = useState('collage_premium')
 
   const [analyzeJobId, setAnalyzeJobId] = useState<string | null>(null)
   const [sourceVideoId, setSourceVideoId] = useState<string | null>(null)
@@ -71,11 +71,12 @@ export default function Clips() {
 
   useEffect(() => {
     listModesFull()
-      .then(({ modes }) => {
+      .then(({ modes, default_mode }) => {
         const list = modes.filter((m) => CLIP_STYLE_IDS.includes(m.id))
         if (list.length > 0) {
           setStyles(list)
-          if (!list.some((m) => m.id === selectedStyle)) setSelectedStyle(list[0].id)
+          const preferred = list.find((m) => m.id === default_mode) ?? list[0]
+          setSelectedStyle(preferred.id)
         }
       })
       .catch(() => { /* la liste statique d'ids suffit */ })

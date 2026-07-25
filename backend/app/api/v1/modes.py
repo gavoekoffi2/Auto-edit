@@ -12,13 +12,34 @@ from __future__ import annotations
 #   ai_broll      -> images IA / B-roll quand possible (ancien comportement)
 #   auto_fallback -> tente l'IA, retombe en économique si crédits finis/échec
 #
-# DÉCISION PRODUIT: le défaut est le style SIGNATURE (images IA 3D + motion
-# design varié + sous-titres karaoké lisibles). Jamais le mode économique sans
-# images ni le style manuscrit — ils restent sélectionnables plus bas.
+# DÉCISION PRODUIT: le défaut est COLLAGE PREMIUM (analyse du sens, métaphore
+# visuelle et assemblage éditorial). Les autres styles restent sélectionnables.
 MODE_DEFINITIONS: list[dict] = [
     {
+        "id": "collage_premium",
+        "name": "Collage Premium (recommandé)",
+        "icon": "✂️",
+        "description": (
+            "Le moteur par défaut qui comprend le SENS de la phrase et en fait "
+            "une scène : métaphore visuelle, collage papier éditorial (photos "
+            "noir & blanc tramées, papier coloré, contours crème) et éléments "
+            "qui s'assemblent un par un sur un fond vide. 100 % automatique."
+        ),
+        "pipeline": "v2",
+        "default": True,
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
+            "motion_design": True,
+            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
+            "visual_mode": "auto_fallback",
+            "subtitle_template": "pill_editorial",
+            "collage_broll": True,
+            "broll_style": "tiktok_viral", "broll_demographic": "african",
+        },
+    },
+    {
         "id": "signature_3d",
-        "name": "Signature 3D (recommandé)",
+        "name": "Signature 3D",
         "icon": "✨",
         "description": (
             "Le montage vedette : illustrations 3D uniques par vidéo, scènes "
@@ -27,7 +48,6 @@ MODE_DEFINITIONS: list[dict] = [
             "SFX et transitions lumineuses."
         ),
         "pipeline": "v2",
-        "default": True,
         "defaults": {
             "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
             "motion_design": True,
@@ -94,27 +114,6 @@ MODE_DEFINITIONS: list[dict] = [
             "visual_mode": "auto_fallback",
             "subtitle_template": "board_serif",
             "motion_preset": "board_pitch",
-            "broll_style": "tiktok_viral", "broll_demographic": "african",
-        },
-    },
-    {
-        "id": "collage_premium",
-        "name": "Collage Premium",
-        "icon": "✂️",
-        "description": (
-            "Le moteur qui comprend le SENS de la phrase et en fait une scène : "
-            "métaphore visuelle, collage papier éditorial (photos noir & blanc "
-            "tramées, papier coloré, contours crème) et éléments qui "
-            "s'assemblent un par un sur un fond vide. 100 % automatique."
-        ),
-        "pipeline": "v2",
-        "defaults": {
-            "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
-            "motion_design": True,
-            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
-            "visual_mode": "auto_fallback",
-            "subtitle_template": "pill_editorial",
-            "collage_broll": True,
             "broll_style": "tiktok_viral", "broll_demographic": "african",
         },
     },

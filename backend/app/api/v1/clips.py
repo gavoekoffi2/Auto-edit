@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from app.api.deps import get_current_user
+from app.api.v1.modes import DEFAULT_MODE
 from app.config import settings
 from app.db.session import get_db
 from app.models.job import Job
@@ -153,11 +154,12 @@ async def create_clips_job(
                 opts["max_clips"] = min(int(opts["max_clips"]), rules.clips_max_per_job)
             params["options"] = opts
 
+    resolved_mode = data.mode or DEFAULT_MODE
     job = Job(
         video_id=video.id,
         user_id=current_user.id,
         job_type="clips",
-        mode=data.mode,
+        mode=resolved_mode,
         params=params,
         pipeline_version="v2",
     )
@@ -169,7 +171,7 @@ async def create_clips_job(
 
     logger.info(
         "Clips analyze job created: %s source=%s mode=%s user=%s",
-        job.id, "url" if source_url else "video", data.mode, current_user.id,
+        job.id, "url" if source_url else "video", resolved_mode, current_user.id,
     )
     return job
 

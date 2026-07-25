@@ -3,19 +3,19 @@ from app.api.v1 import modes
 from app.config import VALID_MODES, VALID_VISUAL_MODES
 
 
-def test_default_mode_is_signature_3d():
-    """Décision produit: le défaut est le style vedette AVEC images IA 3D —
-    jamais le mode économique sans images, ni un style manuscrit."""
-    assert modes.DEFAULT_MODE == "signature_3d"
+def test_default_mode_is_collage_premium():
+    """Décision produit: tout nouveau montage part en Collage Premium."""
+    assert modes.DEFAULT_MODE == "collage_premium"
 
 
 def test_default_mode_is_first_and_flagged():
     first = modes.MODE_DEFINITIONS[0]
-    assert first["id"] == "signature_3d"
+    assert first["id"] == "collage_premium"
     assert first.get("default") is True
     # Le défaut tente les images IA mais ne bloque jamais (fallback propre).
     assert first["defaults"].get("visual_mode") == "auto_fallback"
     assert first["defaults"].get("ai_broll") is True
+    assert first["defaults"].get("collage_broll") is True
     # Le défaut n'utilise JAMAIS les sous-titres manuscrits.
     assert first["defaults"].get("subtitle_template") != "handwritten_note"
 

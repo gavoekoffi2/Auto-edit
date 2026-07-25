@@ -34,6 +34,8 @@ export interface JobOptions {
   motion_preset?: MotionPreset
   /** Template de sous-titres animés (sinon déduit du mode/style choisi). */
   subtitle_template?: SubtitleTemplate
+  /** Active le moteur d’assemblage éditorial Collage Premium. */
+  collage_broll?: boolean
   /** Fonctionnalité Clips: nombre max de shorts extraits d'une vidéo longue (1-10). */
   max_clips?: number
   /** Supprime les sous-titres déjà incrustés dans la source (défaut: activé). */
@@ -62,7 +64,7 @@ export interface ModeDescriptor {
   icon: string
   description: string
   pipeline: PipelineVersion
-  /** true pour le mode sélectionné par défaut (montage créateur économique). */
+  /** true pour le mode sélectionné par défaut (Collage Premium). */
   default?: boolean
   defaults: JobOptions
 }

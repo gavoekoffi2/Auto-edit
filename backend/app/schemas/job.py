@@ -51,6 +51,8 @@ class JobOptions(BaseModel):
     motion_preset: Optional[str] = None
     # Template de sous-titres animés (sinon déduit du mode choisi).
     subtitle_template: Optional[str] = None
+    # Active explicitement l'assemblage éditorial Collage Premium.
+    collage_broll: Optional[bool] = None
     # Fonctionnalité Clips: nombre maximum de shorts extraits d'une vidéo longue.
     max_clips: Optional[int] = Field(default=None, ge=1, le=10)
     # Nettoyage IA du transcript: off | light (défaut) | balanced | aggressive.
