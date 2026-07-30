@@ -31,7 +31,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Optional, Protocol, Sequence, runtime_checkable
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageFilter
 
 from . import collage_config as ccfg
 from .collage_types import (
@@ -43,6 +43,11 @@ from .collage_types import (
 )
 
 logger = logging.getLogger(__name__)
+
+#: Taille d'une feuille de papier, en multiples du rayon de sa cellule de
+#: layout. Au-delà d'environ 1,7 les pièces voisines du gabarit à 4 éléments se
+#: recouvrent et la scène devient un empilement illisible.
+PIECE_SPREAD = 1.60
 
 try:  # Pillow >= 9.1
     _RESAMPLE = Image.Resampling.LANCZOS
@@ -107,9 +112,18 @@ class LocalAssembleRenderer:
 
         duration = max(ccfg.CLIP_DURATION_MIN,
                        min(ccfg.CLIP_DURATION_MAX, float(duration or ccfg.CLIP_DURATION)))
-        source = self._load_source(concept, image_path)
         background = self._background_plate(concept)
-        pieces = self._slice_pieces(concept, source)
+        source = self._load_ai_image(image_path)
+        if source is not None:
+            # Une image générée existe: on la découpe selon les zones que le
+            # prompt lui a imposées (l'union des pièces reconstitue l'image).
+            pieces = self._slice_pieces(concept, source)
+        else:
+            # Chemin des moteurs UGC (et repli du moteur éditorial sans crédit):
+            # chaque objet du concept devient une VRAIE pièce de papier découpée,
+            # dessinée en vectoriel. Bien meilleur qu'une partition d'un aplat:
+            # la forme est reconnaissable et chaque élément a sa propre entrée.
+            pieces = self._pictogram_pieces(concept)
         n_frames = max(2, int(round(duration * self.fps)))
 
         os.makedirs(os.path.dirname(os.path.abspath(out_path)) or ".", exist_ok=True)
@@ -120,42 +134,65 @@ class LocalAssembleRenderer:
         return duration
 
     # ------------------------------------------------------------------ #
-    def _load_source(self, concept: CollageConcept,
-                     image_path: Optional[str]) -> Image.Image:
-        """Image de référence: l'asset généré, sinon un collage procédural.
-
-        Le repli procédural garantit qu'une scène `collage_assemble` existe même
-        sans clé API / sans crédits (même promesse que le mode credit-saver du
-        moteur: on ne bloque jamais un rendu sur une image manquante).
-        """
-        if image_path and os.path.exists(image_path):
-            try:
-                return _cover(Image.open(image_path).convert("RGBA"),
-                              self.width, self.height)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("[collage_video] image illisible (%s) — repli procédural",
-                               str(exc)[:120])
-        return self._procedural_collage(concept)
+    def _load_ai_image(self, image_path: Optional[str]) -> Optional[Image.Image]:
+        """L'image générée, cadrée — ou None s'il n'y en a pas d'exploitable."""
+        if not image_path or not os.path.exists(image_path):
+            return None
+        try:
+            return _cover(Image.open(image_path).convert("RGBA"),
+                          self.width, self.height)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[collage_video] image illisible (%s) — pièces dessinées",
+                           str(exc)[:120])
+            return None
 
     # ------------------------------------------------------------------ #
-    def _procedural_collage(self, concept: CollageConcept) -> Image.Image:
-        """Collage de secours: aplats de papier + trame, zéro typographie."""
-        canvas = Image.new("RGBA", (self.width, self.height),
-                           hex_to_rgb(concept.background_color) + (255,))
-        draw = ImageDraw.Draw(canvas)
-        cells = layout_for(len(concept.ordered_objects()))
-        for i, obj in enumerate(concept.ordered_objects()[: len(cells)]):
+    def _pictogram_pieces(self, concept: CollageConcept) -> list[_Piece]:
+        """Une pièce de papier découpée PAR OBJET du concept, sans aucune IA.
+
+        C'est le moteur d'illustration des profils UGC. Chaque objet nommé par
+        le planner est traduit en découpe vectorielle (`collage_shapes`), posée
+        sur son papier coloré, avec contour crème et ombre courte — exactement
+        le même vocabulaire visuel que les pièces issues d'une image générée,
+        pour que les trois moteurs restent cohérents entre eux.
+
+        L'ancien repli dessinait des ellipses et des rectangles de couleur: la
+        scène existait mais n'illustrait RIEN. Ici la forme porte le sens.
+        """
+        from . import collage_shapes
+
+        objects = concept.ordered_objects()
+        cells = layout_for(len(objects))
+        count = min(len(objects), len(cells))
+        pieces: list[_Piece] = []
+        ink = hex_to_rgb("#1D1D1B") + (255,)
+        for i in range(count):
+            obj = objects[i]
             _, cx, cy, radius = cells[i]
-            rx = radius * self.width
-            ry = radius * self.width * 1.05
-            box = (cx * self.width - rx, cy * self.height - ry,
-                   cx * self.width + rx, cy * self.height + ry)
-            color = hex_to_rgb(obj.paper_color) + (255,)
-            if i % 2 == 0:
-                draw.ellipse(box, fill=color)
-            else:
-                draw.rounded_rectangle(box, radius=int(rx * 0.22), fill=color)
-        return _apply_halftone(canvas, strength=0.35)
+            # La feuille déborde du pictogramme (c'est ce qui fait « élément
+            # collé » et pas « icône »), mais elle doit rester DANS sa zone:
+            # au-delà, les pièces voisines se recouvrent et la scène devient
+            # illisible. PIECE_SPREAD est calibré sur le gabarit le plus serré.
+            size = max(48, int(radius * self.width * PIECE_SPREAD))
+            w = h = size
+            paper = hex_to_rgb(obj.paper_color) + (255,)
+            # Un papier très sombre a besoin d'une encre claire pour rester lisible.
+            glyph_ink = ink if _luma(paper) > 110 else hex_to_rgb("#F7F1E3") + (255,)
+            accent = hex_to_rgb(
+                _accent_for(concept, obj.paper_color, glyph_ink)) + (255,)
+            seed = (abs(hash((concept.id, obj.name, obj.order))) % 99991) + 1
+            layer = collage_shapes.render_cutout(
+                collage_shapes.resolve_pictogram(obj.name), w, h,
+                paper_color=paper, ink_color=glyph_ink, accent_color=accent,
+                seed=seed, tilt=(-4.5 if i % 2 else 4.0),
+            )
+            layer = _add_keyline(layer, layer.split()[3])
+            layer = _add_shadow(layer)
+            x = int(cx * self.width - layer.width / 2)
+            y = int(cy * self.height - layer.height / 2)
+            pieces.append(_Piece(layer, x, y, obj.entrance, obj.order))
+        pieces.sort(key=lambda p: p.order)
+        return pieces
 
     # ------------------------------------------------------------------ #
     def _background_plate(self, concept: CollageConcept) -> Image.Image:
@@ -397,6 +434,36 @@ class CollageVideoService:
 # --------------------------------------------------------------------------- #
 # helpers image
 # --------------------------------------------------------------------------- #
+def _luma(rgba: tuple) -> float:
+    """Luminance perçue d'une couleur RGBA (0-255)."""
+    return 0.299 * rgba[0] + 0.587 * rgba[1] + 0.114 * rgba[2]
+
+
+def _accent_for(concept: CollageConcept, paper: str, ink: tuple) -> str:
+    """Couleur du détail d'une pièce, prise dans la palette du concept.
+
+    Elle doit se détacher de DEUX choses à la fois: du papier (sinon le détail
+    disparaît dans le fond de la feuille) et de l'encre du pictogramme (sinon
+    le détail fusionne avec la forme et le carton devient un hexagone noir, la
+    coche un disque plein…). On maximise donc le contraste MINIMAL des deux.
+    """
+    candidates = [c for c in (list(concept.palette) + [concept.background_color])
+                  if c and c.upper() != (paper or "").upper()]
+    if not candidates:
+        return "#F2B705"
+    paper_luma = _luma(hex_to_rgb(paper or "#F7F1E3"))
+    ink_luma = _luma(ink)
+
+    def separation(color: str) -> float:
+        luma = _luma(hex_to_rgb(color))
+        return min(abs(luma - paper_luma), abs(luma - ink_luma))
+
+    best = max(candidates, key=separation)
+    # Aucune couleur de la palette ne se détache assez: on prend un jaune papier
+    # neutre plutôt que de rendre une pièce illisible.
+    return best if separation(best) >= 40 else "#F2B705"
+
+
 def _duration_for(concept: CollageConcept) -> float:
     """Durée du clip: le temps du propos, borné par la configuration."""
     span = concept.duration or ccfg.CLIP_DURATION
@@ -489,17 +556,6 @@ def _apply_paper_grain(img: Image.Image, strength: float) -> Image.Image:
     arr = np.array(img, dtype=np.float32)
     arr[..., :3] = np.clip(arr[..., :3] + noise, 0, 255)
     return Image.fromarray(arr.astype(np.uint8), "RGBA")
-
-
-def _apply_halftone(img: Image.Image, strength: float = 0.35) -> Image.Image:
-    """Trame de points régulière — évoque la photo N&B tramée du style."""
-    if strength <= 0:
-        return img
-    arr = np.array(img, dtype=np.float32)
-    ys, xs = np.mgrid[0:img.height, 0:img.width]
-    dots = ((np.sin(xs / 3.0) * np.sin(ys / 3.0)) > 0.35).astype(np.float32)
-    arr[..., :3] *= (1.0 - strength * dots[..., None])
-    return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGBA")
 
 
 def _odd(value: int) -> int:

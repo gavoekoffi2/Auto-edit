@@ -36,6 +36,7 @@ from typing import Iterable, Optional, Sequence
 import httpx
 
 from . import collage_config as ccfg
+from . import collage_profiles
 from .collage_cache import JsonCache, make_key
 from .collage_types import (
     CollageConcept,
@@ -52,73 +53,14 @@ _MAX_EXCERPT = 220
 
 
 # --------------------------------------------------------------------------- #
-# Bibliothèque de métaphores — repli déterministe (aucun appel réseau)
+# Bibliothèques de métaphores et consignes LLM
 #
-# Clé = identifiant d'icône produit par `content.icon_for_text` (déjà utilisé
-# par le motion design). Valeur = (métaphore, objets, émotion par défaut).
+# Elles vivent désormais dans `collage_profiles`: c'est ce qui différencie les
+# moteurs (éditorial vs UGC produit) sans dupliquer une ligne de pipeline. Les
+# alias ci-dessous gardent l'ancien vocabulaire d'import du module.
 # --------------------------------------------------------------------------- #
-METAPHOR_LIBRARY: dict[str, tuple[str, list[str], Emotion]] = {
-    "money": ("value flowing from one hand to another",
-              ["open hand", "folded banknote", "coin stack", "arrow"], Emotion.TRUST),
-    "growth": ("a small seed becoming a rising staircase",
-               ["seed", "sprout", "rising bar", "upward arrow"], Emotion.HOPE),
-    "transfer": ("a bridge carrying a parcel across a gap",
-                 ["hand with phone", "bridge", "parcel", "receiving hand"], Emotion.TRUST),
-    "crypto": ("a locked block joining an endless chain",
-               ["chain link", "padlock", "coin", "network node"], Emotion.CURIOSITY),
-    "bank": ("two currencies balancing on a scale",
-             ["balance scale", "banknote", "coin", "arrow"], Emotion.TRUST),
-    "card": ("a card unlocking a closed shutter",
-             ["bank card", "shutter", "key", "open door"], Emotion.TRUST),
-    "check": ("a key finally matching its lock",
-              ["key", "padlock", "check mark", "shield"], Emotion.TRUST),
-    "warning": ("a crack spreading across a smooth surface",
-                ["cracked plate", "warning triangle", "falling piece"], Emotion.WARNING),
-    "phone": ("a hand holding a window onto the world",
-              ["hand", "phone screen", "signal waves", "small globe"], Emotion.CURIOSITY),
-    "people": ("separate silhouettes converging into one circle",
-               ["silhouette", "second silhouette", "circle", "handshake"], Emotion.PRIDE),
-    "cart": ("a shelf emptying into a customer's basket",
-             ["shelf", "product box", "basket", "arrow"], Emotion.HOPE),
-    "idea": ("a struck match lighting a dark room",
-             ["match", "flame", "light beam", "open book"], Emotion.CURIOSITY),
-    "target": ("an arrow finding the exact centre",
-               ["bow", "arrow", "target rings", "flag"], Emotion.PRIDE),
-    "gear": ("loose gears clicking into one mechanism",
-             ["gear", "second gear", "belt", "lever"], Emotion.NEUTRAL),
-    "book": ("a closed book opening into a staircase",
-             ["closed book", "open book", "staircase", "graduation cap"], Emotion.HOPE),
-    "megaphone": ("one voice multiplying into many ears",
-                  ["megaphone", "sound waves", "ear", "crowd silhouette"], Emotion.URGENCY),
-    "shield": ("a shield absorbing an incoming arrow",
-               ["shield", "incoming arrow", "padlock", "safe hands"], Emotion.TRUST),
-    "clock": ("sand running out of an hourglass",
-              ["hourglass", "falling sand", "clock face", "hand"], Emotion.URGENCY),
-    "rocket": ("a rocket leaving its launch pad",
-               ["rocket", "launch pad", "smoke plume", "star"], Emotion.HOPE),
-    "map": ("a pin dropping onto a folded map",
-            ["folded map", "location pin", "route line", "parcel"], Emotion.NEUTRAL),
-    "chart": ("scattered dots aligning into a rising line",
-              ["scattered dots", "rising line", "axis", "magnifier"], Emotion.CURIOSITY),
-    "star": ("one shape lifted above a row of identical shapes",
-             ["row of squares", "lifted star", "pedestal", "sparkle"], Emotion.PRIDE),
-    "heart": ("two hands protecting a small flame",
-              ["hand", "second hand", "flame", "heart"], Emotion.HOPE),
-    "globe": ("threads stitching distant points together",
-              ["globe", "thread", "pin", "envelope"], Emotion.CURIOSITY),
-    "chat": ("two speech bubbles overlapping into one",
-             ["speech bubble", "second bubble", "overlap shape", "pen"], Emotion.NEUTRAL),
-    "lock": ("a padlock closing over a folder",
-             ["folder", "padlock", "key", "shield"], Emotion.TRUST),
-    "handshake": ("two hands meeting over a signed sheet",
-                  ["hand", "second hand", "signed sheet", "seal"], Emotion.TRUST),
-    "calendar": ("a single date circled on a wall of days",
-                 ["calendar grid", "circled date", "pen", "clock"], Emotion.URGENCY),
-}
-
-DEFAULT_METAPHOR = ("a closed door opening onto a bright path",
-                    ["closed door", "turning key", "open path", "silhouette"],
-                    Emotion.CURIOSITY)
+METAPHOR_LIBRARY = collage_profiles.EDITORIAL_LIBRARY
+DEFAULT_METAPHOR = collage_profiles.EDITORIAL_DEFAULT
 
 #: Émotion déduite du texte quand le LLM n'est pas là. Ordre = priorité.
 _EMOTION_RULES: list[tuple[re.Pattern[str], Emotion]] = [
@@ -151,28 +93,6 @@ _EMOTION_PALETTE_INDEX: dict[Emotion, int] = {
 }
 
 
-_LLM_INSTRUCTION = (
-    "Tu es directeur artistique d'un studio de motion design éditorial. "
-    "Pour CHAQUE extrait parlé ci-dessous, conçois UNE scène de collage papier "
-    "qui raconte visuellement l'idée (jamais une illustration littérale de mots).\n"
-    "Contraintes strictes:\n"
-    "- 3 à 6 objets MAXIMUM, tous concrets et découpables en papier;\n"
-    "- aucun objet ne doit être du texte, un logo, un chiffre ou une lettre;\n"
-    "- la métaphore doit être compréhensible en 2 secondes, sans légende;\n"
-    "- l'ordre des objets = ordre d'apparition qui construit le sens "
-    "(le sujet d'abord, la conséquence en dernier);\n"
-    "- couleurs = aplats de papier saturés, une couleur de fond + 2 ou 3 accents.\n"
-    "Réponds UNIQUEMENT par un tableau JSON de {n} objets, dans le MÊME ORDRE, "
-    "chaque objet ayant exactement ces clés:\n"
-    '{"meaning": str, "emotion": "urgency|hope|warning|pride|curiosity|trust|'
-    'frustration|neutral", "metaphor": str, "objects": [{"name": str, '
-    '"order": int, "note": str}], "background_color": "#RRGGBB", '
-    '"palette": ["#RRGGBB", ...], "label": str}\n'
-    "`label` = UN mot-clé en majuscules (max 12 caractères).\n\n"
-    "Extraits:\n{items}"
-)
-
-
 # --------------------------------------------------------------------------- #
 def chat_completion(prompt: str, *, model: str, api_key: str,
                     timeout_s: int = 60) -> str:
@@ -199,10 +119,13 @@ class CollageConceptPlanner:
     def __init__(self, api_key: Optional[str] = None,
                  model: Optional[str] = None,
                  use_llm: Optional[bool] = None,
-                 cache: Optional[JsonCache] = None):
+                 cache: Optional[JsonCache] = None,
+                 profile: Optional[collage_profiles.CollageProfile] = None):
         self.api_key = api_key if api_key is not None else os.environ.get("OPENROUTER_API_KEY", "")
         self.model = model or ccfg.PLANNER_MODEL
-        self.use_llm = ccfg.PLANNER_ENABLED if use_llm is None else bool(use_llm)
+        self.profile = profile or collage_profiles.get(ccfg.PROFILE)
+        use_llm = ccfg.PLANNER_ENABLED if use_llm is None else bool(use_llm)
+        self.use_llm = bool(use_llm and self.profile.allow_planner_llm)
         self.cache = cache if cache is not None else JsonCache("concepts")
 
     # ------------------------------------------------------------------ #
@@ -249,8 +172,7 @@ class CollageConceptPlanner:
         return out
 
     # ------------------------------------------------------------------ #
-    @staticmethod
-    def _prepare(beat: dict, index: int) -> Optional[dict]:
+    def _prepare(self, beat: dict, index: int) -> Optional[dict]:
         text = re.sub(r"\s+", " ", str(beat.get("text") or beat.get("excerpt") or "")).strip()
         if len(text) < 12:
             return None
@@ -261,14 +183,20 @@ class CollageConceptPlanner:
             "source_end": float(beat.get("source_end") or 0.0),
             "text": text,
             "excerpt": excerpt,
-            "cache_key": make_key("concept", ccfg.STYLE_LOCK_VERSION, excerpt.lower()),
+            # Le PROFIL entre dans la clé: la même phrase ne doit pas resservir
+            # un concept éditorial abstrait à un montage UGC produit (et
+            # inversement) sous prétexte qu'elle a déjà été analysée.
+            "cache_key": make_key("concept", ccfg.STYLE_LOCK_VERSION,
+                                  self.profile.id, excerpt.lower()),
         }
 
     # ------------------------------------------------------------------ #
     def _llm_batch(self, beats: Sequence[dict]) -> list[Optional[dict]]:
         """Un appel, N concepts. Renvoie une liste alignée sur *beats*."""
         items = "\n".join(f'{i + 1}. "{b["excerpt"]}"' for i, b in enumerate(beats))
-        prompt = _LLM_INSTRUCTION.replace("{n}", str(len(beats))).replace("{items}", items)
+        prompt = (self.profile.llm_instruction
+                  .replace("{n}", str(len(beats)))
+                  .replace("{items}", items))
         try:
             text = chat_completion(prompt, model=self.model, api_key=self.api_key,
                                    timeout_s=ccfg.PLANNER_TIMEOUT_S)
@@ -331,9 +259,22 @@ class CollageConceptPlanner:
 
     # ------------------------------------------------------------------ #
     def _heuristic_concept(self, beat: dict) -> CollageConcept:
-        """Concept déterministe: métaphore de bibliothèque + palette seedée."""
-        icon = _icon_for(beat["text"])
-        metaphor, names, default_emotion = METAPHOR_LIBRARY.get(icon, DEFAULT_METAPHOR)
+        """Concept déterministe: métaphore du PROFIL + palette seedée.
+
+        Chemin critique des moteurs UGC: sans clé API, c'est lui qui décide de
+        tout ce qui sera illustré. Il commence donc par chercher une intention
+        PRODUIT dans le texte (prix, livraison, avis…), et ne retombe sur le
+        vocabulaire d'icônes du moteur que si rien ne se déclenche.
+        """
+        profile = self.profile
+        key = profile.intent_for(beat["text"])
+        if key is None:
+            icon = _icon_for(beat["text"])
+            # Les profils UGC traduisent l'icône en intention produit; le profil
+            # éditorial est indexé directement sur les icônes.
+            key = (collage_profiles.UGC_ICON_FALLBACK.get(icon, "product")
+                   if profile.intent_rules else icon)
+        metaphor, names, default_emotion = profile.metaphor_for(key)
         emotion = _emotion_for(beat["text"]) or default_emotion
         palette, background = _resolve_palette({}, emotion, beat["excerpt"])
         return CollageConcept(

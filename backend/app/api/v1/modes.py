@@ -19,6 +19,8 @@ MODE_DEFINITIONS: list[dict] = [
         "id": "collage_premium",
         "name": "Collage Premium (recommandé)",
         "icon": "✂️",
+        "family": "collage",
+        "badge": "images IA si dispo",
         "description": (
             "Le moteur par défaut qui comprend le SENS de la phrase et en fait "
             "une scène : métaphore visuelle, collage papier éditorial (photos "
@@ -34,6 +36,57 @@ MODE_DEFINITIONS: list[dict] = [
             "visual_mode": "auto_fallback",
             "subtitle_template": "pill_editorial",
             "collage_broll": True,
+            "collage_profile": "editorial",
+            "broll_style": "tiktok_viral", "broll_demographic": "african",
+        },
+    },
+    {
+        "id": "collage_ugc_product",
+        "name": "Collage UGC Produit",
+        "icon": "📦",
+        "family": "collage",
+        "badge": "0 crédit image",
+        "description": (
+            "Pour présenter un produit face caméra. Le collage papier illustre "
+            "ce que tu dis au moment où tu le dis : le prix, la livraison, la "
+            "texture, le résultat, les avis. AUCUNE image IA n'est générée — "
+            "chaque pièce est découpée par le moteur, donc zéro coût d'API."
+        ),
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
+            # Pas de scènes motion design: c'est la différence assumée avec la
+            # variante « + motion » — ici le collage porte tout, seul.
+            "motion_design": False,
+            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
+            # Verrou de coût: aucune génération d'image payante, jamais.
+            "visual_mode": "credit_saver",
+            "subtitle_template": "pill_editorial",
+            "collage_broll": True,
+            "collage_profile": "ugc_product",
+            "broll_style": "tiktok_viral", "broll_demographic": "african",
+        },
+    },
+    {
+        "id": "collage_ugc_motion",
+        "name": "Collage UGC Produit + Motion",
+        "icon": "🎞️",
+        "family": "collage",
+        "badge": "0 crédit image",
+        "description": (
+            "Le moteur UGC Produit, plus les scènes de motion design animées du "
+            "moteur CutForge. Toujours aucune image IA générée : collage papier "
+            "et motion design procédural uniquement."
+        ),
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
+            "motion_design": True,
+            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
+            "visual_mode": "credit_saver",
+            "subtitle_template": "pill_editorial",
+            "collage_broll": True,
+            "collage_profile": "ugc_motion",
             "broll_style": "tiktok_viral", "broll_demographic": "african",
         },
     },

@@ -611,6 +611,12 @@ def _split_collage_ideas(ideas: list) -> tuple[list, list]:
     if not ccfg.ENABLED:
         return [], list(ideas)
 
+    # Les moteurs UGC ne génèrent AUCUNE photo IA: si le routeur laissait des
+    # beats au B-roll photo, ces moments resteraient simplement non illustrés.
+    # Leur profil demande donc 100 % des beats (`share_of_broll = 1.0`).
+    if ccfg.MAX_SHARE_OF_BROLL >= 0.999:
+        return list(ideas)[: ccfg.MAX_SCENES], list(ideas)[ccfg.MAX_SCENES:]
+
     router = BrollTypeRouter(collage_share=ccfg.MAX_SHARE_OF_BROLL)
     texts = [str(i.get("excerpt") or i.get("prompt") or "") for i in ideas]
     decisions = router.route_many(texts)
@@ -633,9 +639,11 @@ def _run_collage(ideas: list, workdir: str, *, allow_paid_images: bool
     """
     rep = {"collage_beats": len(ideas), "collage_images": 0, "collage_clips": 0}
     try:
+        from app.processing.collage import collage_config as ccfg
         from app.processing.collage.collage_pipeline import run_collage_for_ideas
         result = run_collage_for_ideas(ideas, workdir,
-                                       allow_paid_images=allow_paid_images)
+                                       allow_paid_images=allow_paid_images,
+                                       profile=ccfg.PROFILE)
     except Exception as exc:  # noqa: BLE001 - jamais bloquant
         print(f"[pipeline] WARN collage premium ignoré: {exc}", file=sys.stderr)
         rep["collage_error"] = str(exc)[:200]
