@@ -248,7 +248,7 @@ class CollageConceptPlanner:
             meaning=str(payload.get("meaning") or "").strip()[:240],
             emotion=emotion,
             metaphor=metaphor[:240],
-            objects=_build_objects(names, palette),
+            objects=_build_objects(names, palette, beat["id"]),
             background_color=background,
             palette=palette,
             label=_normalize_label(payload.get("label"), beat["text"]),
@@ -285,7 +285,8 @@ class CollageConceptPlanner:
             meaning=beat["excerpt"][:240],
             emotion=emotion,
             metaphor=metaphor,
-            objects=_build_objects(list(names)[: ccfg.MAX_OBJECTS], palette),
+            objects=_build_objects(list(names)[: ccfg.MAX_OBJECTS], palette,
+                                   beat["id"]),
             background_color=background,
             palette=palette,
             label=_normalize_label(None, beat["text"]),
@@ -334,9 +335,15 @@ def _resolve_palette(payload: dict, emotion: Emotion,
     return papers[:5], background
 
 
-def _build_objects(names: Sequence[str], palette: Sequence[str]) -> list[CollageObject]:
-    """Attribue layout, entrée et papier à chaque objet (ordre = narration)."""
-    cells = layout_for(len(names))
+def _build_objects(names: Sequence[str], palette: Sequence[str],
+                   seed: object = None) -> list[CollageObject]:
+    """Attribue layout, entrée et papier à chaque objet (ordre = narration).
+
+    *seed* (l'id du beat) doit être le MÊME que celui utilisé par
+    `CollageConcept.layout()`, sinon les ancrages écrits ici ne correspondraient
+    plus aux zones réellement animées.
+    """
+    cells = layout_for(len(names), seed)
     entrances = ("drop", "slide_left", "scale_pop", "slide_right", "rise", "rotate_in")
     papers = [c for c in palette if c] or ["#F7F1E3"]
     objects: list[CollageObject] = []

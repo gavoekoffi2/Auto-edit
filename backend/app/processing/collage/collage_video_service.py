@@ -162,7 +162,7 @@ class LocalAssembleRenderer:
         from . import collage_shapes
 
         objects = concept.ordered_objects()
-        cells = layout_for(len(objects))
+        cells = concept.layout()
         count = min(len(objects), len(cells))
         pieces: list[_Piece] = []
         ink = hex_to_rgb("#1D1D1B") + (255,)
@@ -211,7 +211,7 @@ class LocalAssembleRenderer:
         reconstitue l'image finale au pixel près.
         """
         objects = concept.ordered_objects()
-        cells = layout_for(len(objects))
+        cells = concept.layout()
         count = min(len(objects), len(cells))
         if count == 0:
             return []

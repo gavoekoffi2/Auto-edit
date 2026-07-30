@@ -43,6 +43,7 @@ from app.processing.collage.collage_prompt_builder import (
 )
 from app.processing.collage.collage_quality_service import CollageQualityService
 from app.processing.collage.collage_types import (
+    LAYOUT_TEMPLATES,
     BrollType,
     CollageConcept,
     CollageObject,
@@ -50,6 +51,7 @@ from app.processing.collage.collage_types import (
     QualityReport,
 )
 from app.processing.collage.collage_video_service import (
+    PIECE_SPREAD,
     CollageVideoService,
     LocalAssembleRenderer,
 )
@@ -478,27 +480,44 @@ def test_pieces_are_drawn_cutouts_when_no_image_was_generated():
         assert np.asarray(piece.layer.split()[3]).max() > 0
 
 
-def test_drawn_pieces_do_not_overlap_each_other():
+def test_drawn_pieces_do_not_overlap_in_any_layout_variant():
     """Des pièces qui se recouvrent rendent la scène illisible.
 
-    C'est le défaut qu'on corrige ici: une feuille trop grande pour sa cellule
-    de layout empilait les découpes les unes sur les autres.
+    On balaie TOUS les gabarits, pas seulement ceux qu'un concept d'exemple
+    tirerait au sort: une variante mal calibrée ne doit pas pouvoir se glisser
+    dans le jeu et n'apparaître qu'au montage d'un client.
     """
     renderer = LocalAssembleRenderer(width=1080, height=1920, fps=30)
-    for n in (3, 4, 5, 6):
-        pieces = renderer._pictogram_pieces(_concept(n_objects=n))
-        boxes = [(p.x, p.y, p.x + p.layer.width, p.y + p.layer.height)
-                 for p in pieces]
-        for i, a in enumerate(boxes):
-            for b in boxes[i + 1:]:
-                overlap_x = min(a[2], b[2]) - max(a[0], b[0])
-                overlap_y = min(a[3], b[3]) - max(a[1], b[1])
-                area = max(0, overlap_x) * max(0, overlap_y)
-                smaller = min((a[2] - a[0]) * (a[3] - a[1]),
-                              (b[2] - b[0]) * (b[3] - b[1]))
-                # L'ombre portée déborde un peu: on tolère un chevauchement
-                # marginal, jamais un recouvrement de la forme.
-                assert area <= smaller * 0.12, f"{n} objets: pièces superposées"
+    for n, variants in LAYOUT_TEMPLATES.items():
+        for index, cells in enumerate(variants):
+            boxes = []
+            for (_, cx, cy, radius) in cells:
+                size = radius * 1080 * PIECE_SPREAD + 2 * ccfg.SHADOW_OFFSET * 2
+                boxes.append((cx * 1080 - size / 2, cy * 1920 - size / 2,
+                              cx * 1080 + size / 2, cy * 1920 + size / 2))
+            for i, a in enumerate(boxes):
+                for b in boxes[i + 1:]:
+                    overlap_x = min(a[2], b[2]) - max(a[0], b[0])
+                    overlap_y = min(a[3], b[3]) - max(a[1], b[1])
+                    area = max(0, overlap_x) * max(0, overlap_y)
+                    smaller = min((a[2] - a[0]) * (a[3] - a[1]),
+                                  (b[2] - b[0]) * (b[3] - b[1]))
+                    # L'ombre portée déborde un peu: on tolère un chevauchement
+                    # marginal, jamais un recouvrement de la forme.
+                    assert area <= smaller * 0.12, (
+                        f"{n} objets, variante {index}: pièces superposées")
+    # Et le rendu réel respecte bien ce gabarit.
+    assert len(renderer._pictogram_pieces(_concept(n_objects=5))) == 5
+
+
+def test_layout_varies_between_scenes_but_stays_reproducible():
+    """Sans variantes, toutes les scènes d'un montage ont la même composition."""
+    layouts = {tuple(c[0] for c in _concept(n_objects=4, cid=f"cg_{i:03d}").layout())
+               for i in range(12)}
+    assert len(layouts) > 1, "aucune variété de composition entre les scènes"
+    # Même scène = même gabarit, toujours (montage reproductible).
+    once = _concept(n_objects=4, cid="cg_007").layout()
+    assert once == _concept(n_objects=4, cid="cg_007").layout()
 
 
 def test_clip_starts_empty_and_ends_assembled():

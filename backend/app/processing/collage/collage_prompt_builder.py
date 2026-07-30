@@ -103,7 +103,7 @@ class CollagePromptBuilder:
     def build_image_prompt(self, concept: CollageConcept,
                            quality_hints: Optional[list[str]] = None) -> str:
         objects = concept.ordered_objects()
-        cells = layout_for(len(objects))
+        cells = concept.layout()
         placement = "; ".join(
             f"{obj.name} {ANCHOR_LABELS.get(cells[i][0], 'in the frame')} "
             f"on {obj.paper_color} paper"
