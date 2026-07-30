@@ -374,3 +374,57 @@ DEFAULT_MODE: str = next(
     (m["id"] for m in MODE_DEFINITIONS if m.get("default")),
     MODE_DEFINITIONS[0]["id"],
 )
+
+
+# --------------------------------------------------------------------------- #
+# Métadonnées de présentation
+#
+# Le frontend range les moteurs par FAMILLE et affiche une pastille de coût.
+# Ces deux informations se déduisent de ce qui est déjà déclaré plus haut: on
+# les calcule ici une fois pour toutes plutôt que de les recopier dans chaque
+# entrée (et de les laisser diverger côté TypeScript).
+# --------------------------------------------------------------------------- #
+FAMILIES: list[dict] = [
+    {"id": "collage", "label": "Collage papier", "hint": "Assemblage éditorial animé"},
+    {"id": "viral", "label": "Styles viraux", "hint": "Sous-titres et motion design"},
+    {"id": "classic", "label": "Classiques", "hint": "Publicité, formation, podcast"},
+    {"id": "legacy", "label": "Ancien moteur", "hint": "Pipeline v1, sans motion design"},
+]
+
+_FAMILY_BY_MODE: dict[str, str] = {
+    "credit_saver_creator_edit": "viral",
+    "business_premium_african": "classic",
+    "tiktok_viral": "classic",
+    "publicite_locale": "classic",
+    "podcast_propre": "classic",
+    "formation_educative": "classic",
+}
+
+#: Pastille de coût, dérivée de la stratégie visuelle du mode.
+_COST_BADGES: dict[str, str] = {
+    "credit_saver": "0 crédit image",
+    "auto_fallback": "images IA si dispo",
+    "ai_broll": "images IA",
+}
+
+
+def _decorate(mode: dict) -> dict:
+    """Complète `family` et `badge` sans écraser une valeur explicite."""
+    if not mode.get("family"):
+        if mode.get("pipeline") == "v1":
+            family = "legacy"
+        elif mode["id"].startswith("collage_"):
+            family = "collage"
+        else:
+            family = _FAMILY_BY_MODE.get(mode["id"], "viral")
+        mode["family"] = family
+    if not mode.get("badge"):
+        visual = (mode.get("defaults") or {}).get("visual_mode")
+        badge = _COST_BADGES.get(visual or "")
+        if badge:
+            mode["badge"] = badge
+    return mode
+
+
+for _mode in MODE_DEFINITIONS:
+    _decorate(_mode)

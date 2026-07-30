@@ -15,7 +15,7 @@ from app.models.user import User
 from app.models.video import Video
 from app.models.job import Job
 from app.schemas.job import JobCreate, JobResponse
-from app.api.v1.modes import MODE_DEFINITIONS, DEFAULT_MODE
+from app.api.v1.modes import FAMILIES, MODE_DEFINITIONS, DEFAULT_MODE
 from app.api.deps import get_current_user
 from app.services.auth import decode_token
 from app.services.storage import get_absolute_path
@@ -63,9 +63,11 @@ async def list_modes():
 
     Endpoint public — le frontend l'utilise pour rendre dynamiquement le
     selecteur de modes sans dupliquer la liste cote TS. `default_mode` indique
-    le choix par defaut (Collage Premium).
+    le choix par defaut (Collage Premium), `families` l'ordre d'affichage des
+    onglets du sélecteur.
     """
-    return {"modes": MODE_DEFINITIONS, "default_mode": DEFAULT_MODE}
+    return {"modes": MODE_DEFINITIONS, "default_mode": DEFAULT_MODE,
+            "families": FAMILIES}
 
 
 @router.post("", response_model=JobResponse, status_code=status.HTTP_201_CREATED)

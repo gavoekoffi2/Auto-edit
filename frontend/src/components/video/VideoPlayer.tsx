@@ -53,7 +53,7 @@ export default function VideoPlayer({ src }: Props) {
 
   if (error) {
     return (
-      <div className="bg-dark-900 rounded-xl aspect-video flex items-center justify-center">
+      <div className="bg-dark-900 rounded-xl aspect-video max-h-[58vh] flex items-center justify-center px-6 text-center">
         <p className="text-red-400 text-sm">{error}</p>
       </div>
     )
@@ -61,10 +61,13 @@ export default function VideoPlayer({ src }: Props) {
 
   return (
     <div className="relative bg-black rounded-xl overflow-hidden group">
+      {/* Les montages sont verticaux 9:16 : sans plafond de hauteur, l'aperçu
+          occupait tout l'écran sur un grand moniteur et repoussait les réglages
+          hors du champ de vision. */}
       <video
         ref={videoRef}
         src={src}
-        className="w-full aspect-video"
+        className="mx-auto aspect-video max-h-[58vh] w-full object-contain"
         preload="metadata"
         playsInline
         controls={false}

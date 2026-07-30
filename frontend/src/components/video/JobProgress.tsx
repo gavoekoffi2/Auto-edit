@@ -92,9 +92,9 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
     setDownloading(true)
     try {
       await downloadJobResult(jobId)
-      toast('success', 'Download started!')
+      toast('success', 'Téléchargement lancé')
     } catch {
-      toast('error', 'Download failed. Please try again.')
+      toast('error', 'Le téléchargement a échoué. Réessaie.')
     } finally {
       setDownloading(false)
     }
@@ -118,10 +118,10 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
   if (!job) return null
 
   const statusConfig = {
-    pending: { icon: Loader2, color: 'text-dark-400', label: 'Waiting in queue...' },
-    processing: { icon: Loader2, color: 'text-primary-400', label: 'Processing...' },
-    completed: { icon: CheckCircle, color: 'text-emerald-400', label: 'Complete!' },
-    failed: { icon: XCircle, color: 'text-red-400', label: 'Failed' },
+    pending: { icon: Loader2, color: 'text-dark-400', label: 'En file d’attente…' },
+    processing: { icon: Loader2, color: 'text-primary-400', label: 'Montage en cours…' },
+    completed: { icon: CheckCircle, color: 'text-emerald-400', label: 'Montage terminé' },
+    failed: { icon: XCircle, color: 'text-red-400', label: 'Échec' },
     cancelled: { icon: Ban, color: 'text-amber-400', label: 'Annulé' },
   }
 
@@ -136,7 +136,7 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
         <div>
           <p className={`font-medium ${config.color}`}>{config.label}</p>
           {job.status === 'processing' && (
-            <p className="text-sm text-dark-400">{job.progress}% complete</p>
+            <p className="text-sm text-dark-400">{job.progress} % effectués</p>
           )}
         </div>
       </div>
@@ -171,12 +171,12 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
       {job.status === 'failed' && (
         <div className="space-y-3">
           <p className="text-sm text-red-400 bg-red-400/10 rounded-lg p-3">
-            {job.error_message || 'An unknown error occurred'}
+            {job.error_message || 'Une erreur inattendue est survenue'}
           </p>
           {onRetry && (
             <button onClick={onRetry} className="btn-secondary text-sm flex items-center gap-2">
               <RefreshCw className="w-4 h-4" />
-              Retry
+              Relancer le montage
             </button>
           )}
         </div>
@@ -193,7 +193,7 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
           ) : (
             <Download className="w-4 h-4" />
           )}
-          {downloading ? 'Downloading...' : 'Download Video'}
+          {downloading ? 'Téléchargement…' : 'Télécharger la vidéo'}
         </button>
       )}
     </div>
