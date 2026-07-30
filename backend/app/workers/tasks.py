@@ -28,6 +28,33 @@ def _update_job(job_id: str, **kwargs):
         session.close()
 
 
+class JobCancelled(Exception):
+    """L'utilisateur a annulé le job pendant son exécution."""
+
+
+def _job_status(job_id: str) -> str | None:
+    """Statut courant du job en base (None si introuvable)."""
+    session = SyncSessionLocal()
+    try:
+        return session.query(Job.status).filter(Job.id == job_id).scalar()
+    except Exception as e:  # noqa: BLE001 - la lecture ne doit jamais tuer le rendu
+        logger.warning(f"Could not read status of job {job_id}: {e}")
+        return None
+    finally:
+        session.close()
+
+
+def _raise_if_cancelled(job_id: str) -> None:
+    """Interrompt le rendu si l'utilisateur a annulé entre-temps.
+
+    Sans ce contrôle, un job annulé continuait jusqu'au bout puis réécrivait
+    « completed » par-dessus « cancelled »: l'annulation semblait fonctionner
+    puis le job « ressuscitait » à la fin du rendu.
+    """
+    if _job_status(job_id) == "cancelled":
+        raise JobCancelled(job_id)
+
+
 def _update_video_status(video_id: str, new_status: str):
     """Update video status in database (sync for Celery)."""
     session = SyncSessionLocal()
@@ -84,6 +111,11 @@ def process_video_task(self, job_id: str):
             _update_video_status(str(video.id), "error")
             return
 
+        # Un job annulé avant même d'être dépilé ne doit pas démarrer.
+        if job.status == "cancelled":
+            logger.info(f"Job {job_id} cancelled before start — skipped")
+            return
+
         # Mark as processing and clear any stale failure state when a job is retried.
         _update_job(
             job_id,
@@ -97,6 +129,9 @@ def process_video_task(self, job_id: str):
         output_dir = get_output_dir(str(job.user_id), str(job.id))
 
         def progress_callback(progress: int, message: str):
+            # Point de contrôle d'annulation: le rendu s'arrête à la prochaine
+            # étape au lieu de continuer à consommer un worker pour rien.
+            _raise_if_cancelled(job_id)
             _update_job(job_id, progress=progress)
             self.update_state(state="PROGRESS", meta={"progress": progress, "message": message})
 
@@ -129,6 +164,10 @@ def process_video_task(self, job_id: str):
             if abs_output.startswith(upload_dir):
                 result["output_path"] = abs_output[len(upload_dir) + 1:]
 
+        # Dernier contrôle: une annulation arrivée pendant l'export ne doit pas
+        # être écrasée par « completed ».
+        _raise_if_cancelled(job_id)
+
         # Mark as completed
         _update_job(
             job_id,
@@ -145,6 +184,18 @@ def process_video_task(self, job_id: str):
             f"{len(result.get('steps_failed', []))} failures"
         )
         return result
+
+    except JobCancelled:
+        logger.info(f"Job {job_id} cancelled during processing")
+        if output_dir:
+            try:
+                from app.autoedit_engine.pipeline import cleanup_intermediates
+                cleanup_intermediates(output_dir)
+            except Exception as cleanup_err:  # noqa: BLE001 - best effort
+                logger.warning(f"Cleanup after cancel skipped: {cleanup_err}")
+        # Le statut « cancelled » est déjà en base (posé par l'API): on ne le
+        # touche pas, et on ne relance surtout pas la tâche.
+        return {"status": "cancelled"}
 
     except Exception as e:
         logger.error(f"Job {job_id} failed: {e}", exc_info=True)
@@ -212,6 +263,9 @@ def process_clips_task(self, job_id: str):
         if not video:
             _update_job(job_id, status="failed", error_message="Video not found")
             return
+        if job.status == "cancelled":
+            logger.info(f"Clips job {job_id} cancelled before start — skipped")
+            return
 
         _update_job(
             job_id,
@@ -224,6 +278,7 @@ def process_clips_task(self, job_id: str):
         output_dir = get_output_dir(str(job.user_id), str(job.id))
 
         def progress_callback(progress: int, message: str):
+            _raise_if_cancelled(job_id)
             _update_job(job_id, progress=progress)
             self.update_state(state="PROGRESS",
                               meta={"progress": progress, "message": message})
@@ -308,6 +363,7 @@ def process_clips_task(self, job_id: str):
             if clip.get("output_path"):
                 clip["output_path"] = _rel(clip["output_path"])
 
+        _raise_if_cancelled(job_id)
         _update_job(
             job_id,
             status="completed",
@@ -320,6 +376,16 @@ def process_clips_task(self, job_id: str):
         logger.info(f"Clips job {job_id} completed: "
                     f"{result.get('clips_rendered', 0)} clips rendered")
         return result
+
+    except JobCancelled:
+        logger.info(f"Clips job {job_id} cancelled during processing")
+        if output_dir:
+            try:
+                from app.autoedit_engine.pipeline import cleanup_intermediates
+                cleanup_intermediates(output_dir)
+            except Exception as cleanup_err:  # noqa: BLE001 - best effort
+                logger.warning(f"Cleanup after cancel skipped: {cleanup_err}")
+        return {"status": "cancelled"}
 
     except Exception as e:
         logger.error(f"Clips job {job_id} failed: {e}", exc_info=True)

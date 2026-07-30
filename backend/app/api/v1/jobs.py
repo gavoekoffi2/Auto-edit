@@ -90,8 +90,20 @@ async def create_job(
             detail="Video file not found on disk. Please re-upload.",
         )
 
-    # Check plan limits for free users
-    if current_user.plan == "free":
+    # Limite de jobs simultanés — via les règles CENTRALES (`app.services.plans`).
+    # L'ancien contrôle lisait `current_user.plan` en dur et plafonnait à 2: un
+    # fondateur (super-admin) ou un abonné Pro dont la colonne `plan` n'avait pas
+    # encore basculé restait bloqué à 2 montages, et deux requêtes simultanées
+    # passaient toutes les deux sous la limite (pas de verrou).
+    from app.services.plans import rules_for_user
+
+    rules = rules_for_user(current_user)
+    if rules.max_concurrent_jobs is not None:
+        # Verrou de la ligne utilisateur: rend le check-then-create atomique,
+        # comme sur la route Clips.
+        await db.execute(
+            select(User.id).where(User.id == current_user.id).with_for_update()
+        )
         count_result = await db.execute(
             select(func.count()).select_from(Job).where(
                 Job.user_id == current_user.id,
@@ -99,10 +111,12 @@ async def create_job(
             )
         )
         active_count = count_result.scalar() or 0
-        if active_count >= 2:
+        if active_count >= rules.max_concurrent_jobs:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Free plan limited to 2 concurrent jobs. Upgrade to Pro for unlimited.",
+                detail=(f"Ton plan autorise {rules.max_concurrent_jobs} montage(s) "
+                        "en parallèle. Attends la fin d'un traitement ou passe à "
+                        "l'offre supérieure."),
             )
 
     # Merge params + options dans le payload du job (options prennent le pas)
@@ -130,10 +144,13 @@ async def create_job(
     db.add(job)
     await db.flush()
 
-    # Trigger async processing
+    # Trigger async processing. Le task_id Celery est FORCÉ à l'id du job: sans
+    # ça, `celery.control.revoke(job.id)` (route d'annulation) ciblait un
+    # identifiant qui n'existait pas et l'annulation ne faisait rien — la tâche
+    # continuait et écrasait le statut « cancelled » par « completed ».
     from app.workers.tasks import process_video_task
 
-    process_video_task.delay(str(job.id))
+    process_video_task.apply_async(args=[str(job.id)], task_id=str(job.id))
 
     logger.info(
         f"Job created: {job.id} type={data.job_type} mode={resolved_mode} "
@@ -194,13 +211,15 @@ async def cancel_job(
             detail=f"Cannot cancel job with status '{job.status}'",
         )
 
-    # Revoke the Celery task if it's still queued
-    if job.status == "pending":
-        try:
-            from app.workers.celery_app import celery_app
-            celery_app.control.revoke(str(job.id), terminate=True)
-        except Exception as e:
-            logger.warning(f"Failed to revoke Celery task {job.id}: {e}")
+    # Révoque la tâche Celery — en file d'attente ET en cours d'exécution.
+    # `terminate=True` ne fait rien sur une tâche encore en file, mais tue le
+    # worker qui la traite déjà: avant, un job « processing » n'était jamais
+    # révoqué, donc l'annulation ne libérait ni le worker ni le quota.
+    try:
+        from app.workers.celery_app import celery_app
+        celery_app.control.revoke(str(job.id), terminate=True, signal="SIGTERM")
+    except Exception as e:
+        logger.warning(f"Failed to revoke Celery task {job.id}: {e}")
 
     job.status = "cancelled"
     await db.flush()
