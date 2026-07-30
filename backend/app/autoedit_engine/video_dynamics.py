@@ -24,11 +24,58 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 from . import config
 from . import ffmpeg_utils
 from .timeline import output_duration
+
+
+def _merge_ranges(ranges: List[dict], max_segments: int) -> List[dict]:
+    """Regroupe les coupes en au plus *max_segments* segments de zoom.
+
+    POURQUOI: `build_zoom_expr` imbrique un `if()` PAR COUPE. Un montage de 20
+    minutes produit des centaines de coupes -> une expression de plus de 128 Ko
+    imbriquée des centaines de niveaux. Le noyau refusait l'argument (E2BIG) et,
+    quand il passait, l'évaluateur d'expression de ffmpeg récursait jusqu'à la
+    pile: c'est exactement l'échec « ça marche sur une courte, ça casse sur une
+    longue ».
+
+    La courbe Ken Burns n'a AUCUN besoin de suivre chaque coupe: la coupe est
+    déjà dans l'image (base_only est monté). On fusionne donc les coupes
+    consécutives en macro-segments de durée équivalente. Sur une vidéo courte
+    (moins de *max_segments* coupes) la fonction est un no-op: le rendu
+    historique est bit-à-bit identique.
+    """
+    n = len(ranges)
+    if max_segments <= 0 or n <= max_segments:
+        return list(ranges)
+    group = -(-n // max_segments)          # ceil: coupes par macro-segment
+    merged: List[dict] = []
+    for i in range(0, n, group):
+        chunk = ranges[i:i + group]
+        merged.append({
+            "start": chunk[0]["start"],
+            # La durée d'un macro-segment = somme des durées gardées, pour que
+            # le mapping temps de sortie reste EXACT (aucun décalage cumulé).
+            "end": chunk[0]["start"] + sum(r["end"] - r["start"] for r in chunk),
+        })
+    return merged
+
+
+def _thin(times: Sequence[float], limit: int) -> List[float]:
+    """Sous-échantillonne *times* à *limit* éléments, régulièrement répartis.
+
+    Chaque instant accentué ajoute une gaussienne évaluée à CHAQUE frame par
+    ffmpeg. Sans plafond, un montage long paie N termes x 30 fps x durée (des
+    dizaines de millions d'exponentielles) pour des accents que l'œil ne
+    distingue même plus, en plus de gonfler l'expression.
+    """
+    times = [float(t) for t in (times or [])]
+    if limit <= 0 or len(times) <= limit:
+        return times
+    step = len(times) / float(limit)
+    return [times[min(len(times) - 1, int(i * step))] for i in range(limit)]
 
 
 def _seg_curve(i: int, o_start: float, dur: float, t: str) -> str:
@@ -48,38 +95,39 @@ def _seg_curve(i: int, o_start: float, dur: float, t: str) -> str:
     return f"({hi}-{rng}*{p})"  # OUT progressive (linear)
 
 
-def _punch_terms(o_start: float, o_end: float, t: str) -> str:
-    """Sum of gaussian micro-punch terms for a segment, '' if none."""
-    terms: List[str] = []
+def _punch_times(o_start: float, o_end: float) -> List[float]:
+    """Instants des micro-punches gaussiens d'un segment."""
+    out: List[float] = []
     tp = o_start + config.PUNCH_EVERY
     while tp < o_end - 0.2:                       # leave the tail clean
-        terms.append(
-            f"{config.PUNCH_AMP}*exp(-pow(({t}-{tp:.3f})/{config.PUNCH_SIGMA:.4f},2))"
-        )
+        out.append(tp)
         tp += config.PUNCH_EVERY
+    return out
+
+
+def _gauss_terms(times: Sequence[float], amp: float, sigma: float, t: str) -> str:
+    """Somme de gaussiennes `amp*exp(-((t-ti)/sigma)^2)`, '' si aucun instant."""
+    terms = [f"{amp}*exp(-pow(({t}-{ti:.3f})/{sigma:.4f},2))" for ti in times]
     return ("+" + "+".join(terms)) if terms else ""
+
+
+def _punch_terms(o_start: float, o_end: float, t: str) -> str:
+    """Sum of gaussian micro-punch terms for a segment, '' if none."""
+    return _gauss_terms(_punch_times(o_start, o_end), config.PUNCH_AMP,
+                        config.PUNCH_SIGMA, t)
 
 
 def _flash_punch_terms(flash_times: Optional[List[float]], t: str) -> str:
     """Extra synced punch-zoom gaussians ADDED to the z-curve at key moments."""
-    if not flash_times:
-        return ""
-    terms = [
-        f"{config.FLASH_PUNCH_AMP}*exp(-pow(({t}-{tf:.3f})/{config.FLASH_PUNCH_SIGMA:.4f},2))"
-        for tf in flash_times
-    ]
-    return ("+" + "+".join(terms)) if terms else ""
+    return _gauss_terms(_thin(flash_times or [], config.MAX_ACCENT_TERMS),
+                        config.FLASH_PUNCH_AMP, config.FLASH_PUNCH_SIGMA, t)
 
 
 def _light_punch_terms(light_times: Optional[List[float]], t: str) -> str:
     """Tiny synced punch-zoom gaussians at each speech-pause light overlay."""
-    if not light_times:
-        return ""
-    terms = [
-        f"{config.LIGHT_OVERLAY_PUNCH_AMP}*exp(-pow(({t}-{tl:.3f})/{config.LIGHT_OVERLAY_PUNCH_SIGMA:.4f},2))"
-        for tl in light_times
-    ]
-    return ("+" + "+".join(terms)) if terms else ""
+    return _gauss_terms(_thin(light_times or [], config.MAX_ACCENT_TERMS),
+                        config.LIGHT_OVERLAY_PUNCH_AMP,
+                        config.LIGHT_OVERLAY_PUNCH_SIGMA, t)
 
 
 def build_zoom_expr(ranges: List[dict], fps: int = config.FPS,
@@ -95,8 +143,14 @@ def build_zoom_expr(ranges: List[dict], fps: int = config.FPS,
     *flash_times* (output seconds) add a synced punch-zoom at each key moment.
     *light_times* (output seconds) add a much smaller punch-zoom at each
     speech-pause light-leak overlay (see :func:`build_light_overlay_filter`).
+
+    Les coupes sont d'abord regroupées en au plus ``config.MAX_ZOOM_SEGMENTS``
+    macro-segments (cf. :func:`_merge_ranges`) et les micro-punches globalement
+    plafonnés: sans ça, un montage long produit une expression que ni le noyau
+    (limite de taille d'un argument) ni l'évaluateur ffmpeg n'acceptent.
     """
     t = f"(on/{fps})"
+    ranges = _merge_ranges(ranges, config.MAX_ZOOM_SEGMENTS)
     o_start = 0.0
     bounds = []
     for r in ranges:
@@ -104,12 +158,20 @@ def build_zoom_expr(ranges: List[dict], fps: int = config.FPS,
         bounds.append((o_start, o_start + dur, dur))
         o_start += dur
 
+    # Micro-punches: calculés sur toute la timeline PUIS plafonnés globalement,
+    # sinon un long montage empile un terme toutes les 3,2 s de bout en bout.
+    punch_by_segment: List[List[float]] = [_punch_times(o0, o1) for o0, o1, _ in bounds]
+    kept = set(_thin([tp for seg in punch_by_segment for tp in seg],
+                     config.MAX_PUNCH_TERMS))
+
     # Build nested if() from last to first segment; the last segment also acts
     # as the held default past the end.
     nested = f"{config.KB_ZOOM_MAX}"
     for i in reversed(range(len(bounds))):
         o0, o1, dur = bounds[i]
-        seg_z = _seg_curve(i, o0, dur, t) + _punch_terms(o0, o1, t)
+        seg_z = _seg_curve(i, o0, dur, t) + _gauss_terms(
+            [tp for tp in punch_by_segment[i] if tp in kept],
+            config.PUNCH_AMP, config.PUNCH_SIGMA, t)
         if i == len(bounds) - 1:
             nested = seg_z
         else:
@@ -132,6 +194,7 @@ def build_light_overlay_filter(light_times: Optional[List[float]]) -> str:
     there is nothing to do, so the filter chain is unchanged for renders
     without detected pauses.
     """
+    light_times = _thin(light_times or [], config.MAX_ACCENT_TERMS)
     if not light_times:
         return ""
     bright_terms = "+".join(
@@ -225,14 +288,14 @@ def apply_dynamics(base_only: str, edl_path: str, out_path: str,
 
     vf = build_vf(ranges, flash_times=flash_times, light_times=light_times,
                   eq_light_times=eq_light_times)
-    ffmpeg_utils.run([
-        ffmpeg_utils.FFMPEG, "-y", "-i", base_only,
-        "-vf", vf,
-        "-c:v", "libx264", "-preset", config.ENGINE_INTERMEDIATE_PRESET,
-        "-crf", str(config.ENGINE_INTERMEDIATE_CRF), "-pix_fmt", "yuv420p",
-        "-c:a", "copy",
-        out_path,
-    ])
+    ffmpeg_utils.run_filter(
+        [ffmpeg_utils.FFMPEG, "-y", "-i", base_only],
+        vf,
+        ["-c:v", "libx264", "-preset", config.ENGINE_INTERMEDIATE_PRESET,
+         "-crf", str(config.ENGINE_INTERMEDIATE_CRF), "-pix_fmt", "yuv420p",
+         "-c:a", "copy",
+         out_path],
+    )
     n_flash = len(flash_times or [])
     n_light = len(light_times or [])
     n_eq_light = len(eq_light_times or [])
