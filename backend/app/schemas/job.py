@@ -53,6 +53,9 @@ class JobOptions(BaseModel):
     subtitle_template: Optional[str] = None
     # Active explicitement l'assemblage éditorial Collage Premium.
     collage_broll: Optional[bool] = None
+    # Direction artistique du moteur de collage — c'est elle qui distingue les
+    # trois moteurs: editorial | ugc_product | ugc_motion.
+    collage_profile: Optional[str] = None
     # Fonctionnalité Clips: nombre maximum de shorts extraits d'une vidéo longue.
     max_clips: Optional[int] = Field(default=None, ge=1, le=10)
     # Nettoyage IA du transcript: off | light (défaut) | balanced | aggressive.
@@ -106,6 +109,18 @@ class JobOptions(BaseModel):
         allowed = {"off", "light", "balanced", "aggressive"}
         if v is not None and v not in allowed:
             raise ValueError(f"cleanup_level must be one of: {', '.join(sorted(allowed))}")
+        return v
+
+    @field_validator("collage_profile")
+    @classmethod
+    def validate_collage_profile(cls, v: Optional[str]) -> Optional[str]:
+        # Source de vérité: le registre des profils du moteur de collage.
+        from app.processing.collage.collage_profiles import PROFILES
+
+        if v is not None and v not in PROFILES:
+            raise ValueError(
+                f"collage_profile must be one of: {', '.join(sorted(PROFILES))}"
+            )
         return v
 
     @field_validator("subtitle_template")

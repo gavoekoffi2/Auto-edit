@@ -19,6 +19,8 @@ MODE_DEFINITIONS: list[dict] = [
         "id": "collage_premium",
         "name": "Collage Premium (recommandé)",
         "icon": "✂️",
+        "family": "collage",
+        "badge": "images IA si dispo",
         "description": (
             "Le moteur par défaut qui comprend le SENS de la phrase et en fait "
             "une scène : métaphore visuelle, collage papier éditorial (photos "
@@ -34,6 +36,57 @@ MODE_DEFINITIONS: list[dict] = [
             "visual_mode": "auto_fallback",
             "subtitle_template": "pill_editorial",
             "collage_broll": True,
+            "collage_profile": "editorial",
+            "broll_style": "tiktok_viral", "broll_demographic": "african",
+        },
+    },
+    {
+        "id": "collage_ugc_product",
+        "name": "Collage UGC Produit",
+        "icon": "📦",
+        "family": "collage",
+        "badge": "0 crédit image",
+        "description": (
+            "Pour présenter un produit face caméra. Le collage papier illustre "
+            "ce que tu dis au moment où tu le dis : le prix, la livraison, la "
+            "texture, le résultat, les avis. AUCUNE image IA n'est générée — "
+            "chaque pièce est découpée par le moteur, donc zéro coût d'API."
+        ),
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
+            # Pas de scènes motion design: c'est la différence assumée avec la
+            # variante « + motion » — ici le collage porte tout, seul.
+            "motion_design": False,
+            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
+            # Verrou de coût: aucune génération d'image payante, jamais.
+            "visual_mode": "credit_saver",
+            "subtitle_template": "pill_editorial",
+            "collage_broll": True,
+            "collage_profile": "ugc_product",
+            "broll_style": "tiktok_viral", "broll_demographic": "african",
+        },
+    },
+    {
+        "id": "collage_ugc_motion",
+        "name": "Collage UGC Produit + Motion",
+        "icon": "🎞️",
+        "family": "collage",
+        "badge": "0 crédit image",
+        "description": (
+            "Le moteur UGC Produit, plus les scènes de motion design animées du "
+            "moteur CutForge. Toujours aucune image IA générée : collage papier "
+            "et motion design procédural uniquement."
+        ),
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": True,
+            "motion_design": True,
+            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": True,
+            "visual_mode": "credit_saver",
+            "subtitle_template": "pill_editorial",
+            "collage_broll": True,
+            "collage_profile": "ugc_motion",
             "broll_style": "tiktok_viral", "broll_demographic": "african",
         },
     },
@@ -321,3 +374,57 @@ DEFAULT_MODE: str = next(
     (m["id"] for m in MODE_DEFINITIONS if m.get("default")),
     MODE_DEFINITIONS[0]["id"],
 )
+
+
+# --------------------------------------------------------------------------- #
+# Métadonnées de présentation
+#
+# Le frontend range les moteurs par FAMILLE et affiche une pastille de coût.
+# Ces deux informations se déduisent de ce qui est déjà déclaré plus haut: on
+# les calcule ici une fois pour toutes plutôt que de les recopier dans chaque
+# entrée (et de les laisser diverger côté TypeScript).
+# --------------------------------------------------------------------------- #
+FAMILIES: list[dict] = [
+    {"id": "collage", "label": "Collage papier", "hint": "Assemblage éditorial animé"},
+    {"id": "viral", "label": "Styles viraux", "hint": "Sous-titres et motion design"},
+    {"id": "classic", "label": "Classiques", "hint": "Publicité, formation, podcast"},
+    {"id": "legacy", "label": "Ancien moteur", "hint": "Pipeline v1, sans motion design"},
+]
+
+_FAMILY_BY_MODE: dict[str, str] = {
+    "credit_saver_creator_edit": "viral",
+    "business_premium_african": "classic",
+    "tiktok_viral": "classic",
+    "publicite_locale": "classic",
+    "podcast_propre": "classic",
+    "formation_educative": "classic",
+}
+
+#: Pastille de coût, dérivée de la stratégie visuelle du mode.
+_COST_BADGES: dict[str, str] = {
+    "credit_saver": "0 crédit image",
+    "auto_fallback": "images IA si dispo",
+    "ai_broll": "images IA",
+}
+
+
+def _decorate(mode: dict) -> dict:
+    """Complète `family` et `badge` sans écraser une valeur explicite."""
+    if not mode.get("family"):
+        if mode.get("pipeline") == "v1":
+            family = "legacy"
+        elif mode["id"].startswith("collage_"):
+            family = "collage"
+        else:
+            family = _FAMILY_BY_MODE.get(mode["id"], "viral")
+        mode["family"] = family
+    if not mode.get("badge"):
+        visual = (mode.get("defaults") or {}).get("visual_mode")
+        badge = _COST_BADGES.get(visual or "")
+        if badge:
+            mode["badge"] = badge
+    return mode
+
+
+for _mode in MODE_DEFINITIONS:
+    _decorate(_mode)

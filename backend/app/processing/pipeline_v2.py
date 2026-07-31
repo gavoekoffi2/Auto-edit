@@ -200,10 +200,62 @@ V2_MODE_PRESETS["collage_premium"] = {
     "visual_mode": "auto_fallback",
     "subtitle_template": "pill_editorial",
     "collage_broll": True,
+    "collage_profile": "editorial",
+}
+
+# --- Moteurs UGC produit — collage papier SEUL, zéro image générée -----------
+# `visual_mode: credit_saver` est le verrou de coût: il coupe TOUS les appels
+# d'image payants du moteur (B-roll photo ET illustrations de motion design).
+# `ai_broll: True` n'active donc aucune génération ici — dans ce moteur, c'est
+# le drapeau qui autorise la DÉTECTION des moments à illustrer, que le collage
+# papier prend ensuite entièrement en charge.
+V2_MODE_PRESETS["collage_ugc_product"] = {
+    **V2_MODE_PRESETS["credit_saver_creator_edit"],
+    "ai_broll": True,
+    "motion_design": False,
+    "visual_mode": "credit_saver",
+    "subtitle_template": "pill_editorial",
+    "collage_broll": True,
+    "collage_profile": "ugc_product",
+}
+
+# Même moteur, motion design réactivé: les scènes illustrées procédurales du
+# moteur Auto Edit s'ajoutent au collage. Toujours aucune image générée.
+V2_MODE_PRESETS["collage_ugc_motion"] = {
+    **V2_MODE_PRESETS["collage_ugc_product"],
+    "motion_design": True,
+    "collage_profile": "ugc_motion",
 }
 
 
 ProgressFn = Callable[[int, str], None]
+
+
+def estimate_render_disk_gb(video_path: str, duration_s: Optional[float] = None) -> float:
+    """Espace disque à exiger AVANT de lancer un rendu, en Go.
+
+    L'ancienne formule (``taille_source x 4``) confondait deux choses. Ce qui
+    remplit le disque, ce sont les INTERMÉDIAIRES, et leur poids suit la DURÉE
+    montée, pas le poids du fichier importé: une vidéo de téléphone de 4 Go
+    filmée en 3 minutes réclamait 16 Go alors qu'elle en consomme deux, et le
+    rendu était refusé à tort sur un VPS correct — c'est le « ça échoue dès que
+    la vidéo est un peu lourde » vu par l'utilisateur.
+
+    Décomposition (mesurée sur les réglages du moteur, 1080x1920):
+      * ~1x la source : la copie nettoyée des sous-titres incrustés;
+      * ~0,35 Go/min  : segments gradés + base + dynamique + passes de
+        composite + mixage SFX + master (H.264 CRF 19 veryfast);
+      * 2 Go fixes    : overlays ProRes 4444 (motion design, B-roll, collage)
+        et marge de sécurité.
+    """
+    try:
+        src_gb = os.path.getsize(video_path) / 1e9
+    except OSError:
+        src_gb = 0.0
+    if duration_s is None:
+        duration_s = _get_duration_safe(video_path)
+    minutes = max(0.0, float(duration_s or 0.0)) / 60.0
+    return round(max(3.0, 2.0 + src_gb + 0.35 * minutes), 2)
 
 
 def resolve_visual_mode(options: dict, default: str) -> str:
@@ -255,6 +307,8 @@ MODE_TO_TEMPLATE: dict[str, str] = {
     "bangers_comic": "bangers_fun",
     "board_pitch": "board_serif",
     "collage_premium": "pill_editorial",
+    "collage_ugc_product": "pill_editorial",
+    "collage_ugc_motion": "pill_editorial",
 }
 
 
@@ -337,8 +391,7 @@ def run_pipeline_v2(
     # plein encodage avec un cryptique "[Errno 32] Broken pipe". On échoue TÔT
     # avec un message actionnable à la place.
     free_gb = shutil.disk_usage(output_dir).free / 1e9
-    src_gb = os.path.getsize(video_path) / 1e9
-    needed_gb = max(3.0, src_gb * 4)
+    needed_gb = estimate_render_disk_gb(video_path)
     if free_gb < needed_gb:
         raise RuntimeError(
             f"Espace disque insuffisant sur le serveur ({free_gb:.1f} Go libres, "
@@ -829,6 +882,17 @@ def _export_collage_env(options: dict) -> None:
     enabled = _pick("collage_broll", "ENABLE_COLLAGE_BROLL", False)
     os.environ["COLLAGE_BROLL_ENABLED"] = "1" if enabled else "0"
 
+    # Profil de direction artistique — c'est lui qui distingue les trois moteurs
+    # de collage (éditorial / UGC produit / UGC produit + motion). Il fournit
+    # aussi les plafonds par défaut: un moteur UGC porte TOUTE l'illustration de
+    # la vidéo, il lui faut donc plus de scènes qu'au moteur éditorial, où les
+    # images IA et le motion design se partagent le travail.
+    from app.processing.collage import collage_profiles
+
+    profile = collage_profiles.get(
+        _pick("collage_profile", "COLLAGE_PROFILE", collage_profiles.DEFAULT_PROFILE))
+    os.environ["COLLAGE_PROFILE"] = profile.id
+
     provider = _pick("collage_image_provider", "COLLAGE_IMAGE_PROVIDER") or ""
     if provider:
         os.environ["COLLAGE_IMAGE_PROVIDER"] = str(provider)
@@ -838,9 +902,9 @@ def _export_collage_env(options: dict) -> None:
     os.environ["COLLAGE_VIDEO_PROVIDER"] = str(
         _pick("collage_video_provider", "COLLAGE_VIDEO_PROVIDER", "local") or "local")
     os.environ["COLLAGE_MAX_SCENES"] = str(
-        int(_pick("collage_max_scenes", "COLLAGE_MAX_SCENES", 4) or 4))
+        int(opts.get("collage_max_scenes") or profile.max_scenes))
     os.environ["COLLAGE_MAX_SHARE"] = str(
-        float(_pick("collage_max_share", "COLLAGE_MAX_SHARE", 0.5) or 0.5))
+        float(opts.get("collage_max_share") or profile.share_of_broll))
 
     # Clés des fournisseurs additionnels (jamais loggées).
     for env_name, setting_name in (

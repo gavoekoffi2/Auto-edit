@@ -46,15 +46,15 @@ def _run_pass(base: str, overlays: List[dict], out_path: str) -> str:
     cmd: List[str] = [ffmpeg_utils.FFMPEG, "-y", "-i", base]
     for ov in overlays:
         cmd += ["-i", ov["mov"]]
-    cmd += [
-        "-filter_complex", _batch_filter(overlays),
-        "-map", "[outv]", "-map", "0:a?",
-        "-c:v", "libx264", "-preset", config.ENGINE_INTERMEDIATE_PRESET,
-        "-crf", str(config.ENGINE_INTERMEDIATE_CRF), "-pix_fmt", "yuv420p",
-        "-c:a", "copy",
-        out_path,
-    ]
-    ffmpeg_utils.run(cmd)
+    ffmpeg_utils.run_filter(
+        cmd, _batch_filter(overlays),
+        ["-map", "[outv]", "-map", "0:a?",
+         "-c:v", "libx264", "-preset", config.ENGINE_INTERMEDIATE_PRESET,
+         "-crf", str(config.ENGINE_INTERMEDIATE_CRF), "-pix_fmt", "yuv420p",
+         "-c:a", "copy",
+         out_path],
+        complex_graph=True,
+    )
     return out_path
 
 

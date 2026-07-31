@@ -167,7 +167,8 @@ async def create_clips_job(
     await db.flush()
 
     from app.workers.tasks import process_clips_task
-    process_clips_task.delay(str(job.id))
+    # task_id = id du job: c'est ce qui rend `POST /jobs/{id}/cancel` opérant.
+    process_clips_task.apply_async(args=[str(job.id)], task_id=str(job.id))
 
     logger.info(
         "Clips analyze job created: %s source=%s mode=%s user=%s",
@@ -251,7 +252,8 @@ async def render_selected_clips(
     await db.flush()
 
     from app.workers.tasks import process_clips_task
-    process_clips_task.delay(str(job.id))
+    # task_id = id du job: c'est ce qui rend `POST /jobs/{id}/cancel` opérant.
+    process_clips_task.apply_async(args=[str(job.id)], task_id=str(job.id))
 
     logger.info(
         "Clips render job created: %s (%d clips, from analyze %s) user=%s",

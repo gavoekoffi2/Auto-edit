@@ -25,7 +25,9 @@ import time
 from typing import Optional, Sequence
 
 from . import collage_config as ccfg
+from . import collage_profiles
 from .collage_concept_planner import CollageConceptPlanner, beats_from_ideas
+from .collage_profiles import CollageProfile
 from .collage_image_service import CollageImageService
 from .collage_prompt_builder import CollagePromptBuilder
 from .collage_quality_service import CollageQualityService
@@ -49,8 +51,10 @@ class CollagePipeline:
                  image_service: Optional[CollageImageService] = None,
                  video_service: Optional[CollageVideoService] = None,
                  quality_service: Optional[CollageQualityService] = None,
-                 max_scenes: Optional[int] = None):
-        self.planner = planner or CollageConceptPlanner()
+                 max_scenes: Optional[int] = None,
+                 profile: Optional[CollageProfile] = None):
+        self.profile = profile or collage_profiles.get(ccfg.PROFILE)
+        self.planner = planner or CollageConceptPlanner(profile=self.profile)
         self.prompts = prompt_builder or CollagePromptBuilder()
         self.images = image_service or CollageImageService()
         self.videos = video_service or CollageVideoService()
@@ -107,6 +111,7 @@ class CollagePipeline:
             result.clips = [c for c in clips if c.concept_id in by_id]
 
         result.stats = {
+            "profile": self.profile.id,
             "beats": len(beats),
             "concepts": len(concepts),
             "concepts_llm": sum(1 for c in concepts if c.planner == "llm"),
@@ -176,6 +181,8 @@ class CollagePipeline:
 def run_collage_for_ideas(ideas: Sequence[dict], workdir: str,
                           *, max_scenes: Optional[int] = None,
                           allow_paid_images: bool = True,
+                          allow_planner_llm: Optional[bool] = None,
+                          profile: Optional[str] = None,
                           pipeline: Optional[CollagePipeline] = None) -> CollageRunResult:
     """Adaptateur pour le moteur Auto Edit.
 
@@ -183,22 +190,28 @@ def run_collage_for_ideas(ideas: Sequence[dict], workdir: str,
     aucune re-détection de beats, aucune duplication de logique) et renvoie des
     clips prêts pour `plan_overlays`.
 
-    *allow_paid_images* = False (mode credit-saver, pas de clé, crédits épuisés)
-    force le provider `noop`: le moteur produit alors des collages procéduraux —
-    aucun appel payant, et la scène `collage_assemble` existe quand même.
+    Deux leviers de coût, VOLONTAIREMENT séparés:
+
+    *allow_paid_images* = False force le provider `noop`: chaque objet du
+    concept est alors découpé en vectoriel (`collage_shapes`). C'est le mode
+    permanent des moteurs UGC — aucun appel d'image, jamais.
+
+    *allow_planner_llm* pilote l'analyse TEXTE (un seul appel par vidéo, sur un
+    modèle bon marché). C'est elle qui fait que le collage parle du produit dont
+    la personne parle: on la garde par défaut même sans images. Passer False
+    rend le moteur strictement hors-ligne (repli sur la bibliothèque du profil).
     """
     if pipeline is None:
+        resolved = collage_profiles.get(profile or ccfg.PROFILE)
         image_service = None
-        planner = None
-        if not allow_paid_images:
+        if not (allow_paid_images and resolved.allow_ai_images):
             from .collage_image_service import (
                 CollageImageService,
                 NoopCollageImageProvider,
             )
             image_service = CollageImageService(provider=NoopCollageImageProvider())
-            # Le planner sémantique est un appel TEXTE bon marché, mais en mode
-            # « aucun appel payant » on reste strictement hors-ligne.
-            planner = CollageConceptPlanner(use_llm=False)
+        planner = CollageConceptPlanner(use_llm=allow_planner_llm, profile=resolved)
         pipeline = CollagePipeline(image_service=image_service, planner=planner,
-                                   max_scenes=max_scenes)
+                                   max_scenes=max_scenes or resolved.max_scenes,
+                                   profile=resolved)
     return pipeline.run(beats_from_ideas(ideas), workdir)

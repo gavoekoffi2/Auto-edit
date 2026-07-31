@@ -105,6 +105,18 @@ PUNCH_EVERY = 3.2       # seconds between gaussian micro-punches inside a segmen
 PUNCH_AMP = 0.08
 PUNCH_SIGMA = 0.30 / 2.5  # = 0.12
 
+# --- Garde-fous d'échelle du filtergraph de zoom ---------------------------- #
+# L'expression `zoompan` imbrique un `if()` par segment et additionne une
+# gaussienne par accent. Sur une vidéo longue (des centaines de coupes, des
+# centaines d'accents), l'expression dépassait la taille maximale d'UN argument
+# de commande sous Linux (128 Kio) : le rendu échouait avec un « Argument list
+# too long » incompréhensible, alors qu'une vidéo courte passait. Ces plafonds
+# rendent le coût du filtre CONSTANT quelle que soit la durée. Ils ne changent
+# rien aux vidéos courtes, qui restent sous les seuils.
+MAX_ZOOM_SEGMENTS = int(os.getenv("ENGINE_MAX_ZOOM_SEGMENTS", "48"))
+MAX_PUNCH_TERMS = int(os.getenv("ENGINE_MAX_PUNCH_TERMS", "90"))
+MAX_ACCENT_TERMS = int(os.getenv("ENGINE_MAX_ACCENT_TERMS", "60"))
+
 # --------------------------------------------------------------------------- #
 # STEP 4bis — KEY-MOMENT PUNCH ZOOM (credit-saver creator edit)
 #
@@ -505,6 +517,12 @@ SFX_GAIN_VARIANTS = [1.0, 0.92, 1.06, 0.96, 1.02, 0.9]
 # STEP 9 — COMPOSITE
 # --------------------------------------------------------------------------- #
 COMPOSITE_BATCH = 12           # max overlays per ffmpeg pass (OOM guard)
+# Même garde-fou pour la concaténation des segments montés et pour le mixage
+# SFX: une vidéo longue produit des centaines de segments/cues et ffmpeg
+# instanciait autant de décodeurs (et de descripteurs de fichiers) dans UNE
+# commande. On concatène/mixe par lots, en cascade.
+CONCAT_BATCH = int(os.getenv("ENGINE_CONCAT_BATCH", "40"))
+SFX_MIX_BATCH = int(os.getenv("ENGINE_SFX_MIX_BATCH", "48"))
 
 # --------------------------------------------------------------------------- #
 # STEP 10 — SFX LIBRARY + MIX

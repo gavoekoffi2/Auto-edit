@@ -101,6 +101,52 @@ _INTERMEDIATE_FILES = ("base_only.mp4", "base_dyn.mp4",
                        "_source_nosubs.mp4")
 
 
+def _drop_dir(path: str) -> int:
+    """Supprime un répertoire d'intermédiaires; renvoie les octets libérés."""
+    freed = 0
+    if not os.path.isdir(path):
+        return 0
+    for root, _, files in os.walk(path):
+        for f in files:
+            try:
+                freed += os.path.getsize(os.path.join(root, f))
+            except OSError:
+                pass
+    shutil.rmtree(path, ignore_errors=True)
+    return freed
+
+
+def _drop_files(workdir: str, names: tuple) -> int:
+    freed = 0
+    for name in names:
+        path = os.path.join(workdir, name)
+        try:
+            if os.path.isfile(path):
+                freed += os.path.getsize(path)
+                os.remove(path)
+        except OSError:
+            pass
+    return freed
+
+
+def release_stage(workdir: str, *dirs: str, files: tuple = ()) -> int:
+    """Libère un étage d'intermédiaires DÈS qu'il n'est plus nécessaire.
+
+    Le nettoyage global n'avait lieu qu'à la toute fin du rendu: le pic disque
+    d'un montage long cumulait donc les segments gradés, la base montée, la
+    passe dynamique et toutes les passes de composite EN MÊME TEMPS. Sur un
+    petit volume, ffmpeg mourait en plein encodage avec un « Broken pipe ». En
+    relâchant chaque étage sitôt consommé, le pic tombe à ce que le rendu
+    utilise réellement à l'instant t.
+    """
+    freed = sum(_drop_dir(os.path.join(workdir, d)) for d in dirs)
+    freed += _drop_files(workdir, files)
+    if freed:
+        print(f"[pipeline] libéré {freed / 1e6:.0f} Mo d'intermédiaires "
+              f"({', '.join(dirs) or 'fichiers'})")
+    return freed
+
+
 def cleanup_intermediates(workdir: str) -> int:
     """Delete heavy render intermediates from *workdir*; returns bytes freed."""
     freed = 0
@@ -242,6 +288,11 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     rep["kept_duration_s"] = round(kept, 2)
     rep["removed_duration_s"] = round(max(0.0, orig - kept), 2)
     rep["segments_kept"] = len(build_res.get("ranges") or [])
+
+    # Les segments gradés ont été concaténés dans base_only: ils ne servent plus
+    # à rien et pèsent l'équivalent de tout le montage. On les rend au disque
+    # tout de suite (cf. release_stage) au lieu d'attendre la fin du rendu.
+    release_stage(workdir, "clips_graded")
 
     # 2bis) Key moments — hook / numbers / CTA / emotional words / topic shifts.
     # These drive the synced punch-zooms that make the credit-saver edit feel
@@ -480,14 +531,22 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
         light_times=spaced_dynamics_light_times,
         eq_light_times=motion_transition_times)
 
+    # base_only a été consommé par la passe dynamique.
+    release_stage(workdir, files=("base_only.mp4",))
+
     # 10) Composite ----------------------------------------------------------
     _p(85, "10 composite")
     nosfx = composite.composite(base_dyn, edl_path, p("composite_nosfx.mp4"), workdir=workdir)
+    # Les overlays sont incrustés: leurs .mov ProRes (les plus gros fichiers du
+    # rendu) et la passe dynamique ne servent plus.
+    release_stage(workdir, "animations", "motion_clips", "broll_clips",
+                  "collage_clips", files=("base_dyn.mp4",))
 
     # 11) SFX + loudnorm -----------------------------------------------------
     _p(91, "11 mix_sfx")
     withsfx = mix_sfx.mix(nosfx, p("sfx_cues.json"), p("composite_withsfx.mp4"),
                           sfxdir=p("sfx"))
+    release_stage(workdir, "sfx", files=("composite_nosfx.mp4",))
 
     # 12) Subtitles ----------------------------------------------------------
     _p(94, "12 subs_ass")
@@ -552,6 +611,12 @@ def _split_collage_ideas(ideas: list) -> tuple[list, list]:
     if not ccfg.ENABLED:
         return [], list(ideas)
 
+    # Les moteurs UGC ne génèrent AUCUNE photo IA: si le routeur laissait des
+    # beats au B-roll photo, ces moments resteraient simplement non illustrés.
+    # Leur profil demande donc 100 % des beats (`share_of_broll = 1.0`).
+    if ccfg.MAX_SHARE_OF_BROLL >= 0.999:
+        return list(ideas)[: ccfg.MAX_SCENES], list(ideas)[ccfg.MAX_SCENES:]
+
     router = BrollTypeRouter(collage_share=ccfg.MAX_SHARE_OF_BROLL)
     texts = [str(i.get("excerpt") or i.get("prompt") or "") for i in ideas]
     decisions = router.route_many(texts)
@@ -574,9 +639,11 @@ def _run_collage(ideas: list, workdir: str, *, allow_paid_images: bool
     """
     rep = {"collage_beats": len(ideas), "collage_images": 0, "collage_clips": 0}
     try:
+        from app.processing.collage import collage_config as ccfg
         from app.processing.collage.collage_pipeline import run_collage_for_ideas
         result = run_collage_for_ideas(ideas, workdir,
-                                       allow_paid_images=allow_paid_images)
+                                       allow_paid_images=allow_paid_images,
+                                       profile=ccfg.PROFILE)
     except Exception as exc:  # noqa: BLE001 - jamais bloquant
         print(f"[pipeline] WARN collage premium ignoré: {exc}", file=sys.stderr)
         rep["collage_error"] = str(exc)[:200]

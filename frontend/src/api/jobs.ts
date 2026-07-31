@@ -15,6 +15,8 @@ export type SubtitleTemplate =
   | 'tiktok_yellow' | 'neon_pop' | 'bold_box' | 'gold_lux' | 'bangers_fun'
   | 'pill_editorial' | 'neon_hype' | 'handwritten_note'
   | 'beast_impact' | 'mint_wave' | 'board_serif'
+/** Direction artistique du moteur de collage papier (3 moteurs produit). */
+export type CollageProfile = 'editorial' | 'ugc_product' | 'ugc_motion'
 
 export interface JobOptions {
   remove_silence?: boolean
@@ -36,6 +38,8 @@ export interface JobOptions {
   subtitle_template?: SubtitleTemplate
   /** Active le moteur d’assemblage éditorial Collage Premium. */
   collage_broll?: boolean
+  /** Direction artistique du collage: editorial | ugc_product | ugc_motion. */
+  collage_profile?: CollageProfile
   /** Fonctionnalité Clips: nombre max de shorts extraits d'une vidéo longue (1-10). */
   max_clips?: number
   /** Supprime les sous-titres déjà incrustés dans la source (défaut: activé). */
@@ -64,14 +68,25 @@ export interface ModeDescriptor {
   icon: string
   description: string
   pipeline: PipelineVersion
+  /** Famille d'affichage du sélecteur (collage, viral, classic, legacy). */
+  family?: string
+  /** Pastille de coût, ex. « 0 crédit image ». */
+  badge?: string
   /** true pour le mode sélectionné par défaut (Collage Premium). */
   default?: boolean
   defaults: JobOptions
 }
 
+export interface ModeFamily {
+  id: string
+  label: string
+  hint?: string
+}
+
 export interface ModesResponse {
   modes: ModeDescriptor[]
   default_mode: string
+  families: ModeFamily[]
 }
 
 export async function listModesFull(): Promise<ModesResponse> {
@@ -79,6 +94,7 @@ export async function listModesFull(): Promise<ModesResponse> {
   return {
     modes: (res.data?.modes ?? []) as ModeDescriptor[],
     default_mode: (res.data?.default_mode ?? '') as string,
+    families: (res.data?.families ?? []) as ModeFamily[],
   }
 }
 

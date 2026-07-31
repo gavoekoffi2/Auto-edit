@@ -180,6 +180,20 @@
 
 @layer utilities {
   .text-balance { text-wrap: balance; }
+  /* Rails horizontaux (sélecteur de moteurs) : on défile sans la barre système,
+     qui casse l'alignement des cartes et alourdit visuellement la section. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  /* Description des cartes de moteur : 3 lignes maxi, hauteur homogène. */
+  .line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
   .mask-fade-r {
     mask-image: linear-gradient(to right, black 70%, transparent 100%);
     -webkit-mask-image: linear-gradient(to right, black 70%, transparent 100%);

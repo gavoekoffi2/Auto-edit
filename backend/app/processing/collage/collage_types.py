@@ -86,32 +86,85 @@ ENTRANCES = ("drop", "slide_left", "slide_right", "scale_pop", "rotate_in", "ris
 #
 # Chaque cellule = (nom d'ancrage, cx, cy, rayon) en coordonnées normalisées.
 # --------------------------------------------------------------------------- #
-LAYOUT_TEMPLATES: dict[int, list[tuple[str, float, float, float]]] = {
+#: Plusieurs gabarits par nombre d'objets. Le premier de chaque liste est le
+#: gabarit HISTORIQUE (rendu inchangé quand aucune graine n'est fournie); les
+#: suivants existent pour la variété: avec un seul gabarit, toutes les scènes
+#: d'une même vidéo — et de toutes les vidéos — avaient rigoureusement la même
+#: composition, ce qui se voit immédiatement au montage.
+LAYOUT_TEMPLATES: dict[int, list[list[tuple[str, float, float, float]]]] = {
     3: [
-        ("center_top", 0.50, 0.34, 0.30),
-        ("bottom_left", 0.28, 0.70, 0.24),
-        ("bottom_right", 0.73, 0.70, 0.24),
+        [   # héros en haut, deux appuis en bas
+            ("center_top", 0.50, 0.34, 0.30),
+            ("bottom_left", 0.28, 0.70, 0.24),
+            ("bottom_right", 0.73, 0.70, 0.24),
+        ],
+        [   # colonne décalée, lecture de haut en bas
+            ("top_left", 0.32, 0.24, 0.25),
+            ("mid_right", 0.70, 0.50, 0.27),
+            ("bottom_left", 0.34, 0.76, 0.25),
+        ],
+        [   # héros bas, contexte en haut
+            ("top_left", 0.29, 0.24, 0.22),
+            ("top_right", 0.72, 0.26, 0.22),
+            ("center_bottom", 0.50, 0.67, 0.31),
+        ],
     ],
     4: [
-        ("center", 0.50, 0.45, 0.26),
-        ("top_left", 0.26, 0.22, 0.20),
-        ("top_right", 0.75, 0.24, 0.19),
-        ("bottom_center", 0.50, 0.76, 0.24),
+        [
+            ("center", 0.50, 0.45, 0.26),
+            ("top_left", 0.26, 0.22, 0.20),
+            ("top_right", 0.75, 0.24, 0.19),
+            ("bottom_center", 0.50, 0.76, 0.24),
+        ],
+        [   # diagonale descendante
+            ("top_left", 0.28, 0.20, 0.21),
+            ("mid_right", 0.73, 0.42, 0.22),
+            ("mid_left", 0.29, 0.62, 0.20),
+            ("bottom_right", 0.72, 0.82, 0.19),
+        ],
+        [   # grille 2x2 franche
+            ("top_left", 0.28, 0.28, 0.22),
+            ("top_right", 0.73, 0.28, 0.22),
+            ("bottom_left", 0.28, 0.72, 0.22),
+            ("bottom_right", 0.73, 0.72, 0.22),
+        ],
     ],
     5: [
-        ("center", 0.50, 0.47, 0.25),
-        ("top_left", 0.24, 0.20, 0.18),
-        ("top_right", 0.76, 0.21, 0.18),
-        ("bottom_left", 0.24, 0.76, 0.19),
-        ("bottom_right", 0.76, 0.75, 0.19),
+        [
+            ("center", 0.50, 0.47, 0.25),
+            ("top_left", 0.24, 0.20, 0.18),
+            ("top_right", 0.76, 0.21, 0.18),
+            ("bottom_left", 0.24, 0.76, 0.19),
+            ("bottom_right", 0.76, 0.75, 0.19),
+        ],
+        [   # bandeau haut de trois, duo bas
+            # Trois pièces sur une même ligne, c'est le gabarit le plus serré du
+            # jeu: les rayons sont réduits pour que les feuilles (agrandies par
+            # PIECE_SPREAD, plus l'ombre portée) ne se touchent pas.
+            ("top_left", 0.19, 0.24, 0.145),
+            ("center_top", 0.50, 0.19, 0.155),
+            ("top_right", 0.81, 0.25, 0.145),
+            ("bottom_left", 0.31, 0.61, 0.21),
+            ("bottom_right", 0.70, 0.85, 0.20),
+        ],
     ],
     6: [
-        ("center_top", 0.50, 0.26, 0.22),
-        ("mid_left", 0.24, 0.45, 0.18),
-        ("mid_right", 0.76, 0.45, 0.18),
-        ("center_bottom", 0.50, 0.64, 0.21),
-        ("bottom_left", 0.26, 0.82, 0.16),
-        ("bottom_right", 0.74, 0.82, 0.16),
+        [
+            ("center_top", 0.50, 0.26, 0.22),
+            ("mid_left", 0.24, 0.45, 0.18),
+            ("mid_right", 0.76, 0.45, 0.18),
+            ("center_bottom", 0.50, 0.64, 0.21),
+            ("bottom_left", 0.26, 0.82, 0.16),
+            ("bottom_right", 0.74, 0.82, 0.16),
+        ],
+        [   # grille 2x3 régulière
+            ("top_left", 0.28, 0.20, 0.18),
+            ("top_right", 0.73, 0.20, 0.18),
+            ("mid_left", 0.28, 0.50, 0.18),
+            ("mid_right", 0.73, 0.50, 0.18),
+            ("bottom_left", 0.28, 0.80, 0.18),
+            ("bottom_right", 0.73, 0.80, 0.18),
+        ],
     ],
 }
 
@@ -130,10 +183,20 @@ ANCHOR_LABELS: dict[str, str] = {
 }
 
 
-def layout_for(count: int) -> list[tuple[str, float, float, float]]:
-    """Gabarit de composition pour *count* objets (borné à 3..6)."""
+def layout_for(count: int, seed: object = None) -> list[tuple[str, float, float, float]]:
+    """Gabarit de composition pour *count* objets (borné à 3..6).
+
+    *seed* (l'identifiant du concept, en pratique) fait tourner les variantes:
+    deux scènes voisines n'ont plus la même composition, tout en restant
+    parfaitement reproductibles. Sans graine, on renvoie le gabarit historique
+    — les appelants existants et les rendus déjà produits sont préservés.
+    """
     count = max(ccfg.MIN_OBJECTS, min(ccfg.MAX_OBJECTS, int(count or 0)))
-    return LAYOUT_TEMPLATES[count]
+    variants = LAYOUT_TEMPLATES[count]
+    if seed is None:
+        return variants[0]
+    digest = hashlib.sha1(str(seed).encode("utf-8")).digest()[0]
+    return variants[digest % len(variants)]
 
 
 # --------------------------------------------------------------------------- #
@@ -206,6 +269,15 @@ class CollageConcept:
 
     def ordered_objects(self) -> list[CollageObject]:
         return sorted(self.objects, key=lambda o: (o.order, o.name))
+
+    def layout(self) -> list[tuple[str, float, float, float]]:
+        """Gabarit de CETTE scène — source unique de vérité.
+
+        Le prompt image demande au modèle de placer les objets dans ces zones et
+        l'animation révèle exactement les mêmes: les deux DOIVENT lire le même
+        gabarit, sinon la découpe ne tombe plus sur les objets.
+        """
+        return layout_for(len(self.ordered_objects()), self.id)
 
     def cache_key(self) -> str:
         """Empreinte stable du concept: sert de clé de cache image/vidéo."""

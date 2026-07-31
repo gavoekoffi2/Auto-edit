@@ -52,9 +52,13 @@ def test_mix_filter_varies_pitch_and_gain_on_repeats():
     ]
     index = {"camera_flash": "sfx/camera_flash.wav"}
     filt, inputs = _build_filter(cues, index)
-    assert len(inputs) == 3
+    # Un son rejoué N fois = UNE entrée ffmpeg dupliquée par asplit (avant, une
+    # entrée par cue: un montage long dépassait la limite d'entrées ouvertes).
+    assert inputs == ["sfx/camera_flash.wav"]
+    assert "asplit=3" in filt
     # first occurrence at designed pitch, later ones humanised via asetrate
-    chains = [p for p in filt.split(";") if p.startswith("[")][:3]
+    chains = [p for p in filt.split(";") if p.startswith("[") and "adelay" in p]
+    assert len(chains) == 3
     assert "asetrate" not in chains[0]
     assert "asetrate" in chains[1]
     assert "asetrate" in chains[2]

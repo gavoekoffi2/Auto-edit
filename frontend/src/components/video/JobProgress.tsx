@@ -22,29 +22,40 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
   const [connectionWarning, setConnectionWarning] = useState('')
 
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval>
+    let interval: ReturnType<typeof setInterval> | undefined
     let cancelled = false
+    // `settled` est indispensable: le PREMIER poll part avant que `interval`
+    // n'existe. Si le job est déjà terminé à ce moment-là, `clearInterval`
+    // recevait `undefined`, l'intervalle démarrait ensuite quand même et
+    // rejouait `onComplete` + le toast « terminé » toutes les 2 secondes.
+    let settled = false
     let errorCount = 0
     let warnedAboutConnection = false
 
+    const stop = () => {
+      settled = true
+      if (interval !== undefined) clearInterval(interval)
+    }
+
     const poll = async () => {
+      if (settled) return
       try {
         const data = await getJob(jobId)
-        if (cancelled) return
+        if (cancelled || settled) return
         errorCount = 0
         warnedAboutConnection = false
         setConnectionWarning('')
         setJob(data)
 
         if (data.status === 'completed') {
-          clearInterval(interval)
+          stop()
           onComplete?.(data.result || {})
-          toast('success', 'Video processing complete!')
+          toast('success', 'Montage terminé !')
         } else if (data.status === 'failed') {
-          clearInterval(interval)
-          toast('error', data.error_message || 'Processing failed')
+          stop()
+          toast('error', data.error_message || 'Le traitement a échoué')
         } else if (data.status === 'cancelled') {
-          clearInterval(interval)
+          stop()
           onCancelled?.()
           toast('info', 'Traitement annulé')
         }
@@ -63,15 +74,15 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
     }
 
     poll()
-    interval = setInterval(poll, 2000)
+    if (!settled) interval = setInterval(poll, 2000)
     const resumePolling = () => {
-      if (!cancelled) poll()
+      if (!cancelled && !settled) poll()
     }
     window.addEventListener('focus', resumePolling)
     document.addEventListener('visibilitychange', resumePolling)
     return () => {
       cancelled = true
-      clearInterval(interval)
+      stop()
       window.removeEventListener('focus', resumePolling)
       document.removeEventListener('visibilitychange', resumePolling)
     }
@@ -81,9 +92,9 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
     setDownloading(true)
     try {
       await downloadJobResult(jobId)
-      toast('success', 'Download started!')
+      toast('success', 'Téléchargement lancé')
     } catch {
-      toast('error', 'Download failed. Please try again.')
+      toast('error', 'Le téléchargement a échoué. Réessaie.')
     } finally {
       setDownloading(false)
     }
@@ -107,10 +118,10 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
   if (!job) return null
 
   const statusConfig = {
-    pending: { icon: Loader2, color: 'text-dark-400', label: 'Waiting in queue...' },
-    processing: { icon: Loader2, color: 'text-primary-400', label: 'Processing...' },
-    completed: { icon: CheckCircle, color: 'text-emerald-400', label: 'Complete!' },
-    failed: { icon: XCircle, color: 'text-red-400', label: 'Failed' },
+    pending: { icon: Loader2, color: 'text-dark-400', label: 'En file d’attente…' },
+    processing: { icon: Loader2, color: 'text-primary-400', label: 'Montage en cours…' },
+    completed: { icon: CheckCircle, color: 'text-emerald-400', label: 'Montage terminé' },
+    failed: { icon: XCircle, color: 'text-red-400', label: 'Échec' },
     cancelled: { icon: Ban, color: 'text-amber-400', label: 'Annulé' },
   }
 
@@ -125,7 +136,7 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
         <div>
           <p className={`font-medium ${config.color}`}>{config.label}</p>
           {job.status === 'processing' && (
-            <p className="text-sm text-dark-400">{job.progress}% complete</p>
+            <p className="text-sm text-dark-400">{job.progress} % effectués</p>
           )}
         </div>
       </div>
@@ -160,12 +171,12 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
       {job.status === 'failed' && (
         <div className="space-y-3">
           <p className="text-sm text-red-400 bg-red-400/10 rounded-lg p-3">
-            {job.error_message || 'An unknown error occurred'}
+            {job.error_message || 'Une erreur inattendue est survenue'}
           </p>
           {onRetry && (
             <button onClick={onRetry} className="btn-secondary text-sm flex items-center gap-2">
               <RefreshCw className="w-4 h-4" />
-              Retry
+              Relancer le montage
             </button>
           )}
         </div>
@@ -182,7 +193,7 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
           ) : (
             <Download className="w-4 h-4" />
           )}
-          {downloading ? 'Downloading...' : 'Download Video'}
+          {downloading ? 'Téléchargement…' : 'Télécharger la vidéo'}
         </button>
       )}
     </div>

@@ -1,8 +1,8 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  Zap, Mic, VolumeX, Film, Sparkles, Loader2, ArrowLeft,
-  Image as ImageIcon, Music, Subtitles, Smartphone, Megaphone, PenTool,
+  Zap, VolumeX, Sparkles, Loader2, ArrowLeft, ChevronLeft, ChevronRight,
+  Image as ImageIcon, Music, Subtitles, Smartphone, Megaphone, PenTool, Check,
 } from 'lucide-react'
 import VideoPlayer from '../components/video/VideoPlayer'
 import Timeline from '../components/video/Timeline'
@@ -15,6 +15,7 @@ import {
   listModesFull,
   type JobOptions,
   type ModeDescriptor,
+  type ModeFamily,
   type PipelineVersion,
 } from '../api/jobs'
 import { toast } from '../components/ui/Toast'
@@ -29,25 +30,70 @@ interface VideoMeta {
   status: string
 }
 
-// Fallback statique utilisé si l'endpoint /jobs/modes est indisponible. Le
-// PREMIER mode est le défaut produit : Collage Premium. Les autres moteurs
-// restent disponibles et sélectionnables.
+// Repli statique si `GET /jobs/modes` est indisponible. La source de vérité est
+// le backend (`app/api/v1/modes.py`) : on ne garde ici que les moteurs phares,
+// dans le même ordre, pour que l'écran reste utilisable hors ligne.
+const FALLBACK_FAMILIES: ModeFamily[] = [
+  { id: 'collage', label: 'Collage papier', hint: 'Assemblage éditorial animé' },
+  { id: 'viral', label: 'Styles viraux', hint: 'Sous-titres et motion design' },
+]
+
 const FALLBACK_MODES: ModeDescriptor[] = [
   {
     id: 'collage_premium',
-    name: 'Collage Premium (recommandé)',
+    name: 'Collage Premium',
     icon: '✂️',
+    family: 'collage',
+    badge: 'images IA si dispo',
     description:
-      'Le moteur par défaut : analyse du sens, métaphore visuelle, collage papier ' +
-      'éditorial et éléments assemblés progressivement à l’écran.',
+      'Analyse du sens, métaphore visuelle et collage papier éditorial assemblé ' +
+      'pièce par pièce à l’écran.',
     pipeline: 'v2',
     default: true,
     defaults: {
       remove_silence: true, dynamic_captions: true, ai_broll: true,
-      motion_design: true,
-      music: true, sfx: true, vertical_9_16: true, final_cta: true,
-      visual_mode: 'auto_fallback', subtitle_template: 'pill_editorial',
-      collage_broll: true,
+      motion_design: true, music: true, sfx: true, vertical_9_16: true,
+      final_cta: true, visual_mode: 'auto_fallback',
+      subtitle_template: 'pill_editorial',
+      collage_broll: true, collage_profile: 'editorial',
+      broll_style: 'tiktok_viral', broll_demographic: 'african',
+    },
+  },
+  {
+    id: 'collage_ugc_product',
+    name: 'Collage UGC Produit',
+    icon: '📦',
+    family: 'collage',
+    badge: '0 crédit image',
+    description:
+      'Pour présenter un produit face caméra : le collage papier illustre le prix, ' +
+      'la livraison, la texture, le résultat. Aucune image IA générée.',
+    pipeline: 'v2',
+    defaults: {
+      remove_silence: true, dynamic_captions: true, ai_broll: true,
+      motion_design: false, music: true, sfx: true, vertical_9_16: true,
+      final_cta: true, visual_mode: 'credit_saver',
+      subtitle_template: 'pill_editorial',
+      collage_broll: true, collage_profile: 'ugc_product',
+      broll_style: 'tiktok_viral', broll_demographic: 'african',
+    },
+  },
+  {
+    id: 'collage_ugc_motion',
+    name: 'Collage UGC Produit + Motion',
+    icon: '🎞️',
+    family: 'collage',
+    badge: '0 crédit image',
+    description:
+      'Le moteur UGC Produit avec les scènes de motion design animées. ' +
+      'Toujours aucune image IA générée.',
+    pipeline: 'v2',
+    defaults: {
+      remove_silence: true, dynamic_captions: true, ai_broll: true,
+      motion_design: true, music: true, sfx: true, vertical_9_16: true,
+      final_cta: true, visual_mode: 'credit_saver',
+      subtitle_template: 'pill_editorial',
+      collage_broll: true, collage_profile: 'ugc_motion',
       broll_style: 'tiktok_viral', broll_demographic: 'african',
     },
   },
@@ -55,152 +101,35 @@ const FALLBACK_MODES: ModeDescriptor[] = [
     id: 'signature_3d',
     name: 'Signature 3D',
     icon: '✨',
+    family: 'viral',
+    badge: 'images IA si dispo',
     description:
-      'Le montage vedette : illustrations 3D uniques par vidéo, scènes motion design ' +
-      'qui changent de composition (cercle, polaroid, arche…), B-roll IA, sous-titres ' +
-      'karaoké jaunes, SFX et transitions lumineuses.',
+      'Illustrations 3D uniques par vidéo, scènes motion design variées, ' +
+      'sous-titres karaoké jaunes, SFX et transitions lumineuses.',
     pipeline: 'v2',
     defaults: {
       remove_silence: true, dynamic_captions: true, ai_broll: true,
-      motion_design: true,
-      music: true, sfx: true, vertical_9_16: true, final_cta: true,
-      visual_mode: 'auto_fallback',
+      motion_design: true, music: true, sfx: true, vertical_9_16: true,
+      final_cta: true, visual_mode: 'auto_fallback',
       subtitle_template: 'tiktok_yellow',
       broll_style: 'tiktok_viral', broll_demographic: 'african',
     },
   },
   {
-    id: 'beast_impact',
-    name: 'Impact viral',
-    icon: '🔥',
-    description:
-      'Sous-titres MAJUSCULES massifs, mot actif rouge avec glow, mots-clés glitch ' +
-      'géants — le style rétention maximale des plus gros créateurs.',
-    pipeline: 'v2',
-    defaults: {
-      remove_silence: true, dynamic_captions: true, ai_broll: true,
-      motion_design: true,
-      music: true, sfx: true, vertical_9_16: true, final_cta: true,
-      visual_mode: 'auto_fallback',
-      subtitle_template: 'beast_impact',
-      broll_style: 'tiktok_viral', broll_demographic: 'african',
-    },
-  },
-  {
-    id: 'mint_wave',
-    name: 'Menthe fraîche',
-    icon: '🌿',
-    description:
-      'Pilule sombre arrondie, karaoké progressif (mot actif menthe, mots à venir ' +
-      'estompés) — doux, premium et ultra lisible.',
-    pipeline: 'v2',
-    defaults: {
-      remove_silence: true, dynamic_captions: true, ai_broll: true,
-      motion_design: true,
-      music: true, sfx: true, vertical_9_16: true, final_cta: true,
-      visual_mode: 'auto_fallback',
-      subtitle_template: 'mint_wave',
-      broll_style: 'tiktok_viral', broll_demographic: 'african',
-    },
-  },
-  {
-    id: 'board_pitch',
-    name: 'Board de présentation',
-    icon: '🟩',
-    description:
-      'Panneau vert sapin texturé, titres serif éditoriaux et pile de flyers fixes ; ' +
-      'une grande carte 9:16 rejoue chaque idée et les éléments glissent d\'une carte ' +
-      'à l\'autre — le look des vidéos publicitaires en motion design.',
-    pipeline: 'v2',
-    defaults: {
-      remove_silence: true, dynamic_captions: true, ai_broll: true,
-      motion_design: true,
-      music: true, sfx: true, vertical_9_16: true, final_cta: true,
-      visual_mode: 'auto_fallback',
-      subtitle_template: 'board_serif', motion_preset: 'board_pitch',
-      broll_style: 'tiktok_viral', broll_demographic: 'african',
-    },
-  },
-  {
     id: 'credit_saver_creator_edit',
-    name: 'Économique (sans images IA)',
+    name: 'Économique',
     icon: '⚡',
+    family: 'viral',
+    badge: '0 crédit image',
     description:
-      'Économise les crédits : silences coupés, captions, zooms, SFX, transitions ' +
-      'et motion design procédural — aucune image IA payante.',
+      'Silences coupés, captions, zooms, SFX, transitions et motion design ' +
+      'procédural — aucune image IA payante.',
     pipeline: 'v2',
     defaults: {
       remove_silence: true, dynamic_captions: true, ai_broll: false,
-      motion_design: true,
-      music: true, sfx: true, vertical_9_16: true, final_cta: true,
-      visual_mode: 'credit_saver',
+      motion_design: true, music: true, sfx: true, vertical_9_16: true,
+      final_cta: true, visual_mode: 'credit_saver',
       broll_style: 'tiktok_viral', broll_demographic: 'african',
-    },
-  },
-  {
-    id: 'pill_editorial',
-    name: 'Pilule éditoriale',
-    icon: '🏷️',
-    description:
-      'Sous-titres en pilule blanche (mots prononcés en noir, à venir en gris), ' +
-      'bandeaux mots-clés « papier déchiré » — le look éditorial des montages Captions AI.',
-    pipeline: 'v2',
-    defaults: {
-      remove_silence: true, dynamic_captions: true, ai_broll: true,
-      motion_design: true,
-      music: true, sfx: true, vertical_9_16: true, final_cta: true,
-      visual_mode: 'auto_fallback',
-      subtitle_template: 'pill_editorial', motion_preset: 'editorial_paper',
-      broll_style: 'tiktok_viral', broll_demographic: 'african',
-    },
-  },
-  {
-    id: 'neon_hype',
-    name: 'Néon hype',
-    icon: '⚡',
-    description:
-      'Sous-titres MAJUSCULES, mot actif cyan avec glow, mots-clés géants ' +
-      'avec glitch chromatique — le style énergique des montages viraux.',
-    pipeline: 'v2',
-    defaults: {
-      remove_silence: true, dynamic_captions: true, ai_broll: true,
-      motion_design: true,
-      music: true, sfx: true, vertical_9_16: true, final_cta: true,
-      visual_mode: 'auto_fallback',
-      subtitle_template: 'neon_hype', motion_preset: 'neon_social',
-      broll_style: 'tiktok_viral', broll_demographic: 'african',
-    },
-  },
-  {
-    id: 'handwritten_note',
-    name: 'Notes manuscrites',
-    icon: '✍️',
-    description:
-      'Sous-titres écriture manuscrite, mots-clés entourés d\'un cercle dessiné ' +
-      'à la main, scènes carnet crème — le style sketch chaleureux.',
-    pipeline: 'v2',
-    defaults: {
-      remove_silence: true, dynamic_captions: true, ai_broll: true,
-      motion_design: true,
-      music: true, sfx: true, vertical_9_16: true, final_cta: true,
-      visual_mode: 'auto_fallback',
-      subtitle_template: 'handwritten_note', motion_preset: 'sketch_notes',
-      broll_style: 'tiktok_viral', broll_demographic: 'african',
-    },
-  },
-  {
-    id: 'business_premium_african',
-    name: 'Images IA + motion design',
-    icon: '🖼️',
-    description: 'Ancien montage premium : B-roll/images IA quand des crédits sont disponibles.',
-    pipeline: 'v2',
-    defaults: {
-      remove_silence: true, dynamic_captions: true, ai_broll: true,
-      motion_design: true,
-      music: true, sfx: true, vertical_9_16: true, final_cta: true,
-      visual_mode: 'ai_broll',
-      broll_style: 'african_business_premium',
-      broll_demographic: 'african',
     },
   },
 ]
@@ -221,6 +150,8 @@ export default function Editor() {
   const [video, setVideo] = useState<VideoMeta | null>(null)
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
   const [modes, setModes] = useState<ModeDescriptor[]>(FALLBACK_MODES)
+  const [families, setFamilies] = useState<ModeFamily[]>(FALLBACK_FAMILIES)
+  const [activeFamily, setActiveFamily] = useState<string>('collage')
   const [selectedMode, setSelectedMode] = useState<EditMode>(FALLBACK_MODES[0].id)
   const [processing, setProcessing] = useState(false)
   const [completedResult, setCompletedResult] = useState<Record<string, unknown> | null>(null)
@@ -234,16 +165,16 @@ export default function Editor() {
   useEffect(() => {
     let cancelled = false
     listModesFull()
-      .then(({ modes: list, default_mode }) => {
+      .then(({ modes: list, default_mode, families: fams }) => {
         if (cancelled || list.length === 0) return
         setModes(list)
-        // Choix par défaut = Collage Premium (`default_mode` renvoyé
-        // par l'API, sinon le mode marqué default, sinon le premier).
+        if (fams.length) setFamilies(fams)
         const preferred =
           list.find((m) => m.id === default_mode) ??
           list.find((m) => m.default) ??
           list[0]
         setSelectedMode(preferred.id)
+        setActiveFamily(preferred.family ?? 'collage')
       })
       .catch(() => { /* on garde le fallback */ })
     return () => { cancelled = true }
@@ -274,8 +205,7 @@ export default function Editor() {
         )
         if (activeJob) {
           // Un NOUVEAU montage est en cours : on le suit, lui — l'ancien
-          // montage terminé ne doit JAMAIS reprendre l'écran (c'était le bug
-          // « c'est l'ancien test qui vient en haut »).
+          // montage terminé ne doit JAMAIS reprendre l'écran.
           setActiveJobId(activeJob.id)
           setProcessing(true)
         } else {
@@ -294,8 +224,8 @@ export default function Editor() {
     return () => { cancelled = true }
   }, [videoId])
 
-  const toggle = (key: keyof JobOptions) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    setOptions((prev) => ({ ...prev, [key]: e.target.checked }))
+  const toggle = (key: keyof JobOptions) => () => {
+    setOptions((prev) => ({ ...prev, [key]: !prev[key] }))
   }
 
   const handleAutoEdit = useCallback(async () => {
@@ -318,7 +248,7 @@ export default function Editor() {
         options: payloadOptions,
       })
       setActiveJobId(job.id)
-      toast('info', `Traitement lancé : ${modes.find((m) => m.id === selectedMode)?.name ?? selectedMode}`)
+      toast('info', `Montage lancé : ${modes.find((m) => m.id === selectedMode)?.name ?? selectedMode}`)
     } catch (err: unknown) {
       setProcessing(false)
       let msg = 'Impossible de démarrer le traitement'
@@ -328,7 +258,7 @@ export default function Editor() {
       }
       toast('error', msg)
     }
-  }, [videoId, selectedMode, options, ctaText, logoText, pipelineVersion])
+  }, [videoId, selectedMode, options, ctaText, logoText, pipelineVersion, modes])
 
   const handleJobComplete = useCallback(
     (result: Record<string, unknown>) => {
@@ -349,6 +279,16 @@ export default function Editor() {
     setActiveJobId(null)
     setProcessing(false)
   }, [])
+
+  const visibleFamilies = useMemo(
+    () => families.filter((f) => modes.some((m) => (m.family ?? 'viral') === f.id)),
+    [families, modes],
+  )
+  const visibleModes = useMemo(
+    () => modes.filter((m) => (m.family ?? 'viral') === activeFamily),
+    [modes, activeFamily],
+  )
+  const currentMode = modes.find((m) => m.id === selectedMode)
 
   if (loadError) {
     return (
@@ -373,375 +313,540 @@ export default function Editor() {
   const previewSrc = activeJobId && completedResult
     ? getJobDownloadUrl(activeJobId)
     : getStreamUrl(videoId!)
+  const notice = fallbackNotice(completedResult)
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-6 flex items-center gap-4">
-        <button
-          onClick={() => navigate('/dashboard')}
-          className="text-dark-400 hover:text-white transition-colors"
-          aria-label="Retour au dashboard"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <div>
-          <h1 className="text-2xl font-bold">{video.title}</h1>
-          <p className="text-dark-400 text-sm">
-            {video.status}
-            {' · '}
-            {(video.size_bytes / (1024 * 1024)).toFixed(1)} MB
-            {video.duration_s != null && (
-              ` · ${Math.floor(video.duration_s / 60)}:${Math.floor(video.duration_s % 60).toString().padStart(2, '0')}`
+    <div className="pb-14">
+      {/* ---------------------------------------------------------------- */}
+      {/* Barre d'action COLLANTE : le bouton de lancement reste visible en  */}
+      {/* permanence. Avant, il vivait au bas d'une colonne latérale et il   */}
+      {/* fallait faire défiler tout l'écran pour lancer un montage.         */}
+      {/* ---------------------------------------------------------------- */}
+      <div className="sticky top-0 z-30 border-b border-white/10 bg-dark-950/85 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-4 py-3 sm:gap-4 sm:px-6 lg:px-8">
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/10 text-dark-300 transition-colors hover:border-white/25 hover:text-white"
+            aria-label="Retour au dashboard"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-base font-semibold leading-tight sm:text-lg">
+              {video.title}
+            </h1>
+            <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-dark-400">
+              <span>{(video.size_bytes / (1024 * 1024)).toFixed(1)} Mo</span>
+              {video.duration_s != null && (
+                <>
+                  <span aria-hidden>·</span>
+                  <span>{formatDuration(video.duration_s)}</span>
+                </>
+              )}
+              {currentMode && (
+                <>
+                  <span aria-hidden>·</span>
+                  <span className="truncate text-dark-300">
+                    {currentMode.icon} {currentMode.name}
+                  </span>
+                </>
+              )}
+            </p>
+          </div>
+
+          <button
+            onClick={handleAutoEdit}
+            disabled={processing}
+            className="btn-accent flex shrink-0 items-center justify-center gap-2 px-4 py-2.5 text-sm sm:px-7 sm:text-base"
+          >
+            {processing ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="hidden sm:inline">Montage en cours…</span>
+                <span className="sm:hidden">En cours…</span>
+              </>
+            ) : (
+              <>
+                <Zap className="h-4 w-4" />
+                <span className="hidden sm:inline">Forger le montage</span>
+                <span className="sm:hidden">Forger</span>
+              </>
             )}
-          </p>
+          </button>
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-4">
-          {completedResult && (
-            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
-              Aperçu du DERNIER montage terminé. Si tu relances un montage, cet aperçu disparaît jusqu'à la fin du nouveau rendu.
+      <div className="mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-8">
+        {/* -------------------------------------------------------------- */}
+        {/* Sélecteur de moteur — HORIZONTAL. Les moteurs étaient empilés    */}
+        {/* verticalement dans une colonne étroite : la liste s'allongeait à */}
+        {/* chaque nouveau moteur et poussait le reste de l'écran vers le    */}
+        {/* bas. Ici, familles en onglets + rail qui défile latéralement.    */}
+        {/* -------------------------------------------------------------- */}
+        <section className="pt-6">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-display text-sm font-semibold uppercase tracking-[0.18em] text-dark-400">
+                Moteur de montage
+              </h2>
+              <p className="mt-1 text-sm text-dark-500">
+                {visibleFamilies.find((f) => f.id === activeFamily)?.hint ??
+                  'Choisis la direction artistique du rendu'}
+              </p>
             </div>
-          )}
-          {/* Alerte NON bloquante : les images IA étaient indisponibles mais le
-              montage a quand même été produit en mode économique. */}
-          {(() => {
-            const notice = fallbackNotice(completedResult)
-            if (!notice) return null
-            return (
-              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-                ⚡ {notice}
-              </div>
-            )
-          })()}
-          <VideoPlayer src={previewSrc} />
-          {scenes && scenes.scenes.length > 0 && (
-            <Timeline scenes={scenes.scenes} totalDuration={video.duration_s || 0} />
-          )}
-          {activeJobId && (processing || completedResult) && (
-            <JobProgress
-              jobId={activeJobId}
-              onComplete={handleJobComplete}
-              onRetry={handleRetry}
-              onCancelled={handleJobCancelled}
-            />
-          )}
-        </div>
 
-        <div className="space-y-4">
-          {/* Le moteur suit le style choisi (les modes "legacy" utilisent
-              l'ancien pipeline v1 SANS motion design — clairement étiquetés).
-              L'ancien sélecteur v1/v2 permettait de lancer l'ancien moteur
-              par erreur et de croire que le motion design avait disparu. */}
-
-          {/* Mode */}
-          <div className="card">
-            <h3 className="font-semibold mb-3">Style de montage</h3>
-            <div className="space-y-2">
-              {modes.map((mode) => (
+            <div className="flex flex-wrap gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] p-1">
+              {visibleFamilies.map((family) => (
                 <button
-                  key={mode.id}
-                  onClick={() => setSelectedMode(mode.id)}
-                  className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-all text-left ${
-                    selectedMode === mode.id
-                      ? 'border-primary-500 bg-primary-500/10'
-                      : 'border-dark-700 hover:border-dark-500'
+                  key={family.id}
+                  onClick={() => setActiveFamily(family.id)}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    activeFamily === family.id
+                      ? 'bg-primary-500/20 text-primary-200 ring-1 ring-primary-500/40'
+                      : 'text-dark-400 hover:text-white'
                   }`}
                 >
-                  <span className="text-2xl">{mode.icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium flex items-center gap-2">
-                      <span className="truncate">{mode.name}</span>
-                      <span className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded ${
-                        mode.pipeline === 'v2'
-                          ? 'bg-primary-500/20 text-primary-300'
-                          : 'bg-dark-700 text-dark-300'
-                      }`}>
-                        {mode.pipeline === 'v2' ? 'Moteur CutForge' : 'ancien moteur'}
-                      </span>
-                    </p>
-                    <p className="text-xs text-dark-400">
-                      {mode.description}
-                      {mode.pipeline !== 'v2' && ' — sans motion design'}
-                    </p>
-                  </div>
+                  {family.label}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Toggles */}
-          <div className="card">
-            <h3 className="font-semibold mb-3">Options</h3>
-            <ToggleRow
-              icon={<VolumeX className="w-4 h-4 text-primary-400" />}
-              label="Supprimer les silences"
-              checked={!!options.remove_silence}
-              onChange={toggle('remove_silence')}
-            />
-            <ToggleRow
-              icon={<Subtitles className="w-4 h-4 text-primary-400" />}
-              label="Sous-titres dynamiques"
-              checked={!!options.dynamic_captions}
-              onChange={toggle('dynamic_captions')}
-            />
-            <ToggleRow
-              icon={<ImageIcon className="w-4 h-4 text-primary-400" />}
-              label="B-roll IA"
-              checked={!!options.ai_broll}
-              onChange={toggle('ai_broll')}
-            />
+          <EngineRail
+            modes={visibleModes}
+            selectedId={selectedMode}
+            onSelect={setSelectedMode}
+          />
+        </section>
 
-            <ToggleRow
-              icon={<PenTool className="w-4 h-4 text-primary-400" />}
-              label="Motion design illustré"
-              checked={!!options.motion_design}
-              onChange={toggle('motion_design')}
-            />
-            {options.motion_design && (
-              <p className="text-xs text-dark-500 -mt-1 mb-2 pl-6">
-                Les moments clés du discours sont illustrés par des dessins animés
-                (flèches, étapes, chiffres) avec transitions et effets sonores.
-              </p>
-            )}
-
-            {options.ai_broll && (
-              <div className="mt-3">
-                <label className="text-xs text-dark-400 block mb-1">Personnes pour les images B-roll</label>
-                <select
-                  value={options.broll_demographic || 'african'}
-                  onChange={(e) => setOptions((prev) => ({
-                    ...prev,
-                    broll_demographic: e.target.value as JobOptions['broll_demographic'],
-                  }))}
-                  className="w-full bg-dark-800 border border-dark-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-primary-500"
-                >
-                  <option value="african">Africains / Afrique (défaut)</option>
-                  <option value="caucasian">Blancs / caucasiens</option>
-                  <option value="global">Mixte international</option>
-                </select>
-                <p className="text-xs text-dark-500 mt-1">Par défaut CutForge génère des scènes africaines modernes (personnes et décors). Tu peux changer pour une autre audience.</p>
+        {/* -------------------------------------------------------------- */}
+        {/* Aperçu + réglages, côte à côte                                   */}
+        {/* -------------------------------------------------------------- */}
+        <div className="mt-6 grid gap-5 lg:grid-cols-12">
+          <div className="space-y-4 lg:col-span-7 xl:col-span-8">
+            {completedResult && (
+              <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+                Aperçu du dernier montage terminé. Relancer un montage masque cet
+                aperçu jusqu'à la fin du nouveau rendu.
               </div>
             )}
-            <ToggleRow
-              icon={<Music className="w-4 h-4 text-primary-400" />}
-              label="Musique"
-              checked={!!options.music}
-              onChange={toggle('music')}
-            />
-            <ToggleRow
-              icon={<Sparkles className="w-4 h-4 text-primary-400" />}
-              label="Effets sonores (SFX)"
-              checked={!!options.sfx}
-              onChange={toggle('sfx')}
-            />
-            <ToggleRow
-              icon={<Smartphone className="w-4 h-4 text-primary-400" />}
-              label="Format vertical 9:16"
-              checked={!!options.vertical_9_16}
-              onChange={toggle('vertical_9_16')}
-            />
-            <ToggleRow
-              icon={<Megaphone className="w-4 h-4 text-primary-400" />}
-              label="CTA final"
-              checked={!!options.final_cta}
-              onChange={toggle('final_cta')}
-            />
-          </div>
-
-          {/* Branding */}
-          <div className="card space-y-3">
-            <h3 className="font-semibold">Branding (optionnel)</h3>
-            <div>
-              <label className="text-xs text-dark-400 block mb-1">Texte intro / logo</label>
-              <input
-                type="text"
-                maxLength={60}
-                value={logoText}
-                onChange={(e) => setLogoText(e.target.value)}
-                placeholder="Ex. Lance ton e-commerce"
-                className="w-full bg-dark-800 border border-dark-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-primary-500"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-dark-400 block mb-1">Texte du CTA final</label>
-              <input
-                type="text"
-                maxLength={120}
-                value={ctaText}
-                onChange={(e) => setCtaText(e.target.value)}
-                placeholder="Ex. Abonne-toi 🔔"
-                className="w-full bg-dark-800 border border-dark-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-primary-500"
-              />
-            </div>
-          </div>
-
-          {/* Pipeline steps preview */}
-          <div className="card">
-            <h3 className="font-semibold mb-3">Étapes du pipeline</h3>
-            <div className="space-y-2 text-sm">
-              <PipelineStep icon={<Mic className="w-4 h-4 text-primary-400" />} label="Transcription Whisper (mot-par-mot)" />
-              <PipelineStep icon={<VolumeX className="w-4 h-4 text-primary-400" />} label="Détection silences & filler words" />
-              <PipelineStep icon={<Film className="w-4 h-4 text-primary-400" />} label="EDL — plan de coupes" />
-              {options.motion_design && (
-                <PipelineStep icon={<PenTool className="w-4 h-4 text-primary-400" />} label="Motion design — scènes illustrées animées" />
-              )}
-              {options.ai_broll && (
-                <PipelineStep icon={<ImageIcon className="w-4 h-4 text-primary-400" />} label="B-roll IA (images générées)" />
-              )}
-              <PipelineStep icon={<Sparkles className="w-4 h-4 text-primary-400" />} label="Captions, musique, export FFmpeg" />
-            </div>
-          </div>
-
-          {/* Bouton de lancement */}
-          <button
-            onClick={handleAutoEdit}
-            disabled={processing}
-            className="btn-accent w-full py-4 text-lg flex items-center justify-center gap-2 disabled:opacity-50"
-          >
-            {processing ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                Traitement…
-              </>
-            ) : (
-              <>
-                <Zap className="w-5 h-5" />
-                Forger le montage
-              </>
-            )}
-          </button>
-
-          {!!completedResult?.transcription && (
-            <div className="card">
-              <h3 className="font-semibold mb-2">Transcription</h3>
-              <p className="text-sm text-dark-400 max-h-40 overflow-y-auto leading-relaxed">
-                {typeof (completedResult.transcription as { text?: unknown }).text === 'string'
-                  ? (completedResult.transcription as { text: string }).text
-                  : ''}
-              </p>
-            </div>
-          )}
-
-          {!!completedResult?.montage && (
-            <div className="card">
-              <h3 className="font-semibold mb-3">Contenu du montage</h3>
-              {(() => {
-                const m = completedResult!.montage as Record<string, unknown>
-                const removed = Number(m.removed_duration_s ?? 0)
-                const src = Number(m.source_duration_s ?? 0)
-                if (src <= 0) return null
-                const pct = Math.round((removed / src) * 100)
-                return (
-                  <p className="mb-3 text-sm text-dark-200">
-                    ✂️ Découpe : <strong>{removed.toFixed(0)}s</strong> retirés
-                    (silences, hésitations, répétitions) sur {src.toFixed(0)}s
-                    {pct > 0 ? ` — vidéo ${pct}% plus courte` : ''}.
-                  </p>
-                )
-              })()}
-              <div className="grid grid-cols-2 gap-2.5 text-sm">
-                {(() => {
-                  const m = completedResult!.montage as Record<string, unknown>
-                  const n = (k: string) => Number(m[k] ?? 0)
-                  // En mode économique, l'absence d'images IA est NORMALE (non
-                  // bloquante) : on ne l'affiche pas en rouge.
-                  const aiSkipped = completedResult?.aiImagesSkipped === true
-                  const brollLabel = n('broll_images') > 0
-                    ? `${n('broll_images')} images B-roll IA`
-                    : 'Images IA non requises (mode éco)'
-                  // `camera_flashes` n'existe plus dans le rapport moteur (les
-                  // flashs blancs ont été retirés) : on affiche les punch-zooms
-                  // synchronisés et les passages de lumière réels à la place.
-                  const items: Array<[string, string, boolean]> = [
-                    ['⚡', `${n('key_moment_punches')} punch-zooms`, n('key_moment_punches') > 0],
-                    ['💡', `${n('light_overlays')} passages de lumière`, n('light_overlays') > 0],
-                    ['🎨', `${n('motion_scenes_rendered')} scènes motion design`, n('motion_scenes_rendered') > 0],
-                    ['🔊', `${n('sfx_cues')} effets sonores`, n('sfx_cues') > 0],
-                    ['🏷️', `${n('keyword_popups')} mots-clés popup`, n('keyword_popups') > 0],
-                    ['🖼️', brollLabel, n('broll_images') > 0 || aiSkipped],
-                  ]
-                  return items.map(([icon, label, ok]) => (
-                    <div
-                      key={label}
-                      className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${
-                        ok ? 'border-white/10 bg-white/5 text-dark-100' : 'border-red-400/20 bg-red-400/5 text-red-300'
-                      }`}
-                    >
-                      <span>{icon}</span>
-                      <span className="text-xs font-medium">{label}</span>
-                    </div>
-                  ))
-                })()}
+            {notice && (
+              <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                ⚡ {notice}
               </div>
-              {/* On ne crie au rouge QUE si le motion design a échoué alors
-                  qu'il était demandé — jamais quand le MP4 a bien été produit
-                  sans images IA (c'est le comportement attendu du mode éco). */}
-              {options.motion_design &&
-                Number((completedResult!.montage as Record<string, unknown>).motion_scenes_rendered ?? 0) === 0 && (
-                <p className="mt-3 text-xs text-amber-300 bg-amber-400/10 rounded-lg p-2.5">
-                  ⚠️ Aucune scène motion design dans ce rendu — le reste du montage (flashs, SFX, captions) est bien présent.
+            )}
+
+            <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/40">
+              <VideoPlayer src={previewSrc} />
+            </div>
+
+            {scenes && scenes.scenes.length > 0 && (
+              <Timeline scenes={scenes.scenes} totalDuration={video.duration_s || 0} />
+            )}
+
+            {activeJobId && (processing || completedResult) && (
+              <JobProgress
+                jobId={activeJobId}
+                onComplete={handleJobComplete}
+                onRetry={handleRetry}
+                onCancelled={handleJobCancelled}
+              />
+            )}
+
+            {!!completedResult?.montage && (
+              <MontageRecap
+                montage={completedResult.montage as Record<string, unknown>}
+                aiImagesSkipped={completedResult.aiImagesSkipped === true}
+                motionRequested={!!options.motion_design}
+              />
+            )}
+
+            {!!completedResult?.transcription && (
+              <div className="card">
+                <h3 className="mb-2 font-semibold">Transcription</h3>
+                <p className="max-h-40 overflow-y-auto text-sm leading-relaxed text-dark-400">
+                  {typeof (completedResult.transcription as { text?: unknown }).text === 'string'
+                    ? (completedResult.transcription as { text: string }).text
+                    : ''}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Réglages : chips compacts sur deux colonnes plutôt qu'une liste
+              de cases à cocher empilées. */}
+          <aside className="space-y-4 lg:col-span-5 xl:col-span-4">
+            <div className="card">
+              <h3 className="mb-3 font-semibold">Options du montage</h3>
+              <div className="grid grid-cols-2 gap-2">
+                <OptionChip
+                  icon={<VolumeX className="h-4 w-4" />}
+                  label="Couper les silences"
+                  checked={!!options.remove_silence}
+                  onToggle={toggle('remove_silence')}
+                />
+                <OptionChip
+                  icon={<Subtitles className="h-4 w-4" />}
+                  label="Sous-titres animés"
+                  checked={!!options.dynamic_captions}
+                  onToggle={toggle('dynamic_captions')}
+                />
+                <OptionChip
+                  icon={<PenTool className="h-4 w-4" />}
+                  label="Motion design"
+                  checked={!!options.motion_design}
+                  onToggle={toggle('motion_design')}
+                />
+                <OptionChip
+                  icon={<ImageIcon className="h-4 w-4" />}
+                  label="Illustrations"
+                  checked={!!options.ai_broll}
+                  onToggle={toggle('ai_broll')}
+                />
+                <OptionChip
+                  icon={<Music className="h-4 w-4" />}
+                  label="Musique"
+                  checked={!!options.music}
+                  onToggle={toggle('music')}
+                />
+                <OptionChip
+                  icon={<Sparkles className="h-4 w-4" />}
+                  label="Effets sonores"
+                  checked={!!options.sfx}
+                  onToggle={toggle('sfx')}
+                />
+                <OptionChip
+                  icon={<Smartphone className="h-4 w-4" />}
+                  label="Vertical 9:16"
+                  checked={!!options.vertical_9_16}
+                  onToggle={toggle('vertical_9_16')}
+                />
+                <OptionChip
+                  icon={<Megaphone className="h-4 w-4" />}
+                  label="CTA final"
+                  checked={!!options.final_cta}
+                  onToggle={toggle('final_cta')}
+                />
+              </div>
+
+              {options.visual_mode === 'credit_saver' && (
+                <p className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.07] px-3 py-2 text-xs text-emerald-300/90">
+                  Ce moteur n'appelle aucune API d'image : les illustrations sont
+                  découpées par CutForge. Coût de génération nul.
                 </p>
               )}
-            </div>
-          )}
 
-          {Array.isArray(completedResult?.steps_completed) && (
-            <div className="card">
-              <h3 className="font-semibold mb-2">Résumé</h3>
-              <div className="text-sm space-y-1">
-                {(completedResult!.steps_completed as string[]).map((step) => (
-                  <div key={step} className="flex items-center gap-2 text-emerald-400">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                    {step.replace(/_/g, ' ')}
-                  </div>
-                ))}
-                {Array.isArray(completedResult?.steps_failed) &&
-                  (completedResult!.steps_failed as string[]).map((step) => (
-                    <div key={step} className="flex items-center gap-2 text-red-400">
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
-                      {step.replace(/_/g, ' ')} (échec)
+              {options.ai_broll && options.visual_mode !== 'credit_saver' && (
+                <div className="mt-3">
+                  <label className="mb-1 block text-xs text-dark-400" htmlFor="demographic">
+                    Personnes dans les images générées
+                  </label>
+                  <select
+                    id="demographic"
+                    value={options.broll_demographic || 'african'}
+                    onChange={(e) => setOptions((prev) => ({
+                      ...prev,
+                      broll_demographic: e.target.value as JobOptions['broll_demographic'],
+                    }))}
+                    className="w-full rounded-lg border border-dark-700 bg-dark-800 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+                  >
+                    <option value="african">Africains / Afrique (défaut)</option>
+                    <option value="caucasian">Blancs / caucasiens</option>
+                    <option value="global">Mixte international</option>
+                  </select>
+                </div>
+              )}
+            </div>
+
+            <details className="card group">
+              <summary className="flex cursor-pointer list-none items-center justify-between font-semibold">
+                Branding
+                <span className="text-xs font-normal text-dark-500 group-open:hidden">
+                  optionnel
+                </span>
+              </summary>
+              <div className="mt-4 space-y-3">
+                <div>
+                  <label className="mb-1 block text-xs text-dark-400" htmlFor="logo-text">
+                    Texte intro / logo
+                  </label>
+                  <input
+                    id="logo-text"
+                    type="text"
+                    maxLength={60}
+                    value={logoText}
+                    onChange={(e) => setLogoText(e.target.value)}
+                    placeholder="Ex. Lance ton e-commerce"
+                    className="w-full rounded-lg border border-dark-700 bg-dark-800 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-dark-400" htmlFor="cta-text">
+                    Texte du CTA final
+                  </label>
+                  <input
+                    id="cta-text"
+                    type="text"
+                    maxLength={120}
+                    value={ctaText}
+                    onChange={(e) => setCtaText(e.target.value)}
+                    placeholder="Ex. Abonne-toi 🔔"
+                    className="w-full rounded-lg border border-dark-700 bg-dark-800 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+            </details>
+
+            {Array.isArray(completedResult?.steps_completed) && (
+              <div className="card">
+                <h3 className="mb-2 font-semibold">Résumé technique</h3>
+                <div className="space-y-1 text-sm">
+                  {(completedResult!.steps_completed as string[]).map((step) => (
+                    <div key={step} className="flex items-center gap-2 text-emerald-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                      {step.replace(/_/g, ' ')}
                     </div>
                   ))}
+                  {Array.isArray(completedResult?.steps_failed) &&
+                    (completedResult!.steps_failed as string[]).map((step) => (
+                      <div key={step} className="flex items-center gap-2 text-red-400">
+                        <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
+                        {step.replace(/_/g, ' ')} (échec)
+                      </div>
+                    ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </aside>
         </div>
       </div>
     </div>
   )
 }
 
-function ToggleRow(props: {
-  icon: React.ReactNode
-  label: string
-  checked: boolean
-  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+/* -------------------------------------------------------------------------- */
+/* Rail horizontal des moteurs                                                 */
+/* -------------------------------------------------------------------------- */
+function EngineRail(props: {
+  modes: ModeDescriptor[]
+  selectedId: string
+  onSelect: (id: string) => void
 }) {
+  const railRef = useRef<HTMLDivElement>(null)
+  const [edges, setEdges] = useState({ start: false, end: false })
+
+  const syncEdges = useCallback(() => {
+    const el = railRef.current
+    if (!el) return
+    // 2 px de tolérance : les navigateurs arrondissent scrollLeft.
+    setEdges({
+      start: el.scrollLeft > 2,
+      end: el.scrollLeft + el.clientWidth < el.scrollWidth - 2,
+    })
+  }, [])
+
+  useEffect(() => {
+    syncEdges()
+    const el = railRef.current
+    if (!el) return
+    const observer = new ResizeObserver(syncEdges)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [syncEdges, props.modes])
+
+  const scrollBy = (direction: 1 | -1) => {
+    const el = railRef.current
+    if (!el) return
+    el.scrollBy({ left: direction * Math.round(el.clientWidth * 0.8), behavior: 'smooth' })
+  }
+
   return (
-    <label className="flex items-center justify-between py-2 cursor-pointer">
-      <span className="flex items-center gap-2 text-sm text-dark-200">
-        {props.icon}
-        {props.label}
-      </span>
-      <input
-        type="checkbox"
-        checked={props.checked}
-        onChange={props.onChange}
-        className="w-4 h-4 accent-primary-500"
-      />
-    </label>
+    <div className="relative">
+      <div
+        ref={railRef}
+        onScroll={syncEdges}
+        className="no-scrollbar flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-1"
+      >
+        {props.modes.map((mode) => {
+          const selected = mode.id === props.selectedId
+          return (
+            <button
+              key={mode.id}
+              onClick={() => props.onSelect(mode.id)}
+              aria-pressed={selected}
+              // `flex-1` + `basis` : quand la famille tient dans la largeur, les
+              // cartes s'étalent au lieu de laisser un vide à droite; dès qu'il
+              // y en a trop, elles gardent leur largeur mini et le rail défile.
+              className={`group relative min-w-[16.5rem] flex-1 basis-[17rem] snap-start rounded-2xl border p-4 text-left transition-all duration-300 ${
+                selected
+                  ? 'border-primary-500/60 bg-primary-500/[0.12] shadow-[0_18px_40px_-22px_rgba(63,114,255,0.9)]'
+                  : 'border-white/10 bg-white/[0.03] hover:-translate-y-0.5 hover:border-white/25'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-2xl leading-none">{mode.icon}</span>
+                {selected ? (
+                  <span className="grid h-5 w-5 place-items-center rounded-full bg-primary-500 text-white">
+                    <Check className="h-3 w-3" strokeWidth={3} />
+                  </span>
+                ) : (
+                  <span className="h-5 w-5 rounded-full border border-white/15" />
+                )}
+              </div>
+
+              <p className="mt-3 font-display text-[15px] font-semibold leading-snug">
+                {mode.name}
+              </p>
+
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {mode.badge && (
+                  <span
+                    className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                      mode.badge.startsWith('0')
+                        ? 'bg-emerald-400/15 text-emerald-300'
+                        : 'bg-white/10 text-dark-300'
+                    }`}
+                  >
+                    {mode.badge}
+                  </span>
+                )}
+                {mode.pipeline !== 'v2' && (
+                  <span className="rounded-md bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-dark-400">
+                    ancien moteur
+                  </span>
+                )}
+              </div>
+
+              <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-dark-400">
+                {mode.description}
+              </p>
+            </button>
+          )
+        })}
+      </div>
+
+      {edges.start && <RailArrow side="left" onClick={() => scrollBy(-1)} />}
+      {edges.end && <RailArrow side="right" onClick={() => scrollBy(1)} />}
+    </div>
   )
 }
 
-function PipelineStep(props: { icon: React.ReactNode; label: string }) {
+function RailArrow(props: { side: 'left' | 'right'; onClick: () => void }) {
+  const Icon = props.side === 'left' ? ChevronLeft : ChevronRight
   return (
-    <div className="flex items-center gap-2 text-dark-300">
-      {props.icon}
-      {props.label}
+    <button
+      onClick={props.onClick}
+      aria-label={props.side === 'left' ? 'Moteurs précédents' : 'Moteurs suivants'}
+      className={`absolute top-1/2 hidden -translate-y-1/2 rounded-full border border-white/15 bg-dark-900/90 p-2 text-white shadow-lg backdrop-blur transition-colors hover:border-white/40 sm:grid ${
+        props.side === 'left' ? '-left-3' : '-right-3'
+      }`}
+    >
+      <Icon className="h-4 w-4" />
+    </button>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Réglages                                                                    */
+/* -------------------------------------------------------------------------- */
+function OptionChip(props: {
+  icon: React.ReactNode
+  label: string
+  checked: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={props.checked}
+      onClick={props.onToggle}
+      className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-xs font-medium transition-all ${
+        props.checked
+          ? 'border-primary-500/45 bg-primary-500/10 text-white'
+          : 'border-white/10 bg-white/[0.02] text-dark-400 hover:border-white/25'
+      }`}
+    >
+      <span className={props.checked ? 'text-primary-300' : 'text-dark-500'}>
+        {props.icon}
+      </span>
+      <span className="leading-tight">{props.label}</span>
+    </button>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Récapitulatif du montage produit                                            */
+/* -------------------------------------------------------------------------- */
+function MontageRecap(props: {
+  montage: Record<string, unknown>
+  aiImagesSkipped: boolean
+  motionRequested: boolean
+}) {
+  const n = (key: string) => Number(props.montage[key] ?? 0)
+  const removed = Number(props.montage.removed_duration_s ?? 0)
+  const source = Number(props.montage.source_duration_s ?? 0)
+  const percent = source > 0 ? Math.round((removed / source) * 100) : 0
+
+  // En mode économique, l'absence d'images IA est NORMALE : elle ne doit pas
+  // s'afficher comme une anomalie.
+  const items: Array<[string, string, boolean]> = [
+    ['⚡', `${n('key_moment_punches')} punch-zooms`, n('key_moment_punches') > 0],
+    ['💡', `${n('light_overlays')} passages de lumière`, n('light_overlays') > 0],
+    ['🎨', `${n('motion_scenes_rendered')} scènes motion design`, n('motion_scenes_rendered') > 0],
+    ['✂️', `${n('collage_clips')} scènes de collage`, n('collage_clips') > 0],
+    ['🔊', `${n('sfx_cues')} effets sonores`, n('sfx_cues') > 0],
+    ['🏷️', `${n('keyword_popups')} mots-clés popup`, n('keyword_popups') > 0],
+    [
+      '🖼️',
+      n('broll_images') > 0
+        ? `${n('broll_images')} images B-roll IA`
+        : 'Images IA non requises',
+      n('broll_images') > 0 || props.aiImagesSkipped,
+    ],
+  ]
+
+  return (
+    <div className="card">
+      <h3 className="mb-3 font-semibold">Contenu du montage</h3>
+      {source > 0 && (
+        <p className="mb-3 text-sm text-dark-200">
+          ✂️ Découpe : <strong>{removed.toFixed(0)} s</strong> retirés (silences,
+          hésitations, répétitions) sur {source.toFixed(0)} s
+          {percent > 0 ? ` — vidéo ${percent} % plus courte` : ''}.
+        </p>
+      )}
+      <div className="grid gap-2.5 sm:grid-cols-2">
+        {items.map(([icon, label, ok]) => (
+          <div
+            key={label}
+            className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${
+              ok
+                ? 'border-white/10 bg-white/5 text-dark-100'
+                : 'border-red-400/20 bg-red-400/5 text-red-300'
+            }`}
+          >
+            <span>{icon}</span>
+            <span className="text-xs font-medium">{label}</span>
+          </div>
+        ))}
+      </div>
+      {props.motionRequested && n('motion_scenes_rendered') === 0 && (
+        <p className="mt-3 rounded-lg bg-amber-400/10 p-2.5 text-xs text-amber-300">
+          ⚠️ Aucune scène motion design dans ce rendu — le reste du montage
+          (punch-zooms, SFX, captions) est bien présent.
+        </p>
+      )}
     </div>
   )
+}
+
+/* -------------------------------------------------------------------------- */
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60)
+  const s = Math.floor(seconds % 60)
+  return `${m}:${s.toString().padStart(2, '0')}`
 }
 
 // Messages d'explication NON bloquants pour les raisons de fallback côté moteur.
@@ -752,7 +857,7 @@ const FALLBACK_REASON_LABELS: Record<string, string> = {
   rate_limited: 'API images IA temporairement saturée',
   timeout: "délai dépassé sur l'API images IA",
   provider_unavailable: "fournisseur d'images IA indisponible",
-  missing_api_key: "clé API images non configurée",
+  missing_api_key: 'clé API images non configurée',
   disabled: 'génération payante désactivée',
   image_generation_failed: 'génération des images IA en échec',
 }
@@ -767,5 +872,5 @@ function fallbackNotice(result: Record<string, unknown> | null): string | null {
   const reason = result.fallbackReason
   if (!reason || typeof reason !== 'string') return null
   const detail = FALLBACK_REASON_LABELS[reason] ?? reason.replace(/_/g, ' ')
-  return `Les images IA sont indisponibles (${detail}). AutoEdit a continué en mode économique : flashs, SFX, captions et motion design.`
+  return `Les images IA sont indisponibles (${detail}). Le montage a continué en mode économique : punch-zooms, SFX, captions et motion design.`
 }

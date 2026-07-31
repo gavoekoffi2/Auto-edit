@@ -39,6 +39,7 @@ import difflib
 import json
 import os
 import re
+import shutil
 import sys
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -320,27 +321,72 @@ def encode_segments(source: str, ranges: List[dict], clips_dir: str,
     return seg_paths
 
 
-def concat_segments(seg_paths: List[str], out_path: str) -> str:
-    """Concatenate graded segments with the ffmpeg concat FILTER."""
-    if not seg_paths:
-        raise RuntimeError("no segments to concatenate")
-    ffmpeg_utils.ensure_ffmpeg()
-
+def _concat_batch(seg_paths: List[str], out_path: str) -> str:
+    """Concatène UN lot borné de segments avec le concat FILTER."""
     cmd: List[str] = [ffmpeg_utils.FFMPEG, "-y"]
     for path in seg_paths:
         cmd += ["-i", path]
     n = len(seg_paths)
     streams = "".join(f"[{i}:v][{i}:a]" for i in range(n))
     filt = f"{streams}concat=n={n}:v=1:a=1[v][a]"
-    cmd += [
-        "-filter_complex", filt,
-        "-map", "[v]", "-map", "[a]",
-        "-c:v", "libx264", "-preset", config.ENGINE_INTERMEDIATE_PRESET,
-        "-crf", str(config.ENGINE_INTERMEDIATE_CRF), "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
-        out_path,
-    ]
-    ffmpeg_utils.run(cmd)
+    ffmpeg_utils.run_filter(
+        cmd, filt,
+        ["-map", "[v]", "-map", "[a]",
+         "-c:v", "libx264", "-preset", config.ENGINE_INTERMEDIATE_PRESET,
+         "-crf", str(config.ENGINE_INTERMEDIATE_CRF), "-pix_fmt", "yuv420p",
+         "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+         out_path],
+        complex_graph=True,
+    )
+    return out_path
+
+
+def concat_segments(seg_paths: List[str], out_path: str) -> str:
+    """Concatenate graded segments with the ffmpeg concat FILTER.
+
+    Concaténation HIÉRARCHIQUE: ffmpeg reçoit au plus ``config.CONCAT_BATCH``
+    entrées à la fois. Ouvrir les centaines de segments d'un montage long en une
+    seule commande, c'était autant de décodeurs instanciés simultanément (plus
+    autant de descripteurs de fichiers) — la commande mourait en OOM ou en
+    « too many open files » alors que la même vidéo en version courte passait.
+    Sous le seuil, le comportement est celui d'avant: une seule passe.
+    """
+    if not seg_paths:
+        raise RuntimeError("no segments to concatenate")
+    ffmpeg_utils.ensure_ffmpeg()
+
+    batch = max(2, int(config.CONCAT_BATCH))
+    if len(seg_paths) <= batch:
+        return _concat_batch(seg_paths, out_path)
+
+    workdir = os.path.dirname(os.path.abspath(out_path)) or "."
+    level, current = 0, list(seg_paths)
+    tmp_files: List[str] = []
+    try:
+        while len(current) > batch:
+            nxt: List[str] = []
+            for i in range(0, len(current), batch):
+                chunk = current[i:i + batch]
+                if len(chunk) == 1:
+                    nxt.append(chunk[0])
+                    continue
+                part = os.path.join(workdir, f"_concat_l{level}_{i // batch:03d}.mp4")
+                _concat_batch(chunk, part)
+                tmp_files.append(part)
+                nxt.append(part)
+            print(f"[build_edl] concat niveau {level}: {len(current)} -> {len(nxt)}")
+            current, level = nxt, level + 1
+        if len(current) > 1:
+            _concat_batch(current, out_path)
+        else:
+            shutil.copy2(current[0], out_path)
+    finally:
+        for path in tmp_files:
+            try:
+                if os.path.abspath(path) != os.path.abspath(out_path):
+                    os.remove(path)
+            except OSError:
+                pass
     return out_path
 
 

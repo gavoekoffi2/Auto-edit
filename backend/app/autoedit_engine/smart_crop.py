@@ -37,6 +37,14 @@ from . import config
 
 SMART_CROP_MODE = os.getenv("SMART_CROP_MODE", "auto").lower()
 _SAMPLES_PER_SEGMENT = 3      # frames analysées par segment (20/50/80 %)
+#: Plafond du nombre de segments RÉELLEMENT analysés. Chaque segment coûte 3
+#: extractions ffmpeg avec seek dans la source: une vidéo de 20 min découpée en
+#: 400 segments demandait 1200 lancements de ffmpeg avant même que le montage
+#: commence — des dizaines de minutes de préparation, et le job paraissait
+#: bloqué. Au-delà du plafond, on analyse un sous-ensemble réparti et on
+#: interpole les segments intermédiaires (le lissage EMA le faisait déjà de
+#: fait: deux segments voisins partagent quasiment toujours le même cadrage).
+_MAX_ANALYSED_SEGMENTS = int(os.getenv("SMART_CROP_MAX_SEGMENTS", "60"))
 _EMA_ALPHA = 0.6              # lissage entre segments (1 = pas de lissage)
 _MAX_STEP = 0.18              # déplacement max du centre entre deux segments
 _MIN_FACE_FRACTION = 0.04     # visage < 4 % de la largeur = bruit, ignoré
@@ -197,18 +205,37 @@ def plan_crop_centers(source: str, ranges: List[dict],
               file=sys.stderr)
         return [0.5] * len(ranges), report
 
-    raw: List[Optional[float]] = []
+    probe_idx = sampled_indices(len(ranges), _MAX_ANALYSED_SEGMENTS)
+    report["segments_analysed"] = len(probe_idx)
+    raw: List[Optional[float]] = [None] * len(ranges)
     with tempfile.TemporaryDirectory(prefix="smartcrop_") as tmp:
-        for rng in ranges:
+        for i in probe_idx:
+            rng = ranges[i]
             frames = _sample_frames(source, float(rng["start"]), float(rng["end"]), tmp)
             centers = [c for c in (_detect_face_center(f) for f in frames)
                        if c is not None]
             if centers:
-                raw.append(sum(centers) / len(centers))
+                raw[i] = sum(centers) / len(centers)
                 report["segments_with_face"] += 1
-            else:
-                raw.append(None)
     if report["segments_with_face"] == 0:
         report["fallback"] = "no_face_detected"
         return [0.5] * len(ranges), report
+    # `smooth_centers` comble déjà les trous par le voisin détecté le plus
+    # proche: les segments non analysés héritent naturellement du cadrage
+    # mesuré autour d'eux.
     return smooth_centers(raw), report
+
+
+def sampled_indices(total: int, limit: int) -> List[int]:
+    """Indices de segments à analyser: tous, ou *limit* répartis régulièrement.
+
+    Pure et testable. `limit <= 0` désactive le plafond (analyse exhaustive).
+    """
+    if total <= 0:
+        return []
+    if limit <= 0 or total <= limit:
+        return list(range(total))
+    step = total / float(limit)
+    # `dict.fromkeys` conserve l'ordre et déduplique si deux pas retombent sur
+    # le même index (limit proche de total).
+    return list(dict.fromkeys(min(total - 1, int(i * step)) for i in range(limit)))

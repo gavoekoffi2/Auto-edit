@@ -42,6 +42,11 @@ VALID_MODES = {
     # Moteur Collage Premium (collage_assemble): métaphore visuelle + collage
     # papier éditorial assemblé à l'écran.
     "collage_premium",
+    # Déclinaisons UGC du même moteur, sans AUCUNE génération d'image payante:
+    # le collage papier illustre seul le discours produit (+ motion design pour
+    # la variante `collage_ugc_motion`).
+    "collage_ugc_product",
+    "collage_ugc_motion",
 }
 VALID_PIPELINE_VERSIONS = {"v1", "v2"}
 VALID_IMAGE_PROVIDERS = {"openrouter", "replicate", "stability", "noop"}

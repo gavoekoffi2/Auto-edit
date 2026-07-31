@@ -48,6 +48,12 @@ def _i(name: str, default: int) -> int:
 #: comportent exactement comme avant (aucun appel, aucun coût, aucun risque).
 ENABLED = _flag("COLLAGE_BROLL_ENABLED", "0")
 
+#: Profil de direction artistique (voir `collage_profiles`):
+#:   editorial   -> Collage Premium historique (images IA autorisées)
+#:   ugc_product -> présentation de produit, zéro image payante
+#:   ugc_motion  -> idem + scènes de motion design côté montage
+PROFILE = os.getenv("COLLAGE_PROFILE", "editorial").strip().lower()
+
 #: Part maximale des beats B-roll d'une vidéo qui peuvent partir en collage.
 #: Garde-fou produit ET budget: le collage coûte plus cher qu'une image simple.
 MAX_SHARE_OF_BROLL = _f("COLLAGE_MAX_SHARE", 0.5)
@@ -177,6 +183,7 @@ def refresh() -> None:
     """
     globals().update({
         "ENABLED": _flag("COLLAGE_BROLL_ENABLED", "0"),
+        "PROFILE": os.getenv("COLLAGE_PROFILE", "editorial").strip().lower(),
         "MAX_SHARE_OF_BROLL": _f("COLLAGE_MAX_SHARE", 0.5),
         "MAX_SCENES": _i("COLLAGE_MAX_SCENES", 4),
         "MIN_VIDEO_DURATION": _f("COLLAGE_MIN_VIDEO_DURATION", 20.0),

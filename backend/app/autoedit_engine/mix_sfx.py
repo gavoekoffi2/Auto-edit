@@ -37,19 +37,43 @@ def _build_filter(cues: List[dict], sfx_index: Dict[str, str]) -> tuple[str, lis
     (asetrate resample + volume) so a sound that recurs — camera_flash, pops —
     never plays back twice exactly the same. This is what separates a "static"
     SFX pass from a professional one.
+
+    Un fichier SFX n'est ouvert QU'UNE FOIS, quel que soit le nombre de fois où
+    il est joué: chaque son est dupliqué dans le graphe par ``asplit``. Avant,
+    une entrée ffmpeg était ajoutée PAR cue — un montage long (des centaines de
+    cues) dépassait la limite d'entrées/descripteurs et le mixage échouait,
+    emportant tout le rendu. La bibliothèque ne compte que 19 sons: le nombre
+    d'entrées est désormais borné par 19, pas par la durée de la vidéo.
     """
     inputs: List[str] = []
+    input_index: Dict[str, int] = {}
     parts: List[str] = []
-    mix_labels = ["[0:a]"]
+    sfx_labels: List[str] = []
+
+    # 1) Une entrée par SON DISTINCT réellement utilisé, dédupliquée.
+    usage: Dict[str, int] = {}
+    playable = [c for c in cues if sfx_index.get(c.get("sfx")) is not None]
+    for cue in playable:
+        usage[cue["sfx"]] = usage.get(cue["sfx"], 0) + 1
+    for name in usage:
+        inputs.append(sfx_index[name])
+        input_index[name] = len(inputs)         # 0 = la vidéo
+    # 2) asplit: autant de copies que d'occurrences (une seule copie = pas de
+    #    asplit, le flux d'entrée est utilisé directement).
+    copy_labels: Dict[str, List[str]] = {}
+    for name, count in usage.items():
+        idx = input_index[name]
+        if count == 1:
+            copy_labels[name] = [f"[{idx}:a]"]
+            continue
+        labels = [f"[c{idx}_{k}]" for k in range(count)]
+        parts.append(f"[{idx}:a]asplit={count}{''.join(labels)}")
+        copy_labels[name] = labels
+    copy_cursor: Dict[str, int] = {name: 0 for name in usage}
 
     sr = config.SFX_SAMPLE_RATE
     seen_count: Dict[str, int] = {}
-    for ci, cue in enumerate(cues, start=1):
-        path = sfx_index.get(cue["sfx"])
-        if path is None:
-            continue
-        inputs.append(path)
-        idx = len(inputs)                       # ffmpeg input index (0 is video)
+    for ci, cue in enumerate(playable, start=1):
         label = f"[s{ci}]"
 
         # The real light-leak asset must play in lockstep with its own video
@@ -70,24 +94,75 @@ def _build_filter(cues: List[dict], sfx_index: Dict[str, str]) -> tuple[str, lis
             pitch = config.SFX_PITCH_VARIANTS[k % len(config.SFX_PITCH_VARIANTS)]
             gain = config.SFX_BUS_GAIN * config.SFX_GAIN_VARIANTS[k % len(config.SFX_GAIN_VARIANTS)]
 
-        chain = f"[{idx}:a]"
+        src = copy_labels[cue["sfx"]][copy_cursor[cue["sfx"]]]
+        copy_cursor[cue["sfx"]] += 1
+        chain = src
         if abs(pitch - 1.0) > 1e-3:
             chain += f"asetrate={int(round(sr * pitch))},aresample={sr},"
         chain += f"adelay={ms}|{ms},volume={gain:.3f}{label}"
         parts.append(chain)
-        mix_labels.append(label)
+        sfx_labels.append(label)
 
-    if len(mix_labels) == 1:                     # no SFX -> just loudnorm voice
+    if not sfx_labels:                           # no SFX -> just loudnorm voice
         parts.append(f"[0:a]{config.LOUDNORM}[outa]")
         return ";".join(parts), inputs
 
-    n = len(mix_labels)
-    parts.append(
-        "".join(mix_labels) +
-        f"amix=inputs={n}:normalize=0:duration=first:dropout_transition=0[mix]"
-    )
+    if len(sfx_labels) + 1 <= max(2, int(config.SFX_MIX_BATCH)):
+        # Sous le seuil: exactement l'ancien graphe (une seule passe amix).
+        parts.append(
+            "[0:a]" + "".join(sfx_labels) +
+            f"amix=inputs={len(sfx_labels) + 1}:normalize=0:duration=first"
+            ":dropout_transition=0[mix]"
+        )
+    else:
+        # Bus SFX mixé en cascade, PUIS ajouté à la voix. La voix reste la
+        # référence de durée (`duration=first`) — un SFX en fin de montage ne
+        # peut donc pas allonger la piste au-delà de l'image.
+        parts.append(_amix_tree(sfx_labels, "sfxbus"))
+        parts.append(
+            "[0:a][sfxbus]amix=inputs=2:normalize=0:duration=first"
+            ":dropout_transition=0[mix]"
+        )
     parts.append(f"[mix]{config.LOUDNORM}[outa]")
     return ";".join(parts), inputs
+
+
+def _amix_tree(labels: List[str], out_label: str) -> str:
+    """Mixe *labels* en CASCADE de `amix` bornés à ``config.SFX_MIX_BATCH``.
+
+    `amix` avec des centaines d'entrées alloue un buffer par entrée et sature la
+    mémoire du worker sur les montages longs. Un arbre de sommes bornées donne
+    le MÊME signal (avec `normalize=0`, amix est une somme, donc associative) à
+    coût mémoire constant.
+    """
+    batch = max(2, int(config.SFX_MIX_BATCH))
+    stages: List[str] = []
+    current = list(labels)
+    level = 0
+    while len(current) > batch:
+        nxt: List[str] = []
+        for i in range(0, len(current), batch):
+            chunk = current[i:i + batch]
+            if len(chunk) == 1:
+                nxt.append(chunk[0])
+                continue
+            label = f"[mx{level}_{i // batch}]"
+            stages.append(
+                "".join(chunk) +
+                f"amix=inputs={len(chunk)}:normalize=0:duration=longest"
+                f":dropout_transition=0{label}"
+            )
+            nxt.append(label)
+        current, level = nxt, level + 1
+    if len(current) == 1:
+        stages.append(f"{current[0]}anull[{out_label}]")
+    else:
+        stages.append(
+            "".join(current) +
+            f"amix=inputs={len(current)}:normalize=0:duration=longest"
+            f":dropout_transition=0[{out_label}]"
+        )
+    return ";".join(stages)
 
 
 def mix(video: str, cues_path: str, out_path: str, sfxdir: str = "sfx") -> str:
@@ -101,15 +176,16 @@ def mix(video: str, cues_path: str, out_path: str, sfxdir: str = "sfx") -> str:
     cmd: List[str] = [ffmpeg_utils.FFMPEG, "-y", "-i", video]
     for p in inputs:
         cmd += ["-i", p]
-    cmd += [
-        "-filter_complex", filt,
-        "-map", "0:v", "-map", "[outa]",
-        "-c:v", "copy",
-        "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
-        out_path,
-    ]
-    ffmpeg_utils.run(cmd)
-    print(f"[mix_sfx] {len(inputs)} SFX hits mixed, loudnorm -14 LUFS -> {out_path}")
+    ffmpeg_utils.run_filter(
+        cmd, filt,
+        ["-map", "0:v", "-map", "[outa]",
+         "-c:v", "copy",
+         "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+         out_path],
+        complex_graph=True,
+    )
+    print(f"[mix_sfx] {len(cues)} SFX cues ({len(inputs)} sons distincts) mixés, "
+          f"loudnorm -14 LUFS -> {out_path}")
     return out_path
 
 

@@ -361,17 +361,68 @@ CollageClip.to_engine_overlay()
 
 ---
 
+## 5bis. Les trois moteurs de collage (profils)
+
+La mécanique décrite ci-dessus est **la même pour les trois moteurs produit**.
+Ce qui les distingue tient dans un *profil* (`collage_profiles.py`) : direction
+artistique, politique de coût, part des beats, plafond de scènes. Ajouter une
+quatrième direction ne demande aucune modification du pipeline.
+
+| Mode de montage | Profil | Images IA | Motion design | Ce qui illustre |
+|---|---|---|---|---|
+| `collage_premium` | `editorial` | oui, si crédits | oui | image générée découpée, ou pièces dessinées en repli |
+| `collage_ugc_product` | `ugc_product` | **jamais** | non | pièces dessinées uniquement |
+| `collage_ugc_motion` | `ugc_motion` | **jamais** | oui | pièces dessinées + scènes motion design |
+
+### Illustrer sans image générée
+
+Les moteurs UGC n'appellent aucune API d'image. Chaque objet du concept est
+traduit en **pictogramme vectoriel découpé dans du papier**
+(`collage_shapes.py` : ~34 formes, bord déchiré, trame, contour crème, ombre
+courte). Le vocabulaire visuel est identique à celui des pièces issues d'une
+image générée, donc les trois moteurs restent cohérents entre eux dans une même
+bibliothèque de contenus.
+
+Le rendu construit alors **une pièce par objet** au lieu de partitionner une
+image : chaque élément a sa forme propre et sa propre entrée d'animation.
+
+### Direction produit
+
+Le profil UGC remplace la bibliothèque de métaphores abstraites par une
+détection d'**intention produit** sur le discours (prix, livraison, avis,
+garantie, résultat, ingrédients, utilisation, commande, problème, urgence,
+déballage, comparaison). La consigne envoyée au planner texte change aussi :
+elle demande une illustration **littérale et reconnaissable**, pas une
+métaphore poétique.
+
+### Les deux leviers de coût, séparés
+
+* `allow_ai_images` — génération d'**image** (le poste de coût dominant).
+  À `False` sur les deux profils UGC, **définitivement** : même une clé API
+  présente ne déclenche aucun appel.
+* `allow_planner_llm` — analyse **texte** (un seul appel par vidéo, sur un
+  modèle bon marché). Conservée par défaut : c'est elle qui fait que le collage
+  parle du produit dont la personne parle. La désactiver rend le moteur
+  strictement hors-ligne (repli sur la bibliothèque du profil).
+
+Côté montage, `visual_mode: credit_saver` verrouille en plus tous les appels
+d'image du moteur Auto Edit (B-roll photo **et** illustrations de motion
+design). Les deux verrous sont volontairement redondants.
+
+---
+
 ## 6. Configuration
 
 | Variable | Défaut | Effet |
 |---|---|---|
 | `ENABLE_COLLAGE_BROLL` / `COLLAGE_BROLL_ENABLED` | `false` | **opt-in global** |
+| `COLLAGE_PROFILE` | `editorial` | `editorial` \| `ugc_product` \| `ugc_motion` |
 | `COLLAGE_IMAGE_PROVIDER` | *(vide → `IMAGE_GENERATION_PROVIDER`)* | fournisseur d'images |
 | `COLLAGE_IMAGE_MODEL` | *(vide)* | modèle image |
 | `GOOGLE_AI_STUDIO_API_KEY`, `MAXFUSION_API_KEY` | — | clés des fournisseurs additionnels |
 | `COLLAGE_VIDEO_PROVIDER` | `local` | `local` (déterministe) ou `http` (API image→vidéo) |
-| `COLLAGE_MAX_SCENES` | `4` | plafond de scènes par vidéo |
-| `COLLAGE_MAX_SHARE` | `0.5` | part maximale des beats routés en collage |
+| `COLLAGE_MAX_SCENES` | *(profil : 4 / 8 / 6)* | plafond de scènes par vidéo |
+| `COLLAGE_MAX_SHARE` | *(profil : 0.5 / 1.0 / 0.7)* | part des beats routés en collage |
 | `COLLAGE_QUALITY_MIN_SCORE` | `62` | seuil d'acceptation |
 | `COLLAGE_QUALITY_MAX_ATTEMPTS` | `2` | `1` désactive la relance |
 | `COLLAGE_CACHE_ENABLED` / `_TTL_DAYS` | `1` / `30` | cache concepts + images |
@@ -379,8 +430,9 @@ CollageClip.to_engine_overlay()
 
 Deux façons de l'activer :
 
-* **par job** — mode de montage `collage_premium` (visible dans `GET /jobs/modes`),
-  ou option `{"collage_broll": true}` ;
+* **par job** — un des trois modes de montage `collage_premium`,
+  `collage_ugc_product`, `collage_ugc_motion` (visibles dans `GET /jobs/modes`),
+  ou les options `{"collage_broll": true, "collage_profile": "ugc_product"}` ;
 * **globalement** — `ENABLE_COLLAGE_BROLL=true`.
 
 `pipeline_v2._export_collage_env()` traduit les réglages produit en variables

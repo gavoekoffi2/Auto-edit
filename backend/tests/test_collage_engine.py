@@ -43,6 +43,7 @@ from app.processing.collage.collage_prompt_builder import (
 )
 from app.processing.collage.collage_quality_service import CollageQualityService
 from app.processing.collage.collage_types import (
+    LAYOUT_TEMPLATES,
     BrollType,
     CollageConcept,
     CollageObject,
@@ -50,6 +51,7 @@ from app.processing.collage.collage_types import (
     QualityReport,
 )
 from app.processing.collage.collage_video_service import (
+    PIECE_SPREAD,
     CollageVideoService,
     LocalAssembleRenderer,
 )
@@ -445,22 +447,85 @@ def test_image_cache_is_keyed_by_prompt_so_a_retry_never_serves_the_reject(tmp_p
 # --------------------------------------------------------------------------- #
 # ÉTAPE 5 — animation `collage_assemble`
 # --------------------------------------------------------------------------- #
-def test_pieces_partition_the_frame_one_per_object():
+def _ai_image(renderer, concept) -> Image.Image:
+    """Une image « générée » factice, pour exercer le chemin de découpe."""
+    img = Image.new("RGBA", (renderer.width, renderer.height), (232, 69, 44, 255))
+    draw = ImageDraw.Draw(img)
+    for i, (x, y) in enumerate([(0.3, 0.3), (0.7, 0.3), (0.3, 0.7), (0.7, 0.7)]):
+        r = renderer.width * 0.14
+        draw.ellipse((x * renderer.width - r, y * renderer.height - r,
+                      x * renderer.width + r, y * renderer.height + r),
+                     fill=(30 + i * 40, 200, 120, 255))
+    return img
+
+
+def test_ai_image_is_partitioned_one_piece_per_object():
+    """Chemin « image générée »: la découpe suit les zones imposées au modèle."""
     renderer = LocalAssembleRenderer(width=180, height=320, fps=12)
     concept = _concept(n_objects=4)
-    source = renderer._procedural_collage(concept)
-    pieces = renderer._slice_pieces(concept, source)
+    pieces = renderer._slice_pieces(concept, _ai_image(renderer, concept))
     assert len(pieces) == 4
     assert [p.order for p in pieces] == [1, 2, 3, 4]
+
+
+def test_pieces_are_drawn_cutouts_when_no_image_was_generated():
+    """Chemin des moteurs UGC: une pièce DESSINÉE par objet, aucune image IA."""
+    renderer = LocalAssembleRenderer(width=180, height=320, fps=12)
+    concept = _concept(n_objects=4)
+    pieces = renderer._pictogram_pieces(concept)
+    assert len(pieces) == 4
+    assert [p.order for p in pieces] == [1, 2, 3, 4]
+    # Chaque pièce est un vrai calque avec de la matière (pas un cadre vide).
+    for piece in pieces:
+        assert np.asarray(piece.layer.split()[3]).max() > 0
+
+
+def test_drawn_pieces_do_not_overlap_in_any_layout_variant():
+    """Des pièces qui se recouvrent rendent la scène illisible.
+
+    On balaie TOUS les gabarits, pas seulement ceux qu'un concept d'exemple
+    tirerait au sort: une variante mal calibrée ne doit pas pouvoir se glisser
+    dans le jeu et n'apparaître qu'au montage d'un client.
+    """
+    renderer = LocalAssembleRenderer(width=1080, height=1920, fps=30)
+    for n, variants in LAYOUT_TEMPLATES.items():
+        for index, cells in enumerate(variants):
+            boxes = []
+            for (_, cx, cy, radius) in cells:
+                size = radius * 1080 * PIECE_SPREAD + 2 * ccfg.SHADOW_OFFSET * 2
+                boxes.append((cx * 1080 - size / 2, cy * 1920 - size / 2,
+                              cx * 1080 + size / 2, cy * 1920 + size / 2))
+            for i, a in enumerate(boxes):
+                for b in boxes[i + 1:]:
+                    overlap_x = min(a[2], b[2]) - max(a[0], b[0])
+                    overlap_y = min(a[3], b[3]) - max(a[1], b[1])
+                    area = max(0, overlap_x) * max(0, overlap_y)
+                    smaller = min((a[2] - a[0]) * (a[3] - a[1]),
+                                  (b[2] - b[0]) * (b[3] - b[1]))
+                    # L'ombre portée déborde un peu: on tolère un chevauchement
+                    # marginal, jamais un recouvrement de la forme.
+                    assert area <= smaller * 0.12, (
+                        f"{n} objets, variante {index}: pièces superposées")
+    # Et le rendu réel respecte bien ce gabarit.
+    assert len(renderer._pictogram_pieces(_concept(n_objects=5))) == 5
+
+
+def test_layout_varies_between_scenes_but_stays_reproducible():
+    """Sans variantes, toutes les scènes d'un montage ont la même composition."""
+    layouts = {tuple(c[0] for c in _concept(n_objects=4, cid=f"cg_{i:03d}").layout())
+               for i in range(12)}
+    assert len(layouts) > 1, "aucune variété de composition entre les scènes"
+    # Même scène = même gabarit, toujours (montage reproductible).
+    once = _concept(n_objects=4, cid="cg_007").layout()
+    assert once == _concept(n_objects=4, cid="cg_007").layout()
 
 
 def test_clip_starts_empty_and_ends_assembled():
     """La promesse du mouvement: fond vide au départ, scène complète à la fin."""
     renderer = LocalAssembleRenderer(width=180, height=320, fps=12)
     concept = _concept(n_objects=4)
-    source = renderer._procedural_collage(concept)
     background = renderer._background_plate(concept)
-    pieces = renderer._slice_pieces(concept, source)
+    pieces = renderer._pictogram_pieces(concept)
 
     first = renderer._compose(background, pieces, 0.0, 4.0)
     assert np.array_equal(np.asarray(first), np.asarray(background))
@@ -478,9 +543,8 @@ def test_clip_starts_empty_and_ends_assembled():
 def test_elements_appear_in_the_planned_order():
     renderer = LocalAssembleRenderer(width=180, height=320, fps=12)
     concept = _concept(n_objects=3)
-    source = renderer._procedural_collage(concept)
     background = renderer._background_plate(concept)
-    pieces = renderer._slice_pieces(concept, source)
+    pieces = renderer._pictogram_pieces(concept)
 
     # Zone de la 1re pièce vs zone de la dernière, juste après la 1re pose.
     frame = np.asarray(renderer._compose(background, pieces, 0.9, 4.0), dtype=np.int16)
@@ -492,13 +556,19 @@ def test_elements_appear_in_the_planned_order():
     assert top_half > bottom_half
 
 
-def test_renderer_falls_back_to_a_procedural_collage_without_an_image():
+def test_renderer_never_blocks_on_a_missing_image():
+    """Sans image générée, la scène existe quand même — dessinée."""
     renderer = LocalAssembleRenderer(width=120, height=200, fps=10)
     concept = _concept()
-    image = renderer._load_source(concept, None)
-    assert image.size == (120, 200)
-    # Le fond du concept doit être présent: c'est bien un collage, pas du noir.
-    assert np.asarray(image.convert("RGB")).sum() > 0
+    assert renderer._load_ai_image(None) is None
+    assert renderer._load_ai_image("/introuvable/nope.png") is None
+
+    background = renderer._background_plate(concept)
+    frame = renderer._compose(background, renderer._pictogram_pieces(concept),
+                              3.9, 4.0)
+    assert frame.size == (120, 200)
+    # La scène finale diffère du fond vide: il y a bien des pièces posées.
+    assert not np.array_equal(np.asarray(frame), np.asarray(background))
 
 
 def test_video_service_produces_a_timeline_ready_clip(tmp_path, monkeypatch):
@@ -562,7 +632,9 @@ def test_quality_does_not_mistake_the_halftone_texture_for_text(tmp_path):
     renderer = LocalAssembleRenderer(width=540, height=960, fps=30)
     concept = _concept()
     path = str(tmp_path / "halftone.png")
-    renderer._procedural_collage(concept).convert("RGB").save(path)
+    frame = renderer._compose(renderer._background_plate(concept),
+                              renderer._pictogram_pieces(concept), 3.9, 4.0)
+    frame.convert("RGB").save(path)
 
     report = CollageQualityService().review_image(path, concept)
     assert report.text_free, report.to_dict()
