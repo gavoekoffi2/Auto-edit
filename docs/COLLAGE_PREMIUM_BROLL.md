@@ -149,6 +149,7 @@ même rendue** (collage procédural).
 | `collage_types.py` | contrats de données + gabarits de layout | `CollageConcept`, `LAYOUT_TEMPLATES`, `BrollType` |
 | `collage_cache.py` | cache disque content-addressed, écritures atomiques | `JsonCache`, `BinaryCache` |
 | `collage_concept_planner.py` | analyse sémantique (LLM groupé + repli heuristique) | `CollageConceptPlanner.plan` |
+| `collage_lexicon.py` | **ancrage**: mot prononcé → découpe, extraction des choses nommées | `LEXICON`, `ground`, `resolve` |
 | `collage_prompt_builder.py` | **verrou de style**, prompts image et vidéo | `STYLE_LOCK`, `NEGATIVE_PROMPT` |
 | `collage_image_service.py` | registre de fournisseurs + génération parallèle + cache | `register_provider`, `CollageImageService` |
 | `collage_video_service.py` | mouvement `collage_assemble` (rendu local + API) | `LocalAssembleRenderer` |
@@ -213,10 +214,55 @@ Trois chemins, dans cet ordre :
    détectés par `autoedit_engine.content.icon_for_text` (**aucune règle
    dupliquée**), émotion déduite par expressions régulières, palette seedée.
 
+### 4.1bis `collage_lexicon` — l'ancrage: ce qui est DIT décide de ce qui est DESSINÉ
+
+Le défaut le plus visible du moteur n'était pas la qualité des découpes, c'était
+leur **pertinence**: quelqu'un parle de sa voiture, la scène montre un flacon.
+Trois causes, toutes fermées.
+
+| Cause | Ce qui se passait | Correction |
+|---|---|---|
+| **Vocabulaire trop étroit** | 34 découpes, toutes issues du discours e-commerce. Ni voiture, ni maison, ni ordinateur, ni rendez-vous. | **92 découpes** (`collage_shapes`), couvrant les objets du quotidien les plus prononcés en français parlé **et** tous les objets nommés par les bibliothèques de métaphores. |
+| **Repli arbitraire** | Un mot inconnu retombait sur `sha1(mot) % N`: une forme *stable*, donc **fausse à chaque rendu**, donc visible. | `resolve_strict()` renvoie **None**. Un None est exploitable (« je ne sais pas dessiner ça »), une forme au hasard est un mensonge visuel. |
+| **Aucune remontée du texte** | Les objets venaient d'une **catégorie** devinée (prix → étiquette + pièces). Le collage illustrait le *type* de propos, jamais son *sujet*. | `ground(texte)` extrait les choses concrètes réellement nommées, dans l'ordre où elles sont dites, et le planner les **pousse en tête** du concept. |
+
+```python
+ground("j'ai vendu ma voiture pour acheter une maison")
+# [Entity(voiture → car), Entity(acheter → cart), Entity(maison → house)]
+```
+
+L'ancrage s'applique aux **trois chemins** du planner (cache, LLM, heuristique):
+la précision ne doit pas dépendre de la présence d'une clé API. Deux règles
+seulement:
+
+* **le sujet ouvre la scène** — au plus `COLLAGE_GROUNDED_OBJECTS` objets sont
+  imposés par le texte, le reste vient du concept (tout ancrer transformerait
+  la scène en inventaire de mots);
+* **aucun objet indessinable ne survit** quand le profil illustre par découpes
+  (moteurs UGC). Il est remplacé par une chose réellement dite, ou retiré. Le
+  profil éditorial garde ses objets abstraits: c'est un modèle d'image qui les
+  dessine, il n'est pas limité au vocabulaire des découpes — mais son prompt
+  reçoit quand même le **sujet littéral** (§ 4.2).
+
+Le lexique est **une seule table** pour deux usages: résoudre un nom d'objet et
+reconnaître une chose dans le transcript. Impossible, donc, que « ce que le
+moteur sait dessiner » diverge de « ce qu'il sait reconnaître ».
+
+Les pièges du français parlé sont traités explicitement et testés un par un:
+« je te **livre** le colis » n'est pas un bouquin, « je vais te **montrer** »
+n'est pas une montre, « c'est cher **car** je l'ai importé » n'est pas une
+voiture, « **son** produit » n'est pas du son, « **au cours de** » n'est pas un
+cours, « le **lien** en bio » n'est pas une chaîne.
+
 ### 4.2 `CollagePromptBuilder` — le verrou de style
 
 Une constante, une version. Tout changement de `STYLE_LOCK` impose
 d'incrémenter `STYLE_LOCK_VERSION`, ce qui invalide le cache automatiquement.
+
+Le prompt image porte aussi l'**ancrage littéral**: quand la phrase nomme une
+chose matérielle, le prompt exige qu'elle soit reconnaissable. Sans cette ligne,
+le style pousse le modèle vers l'abstraction — il illustre volontiers « la
+liberté » quand la personne parle de sa voiture.
 
 Les interdits (`NO text, NO logo, NO watermark`, …) sont écrits **deux fois** :
 dans le prompt positif et dans le `negative_prompt` — beaucoup de modèles
@@ -423,6 +469,8 @@ design). Les deux verrous sont volontairement redondants.
 | `COLLAGE_VIDEO_PROVIDER` | `local` | `local` (déterministe) ou `http` (API image→vidéo) |
 | `COLLAGE_MAX_SCENES` | *(profil : 4 / 8 / 6)* | plafond de scènes par vidéo |
 | `COLLAGE_MAX_SHARE` | *(profil : 0.5 / 1.0 / 0.7)* | part des beats routés en collage |
+| `COLLAGE_GROUNDING` | `1` | ancrage lexical (§ 4.1bis). `0` = comportement historique |
+| `COLLAGE_GROUNDED_OBJECTS` | `2` | objets imposés par le texte prononcé |
 | `COLLAGE_QUALITY_MIN_SCORE` | `62` | seuil d'acceptation |
 | `COLLAGE_QUALITY_MAX_ATTEMPTS` | `2` | `1` désactive la relance |
 | `COLLAGE_CACHE_ENABLED` / `_TTL_DAYS` | `1` / `30` | cache concepts + images |
@@ -521,6 +569,23 @@ par vidéo sont le seul garde-fou de coût API.
 * non-régression : moteur éteint par défaut, `plan_overlays` inchangé sans
   collage, SFX pris dans le vocabulaire existant, mode sélectionnable.
 
+`backend/tests/test_collage_grounding.py` — 42 tests sur la **précision
+d'illustration** :
+
+* couverture du vocabulaire (voiture, maison, ordinateur, avion, diplôme…) ;
+* lexique et bibliothèque de découpes toujours alignés, aucun objet de
+  bibliothèque indessinable ;
+* mot inconnu → `None` (et non une forme au hasard), contrat historique du
+  résolveur permissif conservé ;
+* la chose nommée est dans la scène, elle l'ouvre, et aucune découpe n'est
+  répétée ;
+* les sept pièges du français parlé (livre/livrer, montre/montrer, car, son,
+  cours, lien en bio, d'accord) ;
+* le prompt image nomme le sujet littéral, et la métaphore reste seule quand la
+  phrase n'a aucun objet matériel.
+
 ```bash
-cd backend && python -m pytest tests/test_collage_engine.py -q
+cd backend && python -m pytest tests/test_collage_engine.py \
+                              tests/test_collage_engines_ugc.py \
+                              tests/test_collage_grounding.py -q
 ```

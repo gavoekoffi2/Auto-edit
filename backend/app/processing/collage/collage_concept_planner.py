@@ -31,12 +31,13 @@ import json
 import logging
 import os
 import re
+from dataclasses import replace
 from typing import Iterable, Optional, Sequence
 
 import httpx
 
 from . import collage_config as ccfg
-from . import collage_profiles
+from . import collage_lexicon, collage_profiles
 from .collage_cache import JsonCache, make_key
 from .collage_types import (
     CollageConcept,
@@ -165,11 +166,81 @@ class CollageConceptPlanner:
             if beat["id"] not in concepts:
                 concepts[beat["id"]] = self._heuristic_concept(beat)
 
-        out = [concepts[b["id"]] for b in prepared if b["id"] in concepts]
+        # 4) ANCRAGE: la scène doit montrer ce que la phrase nomme, pas ce que
+        #    sa catégorie suggère. Cette passe s'applique aux TROIS chemins
+        #    (cache, LLM, heuristique) — sinon la précision dépendrait de la
+        #    présence d'une clé API.
+        out = [self._anchor_to_speech(concepts[b["id"]], b["text"])
+               for b in prepared if b["id"] in concepts]
         n_llm = sum(1 for c in out if c.planner == "llm")
         logger.info("[collage_planner] %d concept(s) — %d LLM, %d cache/heuristique",
                     len(out), n_llm, len(out) - n_llm)
         return out
+
+    # ------------------------------------------------------------------ #
+    def _anchor_to_speech(self, concept: CollageConcept,
+                          text: str) -> CollageConcept:
+        """Réécrit les objets du concept pour qu'ils collent au texte prononcé.
+
+        Deux corrections, dans cet ordre:
+
+        1. **Le sujet passe devant.** Les choses concrètes réellement nommées
+           dans l'extrait ouvrent la scène. Une phrase sur une voiture commence
+           par une voiture, quelle que soit l'intention détectée derrière.
+        2. **Aucun objet indessinable ne survit** quand le profil illustre par
+           découpes vectorielles (moteurs UGC). Avant, un objet inconnu du
+           vocabulaire était rendu par une forme tirée au hasard du nom: stable
+           d'un rendu à l'autre, mais sans rapport avec le propos. Il est
+           désormais remplacé par une chose réellement dite, ou retiré.
+
+        Le profil éditorial garde ses objets abstraits: c'est un modèle d'image
+        qui les dessine, il n'est pas limité au vocabulaire des découpes.
+        """
+        if not ccfg.GROUNDING_ENABLED:
+            return concept
+
+        drawable_only = not self.profile.allow_ai_images
+        anchors = max(0, ccfg.GROUNDED_OBJECTS_MAX)
+        entities = collage_lexicon.ground(text, limit=ccfg.MAX_OBJECTS)
+
+        names: list[str] = []
+        covered: set[str] = set()
+
+        def push(name: str, pictogram: Optional[str]) -> None:
+            name = (name or "").strip()
+            key = pictogram or name.lower()
+            if not name or key in covered or len(names) >= ccfg.MAX_OBJECTS:
+                return
+            covered.add(key)
+            names.append(name)
+
+        for entity in entities[:anchors]:
+            push(entity.noun, entity.pictogram)
+
+        spare = list(entities[anchors:])
+        for obj in concept.ordered_objects():
+            pictogram = collage_lexicon.resolve(obj.name)
+            if pictogram is None and drawable_only:
+                if spare:
+                    substitute = spare.pop(0)
+                    push(substitute.noun, substitute.pictogram)
+                continue
+            push(obj.name, pictogram)
+
+        # Plancher: une scène de collage a besoin d'un minimum de pièces pour
+        # que l'assemblage raconte quelque chose.
+        for substitute in spare:
+            if len(names) >= ccfg.MIN_OBJECTS:
+                break
+            push(substitute.noun, substitute.pictogram)
+        if len(names) < ccfg.MIN_OBJECTS:
+            for name in self.profile.default_metaphor[1]:
+                push(name, collage_lexicon.resolve(name))
+
+        if names == [obj.name for obj in concept.ordered_objects()]:
+            return concept
+        return replace(concept,
+                       objects=_build_objects(names, concept.palette, concept.id))
 
     # ------------------------------------------------------------------ #
     def _prepare(self, beat: dict, index: int) -> Optional[dict]:
@@ -194,8 +265,12 @@ class CollageConceptPlanner:
     def _llm_batch(self, beats: Sequence[dict]) -> list[Optional[dict]]:
         """Un appel, N concepts. Renvoie une liste alignée sur *beats*."""
         items = "\n".join(f'{i + 1}. "{b["excerpt"]}"' for i, b in enumerate(beats))
+        # Le vocabulaire dessinable est injecté dans la consigne: un modèle qui
+        # ne le connaît pas propose « steering wheel » ou « supply chain », des
+        # objets qui n'existent en découpe nulle part et finissent remplacés.
         prompt = (self.profile.llm_instruction
                   .replace("{n}", str(len(beats)))
+                  .replace("{vocabulary}", collage_lexicon.vocabulary_hint(90))
                   .replace("{items}", items))
         try:
             text = chat_completion(prompt, model=self.model, api_key=self.api_key,

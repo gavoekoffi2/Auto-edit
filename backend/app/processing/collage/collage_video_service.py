@@ -181,8 +181,18 @@ class LocalAssembleRenderer:
             accent = hex_to_rgb(
                 _accent_for(concept, obj.paper_color, glyph_ink)) + (255,)
             seed = (abs(hash((concept.id, obj.name, obj.order))) % 99991) + 1
+            # Résolution STRICTE: un objet que le vocabulaire ne connaît pas ne
+            # doit pas être remplacé par une découpe tirée au hasard de son nom
+            # — on parlerait d'une voiture et la scène montrerait un flacon. Le
+            # planner a normalement déjà écarté ces objets (ancrage lexical);
+            # ce garde-fou couvre les appels directs au renderer.
+            pictogram = collage_shapes.resolve_strict(obj.name)
+            if pictogram is None:
+                logger.info("[collage_video] « %s » hors vocabulaire — forme neutre",
+                            obj.name[:40])
+                pictogram = collage_shapes.DEFAULT_PICTOGRAM
             layer = collage_shapes.render_cutout(
-                collage_shapes.resolve_pictogram(obj.name), w, h,
+                pictogram, w, h,
                 paper_color=paper, ink_color=glyph_ink, accent_color=accent,
                 seed=seed, tilt=(-4.5 if i % 2 else 4.0),
             )

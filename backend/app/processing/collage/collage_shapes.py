@@ -25,7 +25,6 @@ import argparse
 import hashlib
 import math
 import os
-import re
 import sys
 from typing import Callable, Optional, Sequence
 
@@ -387,7 +386,505 @@ def _door(p: Pen, ink, accent) -> None:
     p.circle(0.58, 0.56, 0.045, ink)
 
 
+# --------------------------------------------------------------------------- #
+# Vocabulaire ÉLARGI — le monde dont les gens parlent vraiment
+#
+# La première version couvrait le discours e-commerce (colis, prix, avis…).
+# Dès que quelqu'un parlait d'une voiture, d'une maison, d'un ordinateur ou
+# d'un rendez-vous, aucune découpe ne correspondait et le résolveur retombait
+# sur une forme ARBITRAIRE: on parlait d'une voiture, la scène montrait un
+# flacon. Ces pictogrammes ferment ce trou, avec deux priorités:
+#
+#   * les objets du quotidien les plus prononcés en français parlé;
+#   * les objets nommés par les bibliothèques de métaphores (`collage_profiles`)
+#     qui n'avaient encore aucune découpe (pont, graine, engrenage, sablier…).
+# --------------------------------------------------------------------------- #
+def _car(p: Pen, ink, accent) -> None:
+    """Voiture — trajet, transport, achat automobile."""
+    p.poly([(0.06, 0.62), (0.18, 0.62), (0.30, 0.40), (0.68, 0.40),
+            (0.82, 0.62), (0.94, 0.62), (0.94, 0.76), (0.06, 0.76)], ink)
+    p.poly([(0.33, 0.44), (0.48, 0.44), (0.48, 0.60), (0.26, 0.60)], accent)
+    p.poly([(0.52, 0.44), (0.66, 0.44), (0.76, 0.60), (0.52, 0.60)], accent)
+    p.circle(0.28, 0.78, 0.095, ink)
+    p.circle(0.72, 0.78, 0.095, ink)
+    p.circle(0.28, 0.78, 0.040, accent)
+    p.circle(0.72, 0.78, 0.040, accent)
+
+
+def _house(p: Pen, ink, accent) -> None:
+    """Maison — logement, loyer, chez soi, famille."""
+    p.poly([(0.50, 0.10), (0.94, 0.46), (0.06, 0.46)], accent)
+    p.rect((0.16, 0.46, 0.84, 0.90), ink, 0.02)
+    p.rect((0.42, 0.62, 0.58, 0.90), accent, 0.01)
+    p.rect((0.24, 0.54, 0.36, 0.66), accent, 0.01)
+
+
+def _building(p: Pen, ink, accent) -> None:
+    """Immeuble / boutique / entreprise — le local, la société."""
+    p.rect((0.14, 0.18, 0.56, 0.90), ink, 0.02)
+    p.rect((0.58, 0.44, 0.88, 0.90), accent, 0.02)
+    for y in (0.28, 0.44, 0.60, 0.74):
+        for x in (0.20, 0.32, 0.44):
+            p.rect((x, y, x + 0.07, y + 0.08), accent, 0.01)
+
+
+def _key(p: Pen, ink, accent) -> None:
+    """Clé — accès, solution, ce qui débloque."""
+    p.circle(0.28, 0.34, 0.21, ink)
+    p.circle(0.28, 0.34, 0.085, accent)
+    p.line([(0.40, 0.46), (0.86, 0.88)], ink, 0.080)
+    p.line([(0.64, 0.58), (0.54, 0.72)], accent, 0.050)
+    p.line([(0.76, 0.69), (0.66, 0.83)], accent, 0.050)
+
+
+def _laptop(p: Pen, ink, accent) -> None:
+    """Ordinateur — le site, le travail, la formation en ligne."""
+    p.rect((0.22, 0.16, 0.78, 0.64), ink, 0.02)
+    p.rect((0.27, 0.22, 0.73, 0.58), accent, 0.015)
+    p.poly([(0.10, 0.66), (0.90, 0.66), (0.96, 0.80), (0.04, 0.80)], ink)
+    p.rect((0.42, 0.69, 0.58, 0.74), accent, 0.01)
+
+
+def _cup(p: Pen, ink, accent) -> None:
+    """Tasse — café, pause, boisson chaude."""
+    p.poly([(0.22, 0.36), (0.68, 0.36), (0.61, 0.86), (0.29, 0.86)], ink)
+    p.rect((0.22, 0.36, 0.68, 0.45), accent, 0.02)
+    p.arc((0.64, 0.42, 0.92, 0.68), 300, 60, accent, 0.050)
+    p.line([(0.38, 0.26), (0.38, 0.14)], accent, 0.030)
+    p.line([(0.52, 0.24), (0.52, 0.10)], accent, 0.030)
+
+
+def _plate(p: Pen, ink, accent) -> None:
+    """Assiette — repas, cuisine, restaurant, alimentation."""
+    p.circle(0.52, 0.54, 0.34, ink)
+    p.circle(0.52, 0.54, 0.21, accent)
+    p.rect((0.04, 0.18, 0.10, 0.88), accent, 0.02)
+    p.rect((0.92, 0.18, 0.98, 0.88), accent, 0.02)
+
+
+def _plane(p: Pen, ink, accent) -> None:
+    """Avion en papier — voyage, départ, expédition lointaine."""
+    p.poly([(0.06, 0.46), (0.94, 0.10), (0.54, 0.90), (0.44, 0.58)], ink)
+    p.poly([(0.44, 0.58), (0.94, 0.10), (0.62, 0.68)], accent)
+
+
+def _wallet(p: Pen, ink, accent) -> None:
+    """Portefeuille — budget, dépense, ce qu'on sort de sa poche."""
+    p.rect((0.10, 0.26, 0.90, 0.80), ink, 0.05)
+    p.rect((0.10, 0.26, 0.90, 0.40), accent, 0.05)
+    p.rect((0.56, 0.46, 0.94, 0.64), accent, 0.03)
+    p.circle(0.75, 0.55, 0.048, ink)
+
+
+def _book(p: Pen, ink, accent) -> None:
+    """Livre ouvert — formation, méthode, savoir."""
+    p.poly([(0.08, 0.24), (0.48, 0.34), (0.48, 0.86), (0.08, 0.76)], ink)
+    p.poly([(0.92, 0.24), (0.52, 0.34), (0.52, 0.86), (0.92, 0.76)], accent)
+    p.line([(0.50, 0.34), (0.50, 0.86)], accent, 0.022)
+
+
+def _camera(p: Pen, ink, accent) -> None:
+    """Caméra — la vidéo, le tournage, le contenu."""
+    p.rect((0.08, 0.30, 0.86, 0.80), ink, 0.05)
+    p.rect((0.32, 0.20, 0.56, 0.32), ink, 0.03)
+    p.circle(0.47, 0.55, 0.18, accent)
+    p.circle(0.47, 0.55, 0.085, ink)
+    p.circle(0.76, 0.41, 0.038, accent)
+
+
+def _envelope(p: Pen, ink, accent) -> None:
+    """Enveloppe — message, courrier, contact."""
+    p.rect((0.08, 0.28, 0.92, 0.76), ink, 0.02)
+    p.poly([(0.08, 0.28), (0.92, 0.28), (0.50, 0.60)], accent)
+
+
+def _sun(p: Pen, ink, accent) -> None:
+    """Soleil — la journée, l'été, l'énergie."""
+    p.circle(0.50, 0.50, 0.25, ink)
+    for i in range(8):
+        angle = i * math.pi / 4
+        p.line([(0.50 + 0.33 * math.cos(angle), 0.50 + 0.33 * math.sin(angle)),
+                (0.50 + 0.45 * math.cos(angle), 0.50 + 0.45 * math.sin(angle))],
+               accent, 0.042)
+
+
+def _tree(p: Pen, ink, accent) -> None:
+    """Arbre — la nature, la durée, ce qui pousse."""
+    p.rect((0.44, 0.58, 0.56, 0.92), accent, 0.02)
+    p.circle(0.50, 0.38, 0.29, ink)
+    p.circle(0.32, 0.52, 0.16, ink)
+    p.circle(0.68, 0.52, 0.16, ink)
+
+
+def _pill(p: Pen, ink, accent) -> None:
+    """Gélule — complément, médicament, cure."""
+    p.rect((0.08, 0.36, 0.92, 0.64), ink, 0.14)
+    p.rect((0.50, 0.36, 0.88, 0.64), accent, 0.14)
+    p.rect((0.50, 0.36, 0.64, 0.64), accent)
+    p.line([(0.50, 0.36), (0.50, 0.64)], ink, 0.022)
+
+
+def _glasses(p: Pen, ink, accent) -> None:
+    """Lunettes — la vue, le détail qu'on remarque."""
+    p.circle(0.27, 0.52, 0.21, ink)
+    p.circle(0.27, 0.52, 0.135, accent)
+    p.circle(0.73, 0.52, 0.21, ink)
+    p.circle(0.73, 0.52, 0.135, accent)
+    p.line([(0.46, 0.50), (0.54, 0.50)], ink, 0.050)
+    p.line([(0.07, 0.44), (0.02, 0.34)], ink, 0.035)
+    p.line([(0.93, 0.44), (0.98, 0.34)], ink, 0.035)
+
+
+def _watch(p: Pen, ink, accent) -> None:
+    """Montre — le rendez-vous, le temps qu'on suit."""
+    p.rect((0.38, 0.06, 0.62, 0.32), accent, 0.03)
+    p.rect((0.38, 0.68, 0.62, 0.94), accent, 0.03)
+    p.circle(0.50, 0.50, 0.27, ink)
+    p.circle(0.50, 0.50, 0.185, accent)
+    p.line([(0.50, 0.50), (0.50, 0.37)], ink, 0.035)
+    p.line([(0.50, 0.50), (0.61, 0.56)], ink, 0.035)
+
+
+def _ring(p: Pen, ink, accent) -> None:
+    """Bague — bijou, mariage, engagement."""
+    p.circle(0.50, 0.66, 0.25, ink)
+    p.circle(0.50, 0.66, 0.155, accent)
+    p.poly([(0.50, 0.06), (0.68, 0.26), (0.50, 0.44), (0.32, 0.26)], accent)
+    p.poly([(0.32, 0.26), (0.68, 0.26), (0.50, 0.44)], ink)
+
+
+def _scissors(p: Pen, ink, accent) -> None:
+    """Ciseaux — la coupe, le montage, ce qu'on retire."""
+    p.line([(0.24, 0.10), (0.68, 0.60)], ink, 0.055)
+    p.line([(0.76, 0.10), (0.32, 0.60)], ink, 0.055)
+    p.circle(0.30, 0.76, 0.125, accent)
+    p.circle(0.30, 0.76, 0.058, ink)
+    p.circle(0.70, 0.76, 0.125, accent)
+    p.circle(0.70, 0.76, 0.058, ink)
+
+
+def _bulb(p: Pen, ink, accent) -> None:
+    """Ampoule — l'idée, la solution, l'électricité."""
+    p.circle(0.50, 0.40, 0.28, ink)
+    p.rect((0.40, 0.64, 0.60, 0.80), accent, 0.02)
+    p.rect((0.42, 0.80, 0.58, 0.90), accent, 0.02)
+    # Filament en zigzag, pas en V: un chevron isolé se lit comme une LETTRE,
+    # et le verrou de style interdit toute typographie dans une découpe.
+    p.line([(0.38, 0.40), (0.45, 0.50), (0.53, 0.38), (0.61, 0.49)], accent, 0.032)
+
+
+def _brain(p: Pen, ink, accent) -> None:
+    """Cerveau — le mental, la compréhension, l'apprentissage."""
+    p.circle(0.35, 0.40, 0.22, ink)
+    p.circle(0.63, 0.38, 0.20, ink)
+    p.circle(0.42, 0.62, 0.22, ink)
+    p.circle(0.66, 0.62, 0.19, ink)
+    p.line([(0.50, 0.24), (0.50, 0.80)], accent, 0.030)
+
+
+def _eye(p: Pen, ink, accent) -> None:
+    """Œil — la visibilité, ce qu'on remarque, l'attention."""
+    p.poly(_lens((0.04, 0.50), (0.96, 0.50), 0.24), ink)
+    p.circle(0.50, 0.50, 0.17, accent)
+    p.circle(0.50, 0.50, 0.080, ink)
+
+
+def _music(p: Pen, ink, accent) -> None:
+    """Note — la musique, le son, l'ambiance."""
+    p.rect((0.54, 0.12, 0.64, 0.72), ink)
+    p.poly([(0.54, 0.12), (0.90, 0.04), (0.90, 0.24), (0.54, 0.32)], accent)
+    p.circle(0.42, 0.74, 0.155, ink)
+
+
+def _document(p: Pen, ink, accent) -> None:
+    """Feuille — le contrat, la facture, le papier administratif."""
+    p.poly([(0.18, 0.08), (0.64, 0.08), (0.84, 0.28), (0.84, 0.92),
+            (0.18, 0.92)], ink)
+    p.poly([(0.64, 0.08), (0.84, 0.28), (0.64, 0.28)], accent)
+    for y in (0.46, 0.60, 0.74):
+        p.rect((0.28, y, 0.72, y + 0.055), accent, 0.01)
+
+
+def _folder(p: Pen, ink, accent) -> None:
+    """Dossier — le classement, le projet, les fichiers."""
+    p.poly([(0.08, 0.24), (0.40, 0.24), (0.48, 0.36), (0.92, 0.36),
+            (0.92, 0.86), (0.08, 0.86)], ink)
+    p.rect((0.16, 0.48, 0.84, 0.56), accent, 0.02)
+
+
+def _graduation(p: Pen, ink, accent) -> None:
+    """Toque — l'école, le diplôme, la formation validée."""
+    p.poly([(0.50, 0.18), (0.96, 0.40), (0.50, 0.62), (0.04, 0.40)], ink)
+    p.poly([(0.28, 0.50), (0.72, 0.50), (0.72, 0.74), (0.50, 0.82),
+            (0.28, 0.74)], accent)
+    p.line([(0.90, 0.44), (0.90, 0.74)], accent, 0.030)
+
+
+def _briefcase(p: Pen, ink, accent) -> None:
+    """Mallette — le travail, le business, le professionnel."""
+    p.rect((0.08, 0.32, 0.92, 0.86), ink, 0.04)
+    p.rect((0.08, 0.52, 0.92, 0.61), accent)
+    p.arc((0.34, 0.14, 0.66, 0.44), 180, 360, accent, 0.050)
+    p.rect((0.44, 0.50, 0.56, 0.63), accent, 0.02)
+
+
+def _trophy(p: Pen, ink, accent) -> None:
+    """Coupe — gagner, le meilleur, la récompense."""
+    p.poly([(0.28, 0.12), (0.72, 0.12), (0.67, 0.50), (0.33, 0.50)], ink)
+    p.arc((0.08, 0.14, 0.32, 0.46), 90, 270, accent, 0.048)
+    p.arc((0.68, 0.14, 0.92, 0.46), 270, 90, accent, 0.048)
+    p.rect((0.44, 0.50, 0.56, 0.70), ink)
+    p.rect((0.26, 0.70, 0.74, 0.84), accent, 0.02)
+
+
+def _dumbbell(p: Pen, ink, accent) -> None:
+    """Haltère — le sport, l'effort, la salle."""
+    p.rect((0.20, 0.43, 0.80, 0.57), ink, 0.03)
+    p.rect((0.06, 0.28, 0.24, 0.72), accent, 0.04)
+    p.rect((0.76, 0.28, 0.94, 0.72), accent, 0.04)
+
+
+def _ball(p: Pen, ink, accent) -> None:
+    """Ballon — le sport, le match, l'équipe."""
+    p.circle(0.50, 0.50, 0.38, ink)
+    p.poly([(0.50, 0.26), (0.70, 0.41), (0.62, 0.66), (0.38, 0.66),
+            (0.30, 0.41)], accent)
+
+
+def _wifi(p: Pen, ink, accent) -> None:
+    """Ondes — le réseau, la connexion, internet."""
+    p.arc((0.02, 0.20, 0.98, 1.16), 200, 340, ink, 0.055)
+    p.arc((0.20, 0.40, 0.80, 1.00), 200, 340, ink, 0.060)
+    p.arc((0.36, 0.58, 0.64, 0.86), 200, 340, accent, 0.070)
+    p.circle(0.50, 0.84, 0.062, accent)
+
+
+def _battery(p: Pen, ink, accent) -> None:
+    """Batterie — l'autonomie, l'énergie qui reste."""
+    p.rect((0.08, 0.32, 0.82, 0.68), ink, 0.04)
+    p.rect((0.84, 0.44, 0.94, 0.56), ink, 0.02)
+    p.rect((0.14, 0.38, 0.48, 0.62), accent, 0.02)
+
+
+def _ladder(p: Pen, ink, accent) -> None:
+    """Échelle — les étapes, la montée, la méthode."""
+    p.rect((0.22, 0.06, 0.33, 0.94), ink, 0.02)
+    p.rect((0.67, 0.06, 0.78, 0.94), ink, 0.02)
+    for y in (0.20, 0.40, 0.60, 0.78):
+        p.rect((0.22, y, 0.78, y + 0.07), accent, 0.01)
+
+
+def _stairs(p: Pen, ink, accent) -> None:
+    """Escalier — la progression par paliers."""
+    p.poly([(0.08, 0.90), (0.08, 0.66), (0.36, 0.66), (0.36, 0.46),
+            (0.64, 0.46), (0.64, 0.24), (0.92, 0.24), (0.92, 0.90)], ink)
+    p.poly([(0.64, 0.24), (0.92, 0.24), (0.92, 0.40), (0.64, 0.40)], accent)
+
+
+def _target(p: Pen, ink, accent) -> None:
+    """Cible — l'objectif, le but visé."""
+    p.circle(0.50, 0.50, 0.41, ink)
+    p.circle(0.50, 0.50, 0.28, accent)
+    p.circle(0.50, 0.50, 0.15, ink)
+    p.circle(0.50, 0.50, 0.055, accent)
+
+
+def _handshake(p: Pen, ink, accent) -> None:
+    """Poignée de main — l'accord, le partenariat, la confiance."""
+    p.rect((0.00, 0.44, 0.40, 0.56), ink, 0.03)
+    p.rect((0.60, 0.44, 1.00, 0.56), accent, 0.03)
+    p.poly([(0.50, 0.20), (0.80, 0.50), (0.50, 0.80), (0.20, 0.50)], ink)
+    p.line([(0.36, 0.44), (0.54, 0.26)], accent, 0.030)
+    p.line([(0.46, 0.74), (0.64, 0.56)], accent, 0.030)
+
+
+def _rocket(p: Pen, ink, accent) -> None:
+    """Fusée — le lancement, le décollage, la croissance rapide."""
+    p.poly([(0.50, 0.04), (0.67, 0.32), (0.67, 0.70), (0.33, 0.70),
+            (0.33, 0.32)], ink)
+    p.poly([(0.33, 0.44), (0.14, 0.74), (0.33, 0.70)], accent)
+    p.poly([(0.67, 0.44), (0.86, 0.74), (0.67, 0.70)], accent)
+    p.circle(0.50, 0.36, 0.095, accent)
+    p.poly([(0.40, 0.70), (0.60, 0.70), (0.50, 0.96)], accent)
+
+
+def _gear(p: Pen, ink, accent) -> None:
+    """Engrenage — le système, le fonctionnement, le réglage."""
+    pts: list[Point] = []
+    for i in range(16):
+        angle = -math.pi / 2 + i * math.pi / 8
+        r = 0.45 if i % 2 == 0 else 0.33
+        pts.append((0.50 + r * math.cos(angle), 0.50 + r * math.sin(angle)))
+    p.poly(pts, ink)
+    p.circle(0.50, 0.50, 0.145, accent)
+
+
+def _chain(p: Pen, ink, accent) -> None:
+    """Maillons — le lien, la chaîne, ce qui tient ensemble."""
+    p.arc((0.04, 0.30, 0.56, 0.70), 0, 360, ink, 0.070)
+    p.arc((0.44, 0.30, 0.96, 0.70), 0, 360, accent, 0.070)
+
+
+def _bridge(p: Pen, ink, accent) -> None:
+    """Pont — le passage, ce qui relie deux côtés."""
+    p.arc((0.08, 0.28, 0.92, 0.94), 180, 360, accent, 0.048)
+    p.rect((0.02, 0.56, 0.98, 0.65), ink, 0.01)
+    for x in (0.26, 0.50, 0.74):
+        p.line([(x, 0.56), (x, 0.38)], accent, 0.028)
+    p.rect((0.12, 0.65, 0.21, 0.92), ink)
+    p.rect((0.79, 0.65, 0.88, 0.92), ink)
+
+
+def _sprout(p: Pen, ink, accent) -> None:
+    """Pousse — le début, la graine, ce qui commence à grandir."""
+    p.line([(0.50, 0.86), (0.50, 0.40)], ink, 0.045)
+    p.poly(_lens((0.20, 0.26), (0.50, 0.54), 0.11), accent)
+    p.poly(_lens((0.80, 0.26), (0.50, 0.54), 0.11), ink)
+    p.arc((0.28, 0.76, 0.72, 0.98), 180, 360, accent, 0.055)
+
+
+def _brick(p: Pen, ink, accent) -> None:
+    """Mur de briques — ce qui se construit pièce par pièce (ou s'écroule).
+
+    Les joints verticaux ne sont pas décoratifs: des rangées pleines et
+    régulières se lisent comme des LIGNES DE TEXTE, ce que le contrôle qualité
+    rejette (et il a raison — le verrou de style interdit toute typographie).
+    """
+    for index, (top, shift) in enumerate(((0.20, 0.0), (0.44, 0.15), (0.68, 0.0))):
+        fill = ink if index % 2 == 0 else accent
+        x = 0.05 + shift
+        while x < 0.93:
+            p.rect((x, top, min(0.93, x + 0.25), top + 0.19), fill, 0.015)
+            x += 0.29
+
+
+def _megaphone(p: Pen, ink, accent) -> None:
+    """Mégaphone — l'annonce, la communication, la portée."""
+    p.poly([(0.08, 0.40), (0.42, 0.26), (0.42, 0.76), (0.08, 0.62)], ink)
+    p.poly([(0.42, 0.18), (0.60, 0.12), (0.60, 0.90), (0.42, 0.84)], ink)
+    p.arc((0.62, 0.30, 0.86, 0.72), 300, 60, accent, 0.045)
+    p.arc((0.72, 0.18, 1.00, 0.84), 300, 60, accent, 0.038)
+
+
+def _hourglass(p: Pen, ink, accent) -> None:
+    """Sablier — le temps qui s'écoule, la fenêtre qui se ferme."""
+    p.poly([(0.16, 0.08), (0.84, 0.08), (0.54, 0.50), (0.84, 0.92),
+            (0.16, 0.92), (0.46, 0.50)], ink)
+    p.poly([(0.26, 0.16), (0.74, 0.16), (0.52, 0.46), (0.48, 0.46)], accent)
+    p.poly([(0.34, 0.86), (0.66, 0.86), (0.56, 0.66), (0.44, 0.66)], accent)
+
+
+def _flag(p: Pen, ink, accent) -> None:
+    """Drapeau — le repère atteint, le pays, l'étape franchie."""
+    p.rect((0.18, 0.06, 0.28, 0.94), ink, 0.01)
+    p.poly([(0.28, 0.14), (0.88, 0.26), (0.88, 0.58), (0.28, 0.46)], accent)
+
+
+def _crown(p: Pen, ink, accent) -> None:
+    """Couronne — le premium, le haut de gamme, le numéro un."""
+    p.poly([(0.08, 0.72), (0.14, 0.24), (0.34, 0.52), (0.50, 0.16),
+            (0.66, 0.52), (0.86, 0.24), (0.92, 0.72)], ink)
+    p.rect((0.08, 0.72, 0.92, 0.88), accent, 0.02)
+
+
+def _banknote(p: Pen, ink, accent) -> None:
+    """Billet — l'argent liquide, le salaire, le paiement."""
+    p.rect((0.04, 0.30, 0.96, 0.70), ink, 0.03)
+    p.circle(0.50, 0.50, 0.135, accent)
+    p.rect((0.10, 0.36, 0.19, 0.64), accent, 0.01)
+    p.rect((0.81, 0.36, 0.90, 0.64), accent, 0.01)
+
+
+def _card(p: Pen, ink, accent) -> None:
+    """Carte bancaire — le paiement, l'abonnement, le compte."""
+    p.rect((0.04, 0.28, 0.96, 0.74), ink, 0.05)
+    p.rect((0.04, 0.36, 0.96, 0.48), accent)
+    p.rect((0.12, 0.56, 0.32, 0.66), accent, 0.02)
+
+
+def _globe(p: Pen, ink, accent) -> None:
+    """Globe — l'international, l'ailleurs, le web."""
+    p.circle(0.50, 0.50, 0.40, ink)
+    p.arc((0.30, 0.10, 0.70, 0.90), 0, 360, accent, 0.038)
+    p.line([(0.11, 0.50), (0.89, 0.50)], accent, 0.038)
+
+
+def _pin(p: Pen, ink, accent) -> None:
+    """Épingle — le lieu, l'adresse, l'endroit précis."""
+    p.circle(0.50, 0.38, 0.29, ink)
+    p.poly([(0.26, 0.54), (0.74, 0.54), (0.50, 0.94)], ink)
+    p.circle(0.50, 0.38, 0.115, accent)
+
+
+def _scale(p: Pen, ink, accent) -> None:
+    """Balance — la comparaison, l'équilibre, le choix."""
+    p.rect((0.46, 0.14, 0.54, 0.82), ink, 0.01)
+    p.rect((0.26, 0.82, 0.74, 0.92), ink, 0.02)
+    p.line([(0.08, 0.28), (0.92, 0.28)], ink, 0.035)
+    p.arc((0.00, 0.24, 0.32, 0.56), 0, 180, accent, 0.048)
+    p.arc((0.68, 0.24, 1.00, 0.56), 0, 180, accent, 0.048)
+
+
+def _umbrella(p: Pen, ink, accent) -> None:
+    """Parapluie — la protection, l'imprévu couvert."""
+    p.poly([(0.04, 0.54), (0.12, 0.28), (0.30, 0.14), (0.50, 0.10),
+            (0.70, 0.14), (0.88, 0.28), (0.96, 0.54)], ink)
+    p.line([(0.50, 0.54), (0.50, 0.84)], accent, 0.045)
+    p.arc((0.28, 0.76, 0.52, 0.94), 0, 180, accent, 0.045)
+
+
+def _lightning(p: Pen, ink, accent) -> None:
+    """Éclair — la rapidité, le choc, le déclic."""
+    p.poly([(0.62, 0.04), (0.24, 0.56), (0.46, 0.56), (0.36, 0.96),
+            (0.76, 0.44), (0.52, 0.44)], ink)
+
+
+def _tools(p: Pen, ink, accent) -> None:
+    """Marteau — les travaux, la réparation, le concret.
+
+    Tête volontairement ASYMÉTRIQUE (panne fendue d'un côté): un marteau
+    parfaitement symétrique sur un manche vertical se lit comme un « T ».
+    """
+    p.rect((0.44, 0.32, 0.58, 0.94), ink, 0.02)
+    p.poly([(0.34, 0.10), (0.70, 0.10), (0.88, 0.20), (0.88, 0.32),
+            (0.70, 0.38), (0.34, 0.38)], accent)
+    p.poly([(0.34, 0.10), (0.34, 0.38), (0.12, 0.32), (0.20, 0.22),
+            (0.12, 0.14)], accent)
+
+
+def _pen(p: Pen, ink, accent) -> None:
+    """Stylo — signer, écrire, décider noir sur blanc."""
+    p.poly([(0.06, 0.94), (0.16, 0.66), (0.72, 0.06), (0.94, 0.26),
+            (0.36, 0.86)], ink)
+    p.poly([(0.06, 0.94), (0.16, 0.66), (0.36, 0.86)], accent)
+
+
+def _mountain(p: Pen, ink, accent) -> None:
+    """Montagne — l'objectif lointain, l'obstacle à franchir."""
+    p.poly([(0.02, 0.86), (0.34, 0.26), (0.56, 0.60), (0.66, 0.42),
+            (0.98, 0.86)], ink)
+    p.poly([(0.34, 0.26), (0.47, 0.50), (0.21, 0.50)], accent)
+    p.circle(0.78, 0.22, 0.10, accent)
+
+
+def _road(p: Pen, ink, accent) -> None:
+    """Route — le parcours, le chemin, la distance."""
+    p.poly([(0.30, 0.06), (0.70, 0.06), (0.96, 0.94), (0.04, 0.94)], ink)
+    for y in (0.16, 0.42, 0.70):
+        p.rect((0.46, y, 0.54, y + 0.13), accent, 0.01)
+
+
+def _cloud(p: Pen, ink, accent) -> None:
+    """Nuage — le stockage en ligne, la météo, le flou."""
+    p.circle(0.34, 0.52, 0.20, ink)
+    p.circle(0.56, 0.44, 0.26, ink)
+    p.circle(0.74, 0.56, 0.17, ink)
+    p.rect((0.28, 0.52, 0.78, 0.72), ink, 0.06)
+    p.circle(0.50, 0.58, 0.095, accent)
+
+
 PICTOGRAMS: dict[str, Callable[[Pen, tuple, tuple], None]] = {
+    # vocabulaire d'origine (discours e-commerce)
     "box": _box, "bottle": _bottle, "jar": _jar, "tube": _tube, "bag": _bag,
     "cart": _cart, "tag": _tag, "coins": _coins, "hand": _hand,
     "thumb_up": _thumb_up, "star": _star, "heart": _heart, "check": _check,
@@ -397,6 +894,23 @@ PICTOGRAMS: dict[str, Callable[[Pen, tuple, tuple], None]] = {
     "magnifier": _magnifier, "arrow_up": _arrow_up, "chart": _chart,
     "gift": _gift, "person": _person, "mirror": _mirror, "shirt": _shirt,
     "shoe": _shoe, "lock": _lock, "door": _door,
+    # vocabulaire élargi (le monde dont les gens parlent vraiment)
+    "car": _car, "house": _house, "building": _building, "key": _key,
+    "laptop": _laptop, "cup": _cup, "plate": _plate, "plane": _plane,
+    "wallet": _wallet, "book": _book, "camera": _camera, "envelope": _envelope,
+    "sun": _sun, "tree": _tree, "pill": _pill, "glasses": _glasses,
+    "watch": _watch, "ring": _ring, "scissors": _scissors, "bulb": _bulb,
+    "brain": _brain, "eye": _eye, "music": _music, "document": _document,
+    "folder": _folder, "graduation": _graduation, "briefcase": _briefcase,
+    "trophy": _trophy, "dumbbell": _dumbbell, "ball": _ball, "wifi": _wifi,
+    "battery": _battery, "ladder": _ladder, "stairs": _stairs,
+    "target": _target, "handshake": _handshake, "rocket": _rocket,
+    "gear": _gear, "chain": _chain, "bridge": _bridge, "sprout": _sprout,
+    "brick": _brick, "megaphone": _megaphone, "hourglass": _hourglass,
+    "flag": _flag, "crown": _crown, "banknote": _banknote, "card": _card,
+    "globe": _globe, "pin": _pin, "scale": _scale, "umbrella": _umbrella,
+    "lightning": _lightning, "tools": _tools, "pen": _pen,
+    "mountain": _mountain, "road": _road, "cloud": _cloud,
 }
 
 DEFAULT_PICTOGRAM = "sparkle"
@@ -405,62 +919,37 @@ DEFAULT_PICTOGRAM = "sparkle"
 # --------------------------------------------------------------------------- #
 # Résolution nom d'objet -> pictogramme
 #
-# Le planner (LLM ou heuristique) décrit ses objets en langage naturel, en
-# anglais comme en français. On mappe ces mots vers la découpe la plus proche.
-# L'ordre compte: les règles les plus spécifiques d'abord.
+# Les règles mot → découpe vivent dans `collage_lexicon`: c'est le MÊME tableau
+# qui sert à résoudre un nom d'objet et à repérer les choses nommées dans le
+# transcript. Une seule table, donc aucune divergence possible entre « ce que
+# le moteur sait dessiner » et « ce qu'il sait reconnaître dans le discours ».
 # --------------------------------------------------------------------------- #
-_KEYWORD_RULES: list[tuple[str, str]] = [
-    ("thumb_up", r"thumb|pouce|like|approv|recommand"),
-    ("truck", r"truck|van|deliver|livrais|colis en route|shipping|courier|transport"),
-    ("box", r"\bbox\b|carton|parcel|package|colis|packaging|emballage|coffret"),
-    ("bottle", r"bottle|flacon|bouteille|spray|vaporis|parfum|shampo|serum|sérum"),
-    ("jar", r"\bjar\b|\bpot\b|crème|creme|cream|baume|balm|masque|mask|beurre"),
-    ("tube", r"tube|dentifrice|gel\b|lotion|mascara|rouge à lèvres"),
-    ("bag", r"\bbag\b|sachet|pouch|sac\b|poche"),
-    ("cart", r"cart|basket|panier|caddie|trolley|commande|checkout"),
-    ("tag", r"tag\b|étiquette|etiquette|label|price|prix|tarif|promo|réduction|reduction|discount|solde"),
-    ("coins", r"coin|money|argent|banknote|billet|cash|budget|euro|franc|payer|paiement|économ|econom"),
-    ("hand", r"hand|main\b|paume|palm|geste|tenir|holding|grasp|doigt"),
-    ("star", r"star|étoile|etoile|avis|review|note\b|rating|témoign|temoign|client satisfait"),
-    ("heart", r"heart|cœur|coeur|love|adore|favori|préfér|prefer|kiff"),
-    ("check", r"check|coche|tick|valid|inclus|garanti ok|réussi|reussi|done|resolved"),
-    ("cross", r"cross|croix|erreur|problem|problème|probleme|éviter|eviter|jamais|arnaque|fail"),
-    ("clock", r"clock|montre|horloge|temps|time|minute|heure|rapide|vite|urgence|dernier jour"),
-    ("calendar", r"calendar|calendrier|date|jour|semaine|mois|routine|planning"),
-    ("phone", r"phone|smartphone|téléphone|telephone|mobile|écran|ecran|whatsapp|dm\b|insta"),
-    ("chat", r"chat|bubble|bulle|message|question|commentaire|comment|discussion|témoignage"),
-    ("leaf", r"leaf|feuille|plant|plante|natur|bio|végét|veget|ingrédient|ingredient|composition"),
-    ("drop", r"drop|goutte|water|eau\b|hydrat|liquid|liquide|huile|\boil\b|texture"),
-    ("flame", r"flame|feu|flamme|hot|chaud|tendance|trend|viral|cartonne|explos"),
-    ("sparkle", r"sparkle|shine|éclat|eclat|brill|glow|résultat|resultat|effet|magic|waouh|wow"),
-    ("shield", r"shield|bouclier|garantie|guarantee|sécur|secur|protect|risque|remboours|rembours"),
-    ("magnifier", r"magnif|loupe|zoom|détail|detail|compar|analys|inspect|regarde de près"),
-    ("arrow_up", r"arrow|flèche|fleche|up\b|monte|augment|progress|croissance|growth|améliore|ameliore"),
-    ("chart", r"chart|graph|barre|courbe|stat|chiffre|résultats mesur|performance|vente"),
-    ("gift", r"gift|cadeau|bonus|offert|free|gratuit|surprise|ruban|ribbon"),
-    ("person", r"person|people|silhouette|client|utilisateur|user|femme|homme|visage|face|customer|moi\b"),
-    ("mirror", r"mirror|miroir|avant|before|après|apres|after|transformation|changement|comparaison"),
-    ("shirt", r"shirt|vêtement|vetement|robe|tshirt|t-shirt|pull|veste|clothes|mode|taille"),
-    ("shoe", r"shoe|chaussure|basket\b|sneaker|semelle|pied"),
-    ("lock", r"lock|cadenas|padlock|secret|exclusi|accès|acces|privé|prive|verrou"),
-    ("door", r"door|porte|opportunit|entrée|entree|ouvre|open path|seuil"),
-]
+def resolve_strict(name: str) -> Optional[str]:
+    """Découpe correspondant à *name*, ou **None** si aucune ne correspond.
 
-_COMPILED_RULES = [(name, re.compile(pattern, re.I)) for name, pattern in _KEYWORD_RULES]
+    C'est la fonction que le moteur utilise. Un None n'est pas un échec: c'est
+    l'information « je ne sais pas dessiner ça », qui permet au planner de
+    remplacer l'objet par quelque chose qui, lui, illustre vraiment le propos.
+    """
+    from . import collage_lexicon
+
+    pictogram = collage_lexicon.resolve(name)
+    return pictogram if pictogram in PICTOGRAMS else None
 
 
 def resolve_pictogram(name: str) -> str:
-    """Pictogramme le plus proche du mot *name* (FR ou EN)."""
+    """Pictogramme le plus proche de *name*, avec repli garanti (FR ou EN).
+
+    Conservé pour les appelants qui ont besoin d'une forme quoi qu'il arrive.
+    Le repli est STABLE (même mot → même forme) mais reste arbitraire: le
+    pipeline passe par `resolve_strict` et ne s'y expose jamais.
+    """
     text = (name or "").strip()
     if not text:
         return DEFAULT_PICTOGRAM
-    if text.lower() in PICTOGRAMS:
-        return text.lower()
-    for pictogram, pattern in _COMPILED_RULES:
-        if pattern.search(text):
-            return pictogram
-    # Aucune correspondance: on prend une forme STABLE dérivée du mot, pour que
-    # deux objets différents ne finissent jamais sur la même découpe par défaut.
+    pictogram = resolve_strict(text)
+    if pictogram:
+        return pictogram
     digest = hashlib.sha1(text.lower().encode("utf-8")).digest()[0]
     names = sorted(PICTOGRAMS)
     return names[digest % len(names)]

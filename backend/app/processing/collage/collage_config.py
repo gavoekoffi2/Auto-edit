@@ -73,6 +73,16 @@ PLANNER_TIMEOUT_S = _i("COLLAGE_PLANNER_TIMEOUT", 60)
 MIN_OBJECTS = 3
 MAX_OBJECTS = 6
 
+#: ANCRAGE LEXICAL — la scène doit montrer ce qui est DIT.
+#: Les choses concrètes nommées dans l'extrait (« voiture », « maison »,
+#: « ordinateur ») sont poussées en tête des objets du concept, avant les
+#: objets déduits d'une catégorie. C'est ce qui empêche une phrase sur une
+#: voiture d'être illustrée par un flacon.
+GROUNDING_ENABLED = _flag("COLLAGE_GROUNDING", "1")
+#: Nombre maximal d'objets imposés par le texte (le reste vient du concept:
+#: tout ancrer transformerait la scène en inventaire de mots).
+GROUNDED_OBJECTS_MAX = _i("COLLAGE_GROUNDED_OBJECTS", 2)
+
 # --------------------------------------------------------------------------- #
 # GÉNÉRATION D'IMAGE
 # --------------------------------------------------------------------------- #
@@ -189,6 +199,8 @@ def refresh() -> None:
         "MIN_VIDEO_DURATION": _f("COLLAGE_MIN_VIDEO_DURATION", 20.0),
         "PLANNER_MODEL": os.getenv("COLLAGE_PLANNER_MODEL", "google/gemini-2.5-flash-lite"),
         "PLANNER_ENABLED": _flag("COLLAGE_PLANNER_LLM", "1"),
+        "GROUNDING_ENABLED": _flag("COLLAGE_GROUNDING", "1"),
+        "GROUNDED_OBJECTS_MAX": _i("COLLAGE_GROUNDED_OBJECTS", 2),
         "IMAGE_PROVIDER": os.getenv("COLLAGE_IMAGE_PROVIDER", "").strip().lower(),
         "IMAGE_MODEL": os.getenv("COLLAGE_IMAGE_MODEL", "").strip(),
         "VIDEO_PROVIDER": os.getenv("COLLAGE_VIDEO_PROVIDER", "local").strip().lower(),
