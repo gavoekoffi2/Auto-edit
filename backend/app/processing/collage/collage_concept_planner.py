@@ -170,19 +170,31 @@ class CollageConceptPlanner:
         #    sa catégorie suggère. Cette passe s'applique aux TROIS chemins
         #    (cache, LLM, heuristique) — sinon la précision dépendrait de la
         #    présence d'une clé API.
-        out = [self._anchor_to_speech(concepts[b["id"]], b["text"])
-               for b in prepared if b["id"] in concepts]
+        #    Le planner voit TOUTE la vidéo d'un coup: il en profite pour
+        #    éviter que deux scènes voisines rejouent les mêmes découpes.
+        out: list[CollageConcept] = []
+        previous: set[str] = set()
+        previous_background = ""
+        for beat in prepared:
+            if beat["id"] not in concepts:
+                continue
+            concept = _vary_background(concepts[beat["id"]], previous_background)
+            concept = self._anchor_to_speech(concept, beat["text"], avoid=previous)
+            out.append(concept)
+            previous = {p for p in (collage_lexicon.resolve(o.name)
+                                    for o in concept.objects) if p}
+            previous_background = concept.background_color
         n_llm = sum(1 for c in out if c.planner == "llm")
         logger.info("[collage_planner] %d concept(s) — %d LLM, %d cache/heuristique",
                     len(out), n_llm, len(out) - n_llm)
         return out
 
     # ------------------------------------------------------------------ #
-    def _anchor_to_speech(self, concept: CollageConcept,
-                          text: str) -> CollageConcept:
+    def _anchor_to_speech(self, concept: CollageConcept, text: str,
+                          avoid: Optional[set[str]] = None) -> CollageConcept:
         """Réécrit les objets du concept pour qu'ils collent au texte prononcé.
 
-        Deux corrections, dans cet ordre:
+        Trois corrections, dans cet ordre:
 
         1. **Le sujet passe devant.** Les choses concrètes réellement nommées
            dans l'extrait ouvrent la scène. Une phrase sur une voiture commence
@@ -192,6 +204,13 @@ class CollageConceptPlanner:
            vocabulaire était rendu par une forme tirée au hasard du nom: stable
            d'un rendu à l'autre, mais sans rapport avec le propos. Il est
            désormais remplacé par une chose réellement dite, ou retiré.
+        3. **Variété entre scènes voisines.** *avoid* porte les découpes de la
+           scène précédente. Les objets de REMPLISSAGE qui les répètent passent
+           en fin de scène ou cèdent la place: sur une vidéo d'une minute, voir
+           la même coche et la même étincelle à chaque plan se remarque
+           immédiatement. Les objets ANCRÉS, eux, ne bougent jamais — si la
+           personne reparle de sa voiture, la voiture revient: c'est le sujet,
+           pas du remplissage.
 
         Le profil éditorial garde ses objets abstraits: c'est un modèle d'image
         qui les dessine, il n'est pas limité au vocabulaire des découpes.
@@ -202,20 +221,27 @@ class CollageConceptPlanner:
         drawable_only = not self.profile.allow_ai_images
         anchors = max(0, ccfg.GROUNDED_OBJECTS_MAX)
         entities = collage_lexicon.ground(text, limit=ccfg.MAX_OBJECTS)
+        seen_before = set(avoid or ())
 
         names: list[str] = []
+        deferred: list[str] = []      # objets qui répètent la scène d'avant
         covered: set[str] = set()
 
-        def push(name: str, pictogram: Optional[str]) -> None:
+        def push(name: str, pictogram: Optional[str], *,
+                 anchored: bool = False) -> None:
             name = (name or "").strip()
             key = pictogram or name.lower()
-            if not name or key in covered or len(names) >= ccfg.MAX_OBJECTS:
+            budget = max(ccfg.MIN_OBJECTS, min(ccfg.SCENE_OBJECTS_MAX, ccfg.MAX_OBJECTS))
+            if not name or key in covered or len(names) + len(deferred) >= budget:
                 return
             covered.add(key)
-            names.append(name)
+            if not anchored and pictogram and pictogram in seen_before:
+                deferred.append(name)
+            else:
+                names.append(name)
 
         for entity in entities[:anchors]:
-            push(entity.noun, entity.pictogram)
+            push(entity.noun, entity.pictogram, anchored=True)
 
         spare = list(entities[anchors:])
         for obj in concept.ordered_objects():
@@ -230,17 +256,22 @@ class CollageConceptPlanner:
         # Plancher: une scène de collage a besoin d'un minimum de pièces pour
         # que l'assemblage raconte quelque chose.
         for substitute in spare:
-            if len(names) >= ccfg.MIN_OBJECTS:
+            if len(names) + len(deferred) >= ccfg.MIN_OBJECTS:
                 break
             push(substitute.noun, substitute.pictogram)
-        if len(names) < ccfg.MIN_OBJECTS:
+        if len(names) + len(deferred) < ccfg.MIN_OBJECTS:
             for name in self.profile.default_metaphor[1]:
                 push(name, collage_lexicon.resolve(name))
+
+        # Les répétitions reviennent en fin de scène: elles restent disponibles
+        # (mieux qu'un trou), mais elles ne portent plus le regard.
+        names.extend(deferred)
 
         if names == [obj.name for obj in concept.ordered_objects()]:
             return concept
         return replace(concept,
-                       objects=_build_objects(names, concept.palette, concept.id))
+                       objects=_build_objects(names, concept.palette, concept.id,
+                                              concept.background_color))
 
     # ------------------------------------------------------------------ #
     def _prepare(self, beat: dict, index: int) -> Optional[dict]:
@@ -323,7 +354,7 @@ class CollageConceptPlanner:
             meaning=str(payload.get("meaning") or "").strip()[:240],
             emotion=emotion,
             metaphor=metaphor[:240],
-            objects=_build_objects(names, palette, beat["id"]),
+            objects=_build_objects(names, palette, beat["id"], background),
             background_color=background,
             palette=palette,
             label=_normalize_label(payload.get("label"), beat["text"]),
@@ -360,8 +391,8 @@ class CollageConceptPlanner:
             meaning=beat["excerpt"][:240],
             emotion=emotion,
             metaphor=metaphor,
-            objects=_build_objects(list(names)[: ccfg.MAX_OBJECTS], palette,
-                                   beat["id"]),
+            objects=_build_objects(list(names)[: ccfg.SCENE_OBJECTS_MAX], palette,
+                                   beat["id"], background),
             background_color=background,
             palette=palette,
             label=_normalize_label(None, beat["text"]),
@@ -411,7 +442,8 @@ def _resolve_palette(payload: dict, emotion: Emotion,
 
 
 def _build_objects(names: Sequence[str], palette: Sequence[str],
-                   seed: object = None) -> list[CollageObject]:
+                   seed: object = None,
+                   background: str = "") -> list[CollageObject]:
     """Attribue layout, entrée et papier à chaque objet (ordre = narration).
 
     *seed* (l'id du beat) doit être le MÊME que celui utilisé par
@@ -420,7 +452,7 @@ def _build_objects(names: Sequence[str], palette: Sequence[str],
     """
     cells = layout_for(len(names), seed)
     entrances = ("drop", "slide_left", "scale_pop", "slide_right", "rise", "rotate_in")
-    papers = [c for c in palette if c] or ["#F7F1E3"]
+    papers = _paper_sequence(palette, background, len(names))
     objects: list[CollageObject] = []
     for i, name in enumerate(names[: len(cells)]):
         anchor = cells[i][0]
@@ -429,9 +461,78 @@ def _build_objects(names: Sequence[str], palette: Sequence[str],
             order=i + 1,
             anchor=anchor,
             entrance=entrances[i % len(entrances)],
-            paper_color=papers[i % len(papers)],
+            paper_color=papers[i],
         ))
     return objects
+
+
+def _vary_background(concept: CollageConcept,
+                     previous: str) -> CollageConcept:
+    """Empêche deux scènes CONSÉCUTIVES de partager leur aplat de fond.
+
+    Deux plans jaunes qui s'enchaînent se lisent comme un seul long plan: la
+    coupe disparaît, et le montage perd le battement que le collage est censé
+    apporter. On décale simplement vers la famille de papier suivante, en
+    gardant la palette cohérente avec le nouveau fond.
+    """
+    if not previous or concept.background_color.upper() != previous.upper():
+        return concept
+    for family in ccfg.FALLBACK_PALETTES:
+        if family["background"].upper() == previous.upper():
+            continue
+        palette = list(family["papers"])
+        # Les papiers sont RECALCULÉS: leur lisibilité se mesure contre le
+        # fond, changer l'un sans l'autre produirait des pièces fondues dedans.
+        return replace(
+            concept,
+            background_color=family["background"],
+            palette=palette,
+            objects=_build_objects([o.name for o in concept.ordered_objects()],
+                                   palette, concept.id, family["background"]),
+        )
+    return concept
+
+
+def _paper_sequence(palette: Sequence[str], background: str,
+                    count: int) -> list[str]:
+    """Couleur de papier de chaque pièce, dans l'ordre de narration.
+
+    Trois règles, dans cet ordre de priorité:
+
+    1. **Aucun papier ne se fond dans le fond.** Un papier à la même valeur que
+       l'aplat de fond donne une pièce qui n'existe visuellement pas: il ne
+       reste que le contour crème, et la scène a l'air trouée.
+    2. **Le sujet prend le papier le plus contrasté.** L'objet n°1 est celui
+       dont la phrase parle: c'est lui qu'on doit voir en premier.
+    3. **Deux pièces voisines ne partagent jamais leur papier.** L'ancien
+       tour de rôle (`papers[i % n]`) collait deux feuilles identiques dès que
+       la palette était plus courte que le nombre d'objets.
+    """
+    from .collage_types import hex_to_rgb
+
+    def luma(color: str) -> float:
+        r, g, b = hex_to_rgb(color)
+        return 0.299 * r + 0.587 * g + 0.114 * b
+
+    available = [c for c in dict.fromkeys(palette) if c] or ["#F7F1E3"]
+    back = luma(background) if background else 0.0
+    #: En dessous de cet écart de luminance, papier et fond se confondent.
+    readable = [c for c in available if not background or abs(luma(c) - back) >= 28]
+    if not readable:
+        # Palette entièrement fondue dans le fond: le crème du verrou de style
+        # est le seul repli qui reste lisible sur n'importe quel aplat.
+        readable = ["#F7F1E3" if back < 128 else "#1D1D1B"]
+
+    ranked = sorted(readable, key=lambda c: -abs(luma(c) - back))
+    out: list[str] = []
+    for i in range(count):
+        if i == 0:
+            out.append(ranked[0])
+            continue
+        # On prend la couleur suivante qui n'est pas celle de la pièce d'avant.
+        pool = [c for c in ranked if c != out[-1]] or ranked
+        out.append(pool[(i - 1) % len(pool)])
+    return out
 
 
 def _normalize_label(raw: object, fallback_text: str) -> str:

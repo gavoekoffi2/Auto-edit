@@ -71,7 +71,16 @@ PLANNER_MODEL = os.getenv("COLLAGE_PLANNER_MODEL", "google/gemini-2.5-flash-lite
 PLANNER_ENABLED = _flag("COLLAGE_PLANNER_LLM", "1")
 PLANNER_TIMEOUT_S = _i("COLLAGE_PLANNER_TIMEOUT", 60)
 MIN_OBJECTS = 3
+#: Borne HAUTE du contrat de données (ce qu'un planner a le droit de renvoyer).
 MAX_OBJECTS = 6
+#: Nombre de pièces réellement posées dans une scène. Volontairement plus bas
+#: que MAX_OBJECTS: à six éléments, une scène de collage devient une planche de
+#: timbres où l'œil n'a rien à saisir. Trois ou quatre pièces, dont un sujet
+#: dominant, c'est ce qui fait lire l'idée en deux secondes.
+SCENE_OBJECTS_MAX = _i("COLLAGE_SCENE_OBJECTS", 4)
+#: Taille du sujet par rapport aux pièces d'appui. Sous 1,2 la hiérarchie ne se
+#: voit pas; au-delà de 1,4 la pièce héros mange ses voisines.
+HERO_SCALE = _f("COLLAGE_HERO_SCALE", 1.28)
 
 #: ANCRAGE LEXICAL — la scène doit montrer ce qui est DIT.
 #: Les choses concrètes nommées dans l'extrait (« voiture », « maison »,
@@ -201,6 +210,8 @@ def refresh() -> None:
         "PLANNER_ENABLED": _flag("COLLAGE_PLANNER_LLM", "1"),
         "GROUNDING_ENABLED": _flag("COLLAGE_GROUNDING", "1"),
         "GROUNDED_OBJECTS_MAX": _i("COLLAGE_GROUNDED_OBJECTS", 2),
+        "SCENE_OBJECTS_MAX": _i("COLLAGE_SCENE_OBJECTS", 4),
+        "HERO_SCALE": _f("COLLAGE_HERO_SCALE", 1.28),
         "IMAGE_PROVIDER": os.getenv("COLLAGE_IMAGE_PROVIDER", "").strip().lower(),
         "IMAGE_MODEL": os.getenv("COLLAGE_IMAGE_MODEL", "").strip(),
         "VIDEO_PROVIDER": os.getenv("COLLAGE_VIDEO_PROVIDER", "local").strip().lower(),

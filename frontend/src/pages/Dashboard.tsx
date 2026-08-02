@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   AlertCircle, CheckCircle, ChevronLeft, ChevronRight, Clapperboard, Clock,
-  Download, Film, Loader2, Play, Plus, Sparkles, Trash2,
+  Download, Film, Loader2, Plus, Sparkles, Trash2,
 } from 'lucide-react'
 import UploadZone from '../components/video/UploadZone'
+import VideoThumb from '../components/video/VideoThumb'
+import ConfirmDialog from '../components/ui/ConfirmDialog'
 import Metric from '../components/ui/Metric'
 import Surface from '../components/ui/Surface'
 import { listVideos, deleteVideo } from '../api/videos'
@@ -83,6 +85,8 @@ export default function Dashboard() {
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [pendingDelete, setPendingDelete] = useState<Video | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const navigate = useNavigate()
   const { setUser, user } = useAuthStore()
 
@@ -122,19 +126,22 @@ export default function Dashboard() {
     navigate(`/editor/${video.id}`)
   }
 
-  const handleDelete = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (!confirm('Supprimer cette vidéo ? Cette action est définitive.')) return
-
+  const confirmDelete = async () => {
+    const target = pendingDelete
+    if (!target) return
+    setDeleting(true)
     // Optimistic update
-    setVideos((prev) => prev.filter((v) => v.id !== id))
+    setVideos((prev) => prev.filter((v) => v.id !== target.id))
     try {
-      await deleteVideo(id)
+      await deleteVideo(target.id)
       toast('success', 'Vidéo supprimée')
       setTotal((t) => t - 1)
     } catch {
       toast('error', 'Suppression impossible')
       loadData() // Reload on error
+    } finally {
+      setDeleting(false)
+      setPendingDelete(null)
     }
   }
 
@@ -229,7 +236,7 @@ export default function Dashboard() {
                   index={idx}
                   latestJob={latestJobs[video.id]}
                   onOpen={() => navigate(`/editor/${video.id}`)}
-                  onDelete={(e) => handleDelete(video.id, e)}
+                  onDelete={() => setPendingDelete(video)}
                   onDownload={handleDownload}
                 />
               ))}
@@ -261,6 +268,22 @@ export default function Dashboard() {
           </>
         )}
       </div>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        busy={deleting}
+        title="Supprimer cette vidéo ?"
+        message={
+          <>
+            <span className="font-medium text-dark-200">{pendingDelete?.title}</span>{' '}
+            et les montages qui en découlent seront définitivement effacés.
+            Cette action est irréversible.
+          </>
+        }
+        confirmLabel="Supprimer"
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   )
 }
@@ -273,7 +296,7 @@ function VideoRow(props: {
   index: number
   latestJob?: JobSummary
   onOpen: () => void
-  onDelete: (e: React.MouseEvent) => void
+  onDelete: () => void
   onDownload: (jobId: string, e: React.MouseEvent) => void
 }) {
   const { video, index, latestJob } = props
@@ -308,24 +331,12 @@ function VideoRow(props: {
         }}
         className="group flex cursor-pointer flex-col gap-4 p-3.5 sm:flex-row sm:items-center"
       >
-        {/* vignette */}
-        <div className={`relative h-[72px] w-full shrink-0 overflow-hidden rounded-xl bg-gradient-to-br sm:w-[124px] ${grad}`}>
-          <span className="absolute inset-0 grid place-items-center">
-            <span className="grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/25 backdrop-blur-sm transition-transform duration-500 ease-premium group-hover:scale-110">
-              <Play className="ml-0.5 h-3.5 w-3.5 fill-white/80 text-white/80" />
-            </span>
-          </span>
-          {video.duration_s != null && (
-            <span className="absolute bottom-1.5 right-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
-              {formatDuration(video.duration_s)}
-            </span>
-          )}
-          {done && (
-            <span className="absolute left-1.5 top-1.5 rounded bg-emerald-500/90 px-1.5 py-0.5 text-[9px] font-bold tracking-wider">
-              MONTÉ
-            </span>
-          )}
-        </div>
+        <VideoThumb
+          videoId={video.id}
+          gradient={grad}
+          duration={video.duration_s}
+          badge={done ? 'MONTÉ' : undefined}
+        />
 
         {/* infos */}
         <div className="min-w-0 flex-1">

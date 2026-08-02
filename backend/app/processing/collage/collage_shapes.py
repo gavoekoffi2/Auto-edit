@@ -143,10 +143,15 @@ def _tag(p: Pen, ink, accent) -> None:
 
 
 def _coins(p: Pen, ink, accent) -> None:
-    """Pièces empilées — le coût, l'économie."""
-    for i, y in enumerate((0.74, 0.60, 0.46)):
-        p.ellipse((0.26, y - 0.07, 0.74, y + 0.07), accent if i == 2 else ink)
-    p.ellipse((0.30, 0.30, 0.70, 0.44), accent)
+    """Pièces empilées — le coût, l'économie.
+
+    Une pièce DEBOUT couronne la pile: trois ellipses seules se lisaient comme
+    un empilement de galets, pas comme de la monnaie.
+    """
+    for i, y in enumerate((0.80, 0.68, 0.56)):
+        p.ellipse((0.24, y - 0.072, 0.76, y + 0.072), accent if i % 2 else ink)
+    p.circle(0.50, 0.30, 0.21, ink)
+    p.circle(0.50, 0.30, 0.115, accent)
 
 
 def _hand(p: Pen, ink, accent) -> None:
@@ -293,9 +298,19 @@ def _drop(p: Pen, ink, accent) -> None:
 
 
 def _flame(p: Pen, ink, accent) -> None:
-    """Flamme — ce qui cartonne, la tendance."""
-    p.poly(_teardrop(0.50, 0.06, 0.92, 0.31, lean=0.06), ink)
-    p.poly(_teardrop(0.50, 0.44, 0.86, 0.15, lean=-0.03), accent)
+    """Flamme — ce qui cartonne, la tendance.
+
+    Silhouette ASYMÉTRIQUE à langues latérales, pas une goutte inclinée: la
+    version précédente réutilisait le même `_teardrop` que `drop`, si bien que
+    « ça cartonne » et « hydratation » produisaient exactement la même pièce.
+    Deux idées différentes ne doivent jamais tomber sur le même dessin.
+    """
+    p.poly([(0.50, 0.04), (0.63, 0.25), (0.60, 0.37), (0.73, 0.31),
+            (0.79, 0.52), (0.73, 0.72), (0.58, 0.88), (0.40, 0.88),
+            (0.25, 0.71), (0.23, 0.48), (0.34, 0.33), (0.41, 0.44),
+            (0.42, 0.22)], ink)
+    p.poly([(0.50, 0.40), (0.61, 0.57), (0.57, 0.75), (0.44, 0.80),
+            (0.37, 0.62), (0.46, 0.52)], accent)
 
 
 def _sparkle(p: Pen, ink, accent) -> None:
@@ -990,15 +1005,28 @@ def _torn_mask(w: int, h: int, seed: int, roughness: float = 0.030) -> Image.Ima
 
 
 def _halftone(img: Image.Image, strength: float, seed: int) -> Image.Image:
-    """Trame de points — le rappel « photo noir & blanc tramée » du style."""
+    """Trame de points — le rappel « photo noir & blanc tramée » du style.
+
+    La période suit la TAILLE de la feuille au lieu d'être fixée en pixels. À
+    période constante, une petite pièce recevait une trame fine (correcte) et
+    une grande pièce une trame de gros pois: ça ne se lisait plus comme une
+    impression tramée mais comme un motif à pois. Ici, toute pièce porte le
+    même nombre de points d'un bord à l'autre — c'est ce qui fait « imprimé ».
+    """
     import numpy as np
 
     if strength <= 0:
         return img
     arr = np.array(img, dtype=np.float32)
     ys, xs = np.mgrid[0:img.height, 0:img.width]
+    span = min(img.width, img.height)
+    #: ~52 points sur la largeur d'une pièce, borné pour rester visible sans
+    #: virer au moiré sur les très petites découpes.
+    period = max(3.4, min(9.0, span / 52.0))
+    freq = 2.0 * math.pi / period
     phase = (seed % 7) * 0.4
-    dots = ((np.sin(xs / 3.0 + phase) * np.sin(ys / 3.0 + phase)) > 0.40).astype(np.float32)
+    dots = ((np.sin(xs * freq + phase) * np.sin(ys * freq + phase)) > 0.40
+            ).astype(np.float32)
     arr[..., :3] *= (1.0 - strength * dots[..., None])
     return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGBA")
 

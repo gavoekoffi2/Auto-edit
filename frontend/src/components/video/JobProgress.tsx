@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import ConfirmDialog from '../ui/ConfirmDialog'
 import { getJob, downloadJobResult, cancelJob } from '../../api/jobs'
 import { Loader2, CheckCircle, XCircle, Download, RefreshCw, Ban } from 'lucide-react'
 import { toast } from '../ui/Toast'
@@ -19,6 +20,7 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
   } | null>(null)
   const [downloading, setDownloading] = useState(false)
   const [cancelling, setCancelling] = useState(false)
+  const [askCancel, setAskCancel] = useState(false)
   const [connectionWarning, setConnectionWarning] = useState('')
 
   useEffect(() => {
@@ -101,7 +103,7 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
   }, [jobId])
 
   const handleCancel = useCallback(async () => {
-    if (!window.confirm('Annuler ce traitement vidéo ?')) return
+    setAskCancel(false)
     setCancelling(true)
     try {
       const data = await cancelJob(jobId)
@@ -172,7 +174,7 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
 
       {isAnimating && (
         <button
-          onClick={handleCancel}
+          onClick={() => setAskCancel(true)}
           disabled={cancelling}
           className="btn-secondary mt-4 inline-flex items-center gap-2 !px-4 !py-2 text-xs"
         >
@@ -194,6 +196,17 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={askCancel}
+        busy={cancelling}
+        title="Annuler ce montage ?"
+        message="Le rendu en cours sera interrompu. Tu pourras le relancer, mais la progression déjà faite sera perdue."
+        confirmLabel="Annuler le montage"
+        cancelLabel="Laisser tourner"
+        onConfirm={handleCancel}
+        onCancel={() => setAskCancel(false)}
+      />
 
       {job.status === 'completed' && (
         <button

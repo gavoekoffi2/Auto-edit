@@ -24,6 +24,7 @@ vérité — pas besoin de segmentation sémantique.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
 import os
@@ -173,14 +174,26 @@ class LocalAssembleRenderer:
             # collé » et pas « icône »), mais elle doit rester DANS sa zone:
             # au-delà, les pièces voisines se recouvrent et la scène devient
             # illisible. PIECE_SPREAD est calibré sur le gabarit le plus serré.
-            size = max(48, int(radius * self.width * PIECE_SPREAD))
-            w = h = size
+            # HIÉRARCHIE. La cellule héros est déjà la plus grande du gabarit,
+            # mais l'écart de rayon entre cellules est trop faible pour se voir:
+            # à six pièces de taille voisine, la scène devient une planche de
+            # timbres. Le sujet est donc explicitement grossi, et les appuis
+            # légèrement réduits — l'encombrement total reste le même.
+            seed = _piece_seed(concept.id, obj.name, obj.order)
+            hero = i == 0
+            spread = PIECE_SPREAD * (ccfg.HERO_SCALE if hero else 0.92)
+            size = max(48, int(radius * self.width * spread))
+            # Feuilles jamais toutes carrées: une main qui découpe du papier ne
+            # produit pas quatre carrés identiques. On RÉDUIT un côté (jamais on
+            # n'agrandit), pour rester dans l'encombrement calibré de la cellule.
+            ratio = 0.84 + (seed % 17) / 100.0
+            w, h = (size, max(48, int(size * ratio))) if seed % 2 \
+                else (max(48, int(size * ratio)), size)
             paper = hex_to_rgb(obj.paper_color) + (255,)
             # Un papier très sombre a besoin d'une encre claire pour rester lisible.
             glyph_ink = ink if _luma(paper) > 110 else hex_to_rgb("#F7F1E3") + (255,)
             accent = hex_to_rgb(
                 _accent_for(concept, obj.paper_color, glyph_ink)) + (255,)
-            seed = (abs(hash((concept.id, obj.name, obj.order))) % 99991) + 1
             # Résolution STRICTE: un objet que le vocabulaire ne connaît pas ne
             # doit pas être remplacé par une découpe tirée au hasard de son nom
             # — on parlerait d'une voiture et la scène montrerait un flacon. Le
@@ -191,13 +204,22 @@ class LocalAssembleRenderer:
                 logger.info("[collage_video] « %s » hors vocabulaire — forme neutre",
                             obj.name[:40])
                 pictogram = collage_shapes.DEFAULT_PICTOGRAM
+            # Inclinaison seedée plutôt qu'alternée: ±4,5° en alternance stricte
+            # produit une régularité de gabarit, pas une main qui pose du
+            # papier. On garde un minimum de 2,5° — une pièce parfaitement
+            # droite au milieu de pièces inclinées se lit comme une erreur.
+            tilt = _seeded_tilt(seed)
             layer = collage_shapes.render_cutout(
                 pictogram, w, h,
                 paper_color=paper, ink_color=glyph_ink, accent_color=accent,
-                seed=seed, tilt=(-4.5 if i % 2 else 4.0),
+                seed=seed, tilt=tilt,
             )
-            layer = _add_keyline(layer, layer.split()[3])
-            layer = _add_shadow(layer)
+            # La profondeur suit la TAILLE: une grande pièce posée sur le même
+            # millimètre d'ombre qu'une petite écrase la hiérarchie que le
+            # layout vient d'établir.
+            depth = max(w, h) / max(1.0, self.width * 0.34)
+            layer = _add_keyline(layer, layer.split()[3], scale=depth)
+            layer = _add_shadow(layer, scale=depth)
             x = int(cx * self.width - layer.width / 2)
             y = int(cy * self.height - layer.height / 2)
             pieces.append(_Piece(layer, x, y, obj.entrance, obj.order))
@@ -530,9 +552,27 @@ def _with_opacity(img: Image.Image, opacity: float) -> Image.Image:
     return Image.merge("RGBA", (r, g, b, a.point(lambda v: int(v * opacity))))
 
 
-def _add_keyline(layer: Image.Image, mask: Image.Image) -> Image.Image:
+def _piece_seed(concept_id: str, name: str, order: int) -> int:
+    """Graine STABLE d'une pièce.
+
+    `hash()` de Python est randomisé par process (PYTHONHASHSEED): la même
+    scène rendue deux fois n'aurait pas les mêmes inclinaisons ni les mêmes
+    bords déchirés, ce qui casse la promesse de rendu reproductible.
+    """
+    digest = hashlib.sha1(f"{concept_id}|{name}|{order}".encode("utf-8")).digest()
+    return int.from_bytes(digest[:4], "big") % 99991 + 1
+
+
+def _seeded_tilt(seed: int) -> float:
+    """Inclinaison d'une pièce, stable pour une graine donnée (±2,5° à ±7°)."""
+    magnitude = 2.5 + (seed % 45) / 10.0
+    return magnitude if seed % 2 else -magnitude
+
+
+def _add_keyline(layer: Image.Image, mask: Image.Image,
+                 scale: float = 1.0) -> Image.Image:
     """Contour crème autour de la découpe — signature du style."""
-    width = max(1, ccfg.KEYLINE_WIDTH)
+    width = max(1, int(round(ccfg.KEYLINE_WIDTH * _clamp(scale, 0.6, 1.5))))
     grown = mask.filter(ImageFilter.MaxFilter(_odd(width * 2 + 1)))
     edge = Image.fromarray(
         np.clip(np.array(grown, dtype=np.int16) - np.array(mask, dtype=np.int16),
@@ -545,9 +585,18 @@ def _add_keyline(layer: Image.Image, mask: Image.Image) -> Image.Image:
     return out
 
 
-def _add_shadow(layer: Image.Image) -> Image.Image:
-    """Ombre portée courte: la pièce est posée à quelques millimètres du fond."""
-    offset = max(0, ccfg.SHADOW_OFFSET)
+def _clamp(value: float, low: float, high: float) -> float:
+    return max(low, min(high, value))
+
+
+def _add_shadow(layer: Image.Image, scale: float = 1.0) -> Image.Image:
+    """Ombre portée courte: la pièce est posée à quelques millimètres du fond.
+
+    *scale* suit la taille de la pièce: une grande feuille est posée « plus
+    haut » qu'une petite, ce qui donne au collage une vraie hiérarchie de plans
+    au lieu d'un aplat d'autocollants tous à la même altitude.
+    """
+    offset = max(0, int(round(ccfg.SHADOW_OFFSET * _clamp(scale, 0.55, 1.6))))
     pad = offset * 2
     canvas = Image.new("RGBA", (layer.width + pad, layer.height + pad), (0, 0, 0, 0))
     shadow = Image.new("RGBA", layer.size, (24, 18, 12, 0))

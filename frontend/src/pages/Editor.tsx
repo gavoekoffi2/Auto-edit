@@ -8,6 +8,7 @@ import {
 import VideoPlayer from '../components/video/VideoPlayer'
 import Timeline from '../components/video/Timeline'
 import JobProgress from '../components/video/JobProgress'
+import EnginePreview from '../components/video/EnginePreview'
 import Surface from '../components/ui/Surface'
 import Toggle from '../components/ui/Toggle'
 import { getVideo, getStreamUrl } from '../api/videos'
@@ -671,6 +672,9 @@ function EngineRail(props: {
 }) {
   const railRef = useRef<HTMLDivElement>(null)
   const [edges, setEdges] = useState({ start: false, end: false })
+  // Le survol pilote la miniature: les pièces de papier se posent, ce qui
+  // montre le mouvement du moteur avant même de lancer un rendu.
+  const [hovered, setHovered] = useState<string | null>(null)
 
   const syncEdges = useCallback(() => {
     const el = railRef.current
@@ -710,6 +714,10 @@ function EngineRail(props: {
             <button
               key={mode.id}
               onClick={() => props.onSelect(mode.id)}
+              onMouseEnter={() => setHovered(mode.id)}
+              onMouseLeave={() => setHovered((id) => (id === mode.id ? null : id))}
+              onFocus={() => setHovered(mode.id)}
+              onBlur={() => setHovered((id) => (id === mode.id ? null : id))}
               aria-pressed={selected}
               // `flex-1` + `basis` : quand la famille tient dans la largeur, les
               // cartes s'étalent au lieu de laisser un vide à droite; dès qu'il
@@ -730,10 +738,14 @@ function EngineRail(props: {
                 />
               )}
 
-              <div className="flex items-start justify-between gap-2">
-                <span className="text-[26px] leading-none">{mode.icon}</span>
+              <div className="flex items-start justify-between gap-3">
+                <EnginePreview
+                  modeId={mode.id}
+                  family={mode.family}
+                  selected={selected || hovered === mode.id}
+                />
                 <span
-                  className={`grid h-5 w-5 place-items-center rounded-full transition-all duration-300 ${
+                  className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full transition-all duration-300 ${
                     selected
                       ? 'scale-100 bg-primary-500 text-white'
                       : 'scale-90 border border-white/12 text-transparent'

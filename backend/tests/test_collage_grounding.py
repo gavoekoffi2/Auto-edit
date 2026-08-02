@@ -91,6 +91,42 @@ def test_every_library_object_is_actually_drawable():
 # --------------------------------------------------------------------------- #
 # 2. Un mot inconnu n'invente plus une illustration
 # --------------------------------------------------------------------------- #
+#: Paires volontairement jumelles: ce sont des OPPOSÉS sémantiques, et le fait
+#: qu'elles se ressemblent (même disque, marque différente) est ce qui les rend
+#: lisibles l'une par rapport à l'autre.
+_INTENTIONAL_TWINS = {frozenset({"check", "cross"})}
+
+
+def test_no_two_cutouts_look_alike():
+    """Deux idées différentes ne doivent jamais donner la même image.
+
+    C'est la version généralisée du bug « flamme = goutte »: les deux
+    dérivaient du même contour, si bien que « ça cartonne » et « hydratation »
+    produisaient exactement la même pièce. Ce test compare le rendu réel de
+    chaque découpe et refuse toute nouvelle paire indistinguable.
+    """
+    import numpy as np
+    from PIL import Image
+
+    rendered = {}
+    for name in collage_shapes.pictogram_names():
+        canvas = Image.new("RGBA", (72, 72), (0, 0, 0, 255))
+        collage_shapes.draw_pictogram(name, canvas,
+                                      (255, 255, 255, 255), (140, 140, 140, 255))
+        rendered[name] = np.asarray(canvas.convert("L"), dtype=np.float32) / 255.0
+
+    names = sorted(rendered)
+    too_close = []
+    for i, first in enumerate(names):
+        for second in names[i + 1:]:
+            if frozenset({first, second}) in _INTENTIONAL_TWINS:
+                continue
+            distance = float(np.abs(rendered[first] - rendered[second]).mean())
+            if distance < 0.05:
+                too_close.append((round(distance, 4), first, second))
+    assert too_close == [], f"découpes indistinguables: {too_close}"
+
+
 def test_unknown_word_resolves_to_nothing_rather_than_to_anything():
     assert collage_shapes.resolve_strict("zorglub") is None
     assert lexicon.resolve("") is None
@@ -161,6 +197,61 @@ def test_grounding_can_be_switched_off(monkeypatch):
     finally:
         monkeypatch.delenv("COLLAGE_GROUNDING", raising=False)
         ccfg.refresh()
+
+
+# --------------------------------------------------------------------------- #
+# 3bis. La composition: une scène qui se LIT en deux secondes
+# --------------------------------------------------------------------------- #
+def test_a_scene_never_becomes_a_sheet_of_stamps():
+    """Au-delà de quatre pièces, l'œil n'a plus de point d'entrée."""
+    concept = _plan_one("ma voiture, ma maison, mon ordinateur, mon téléphone, "
+                        "mon café et mes lunettes")
+    assert ccfg.MIN_OBJECTS <= len(concept.objects) <= ccfg.SCENE_OBJECTS_MAX
+
+
+def test_the_subject_gets_the_biggest_cell():
+    """Le sujet doit dominer: c'est lui qui porte le sens de la scène."""
+    concept = _plan_one("ma voiture me coûte trop cher en essence")
+    cells = concept.layout()
+    assert cells[0][3] == max(cell[3] for cell in cells)
+
+
+def test_the_rendered_subject_is_the_largest_piece():
+    """La hiérarchie du gabarit doit survivre jusqu'au rendu."""
+    from app.processing.collage.collage_video_service import LocalAssembleRenderer
+
+    concept = _plan_one("ma voiture me coûte trop cher en essence")
+    pieces = LocalAssembleRenderer(width=360, height=640, fps=12)._pictogram_pieces(concept)
+    areas = [piece.layer.width * piece.layer.height for piece in pieces]
+    assert areas[0] == max(areas)
+    assert areas[0] > sorted(areas)[-2] * 1.3       # dominance VISIBLE
+
+
+def test_two_consecutive_scenes_never_share_a_background():
+    """Deux aplats identiques qui s'enchaînent effacent la coupe."""
+    planner = CollageConceptPlanner(use_llm=False,
+                                    profile=collage_profiles.UGC_PRODUCT, cache=None)
+    concepts = planner.plan([
+        _beat("des milliers d'avis clients recommandent ce produit", "a"),
+        _beat("tout le monde le recommande autour de moi", "b"),
+        _beat("les avis parlent d'eux-mêmes franchement", "c"),
+    ])
+    backgrounds = [c.background_color for c in concepts]
+    assert all(a != b for a, b in zip(backgrounds, backgrounds[1:])), backgrounds
+
+
+def test_filler_cutouts_do_not_repeat_from_one_scene_to_the_next():
+    """Le remplissage tourne; seul le SUJET a le droit de revenir."""
+    planner = CollageConceptPlanner(use_llm=False,
+                                    profile=collage_profiles.UGC_PRODUCT, cache=None)
+    concepts = planner.plan([
+        _beat("des milliers d'avis clients recommandent ce produit", "a"),
+        _beat("tout le monde le recommande autour de moi", "b"),
+    ])
+    first = [collage_shapes.resolve_strict(o.name) for o in concepts[0].ordered_objects()]
+    second = [collage_shapes.resolve_strict(o.name) for o in concepts[1].ordered_objects()]
+    # La pièce d'ouverture de la 2e scène ne rejoue pas celle de la 1re.
+    assert second[0] != first[0]
 
 
 # --------------------------------------------------------------------------- #

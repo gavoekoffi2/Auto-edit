@@ -58,6 +58,18 @@ plusieurs minutes n'affichait qu'un pourcentage nu.
 | `PageTransition` | Entrée d'écran discrète (10 px, 320 ms), réduite à un fondu sous `prefers-reduced-motion`. |
 | `.ring-progress` | Anneau de progression en `conic-gradient` masqué : aucun nœud DOM supplémentaire, animation gratuite pour le compositeur. |
 | `.bar-fill[data-live]` | Liseré qui court sur la barre pendant un rendu — la différence entre « ça travaille » et « c'est figé ». |
+| `ConfirmDialog` | Remplace `window.confirm()`. Focus retenu, Échap, action destructrice distincte (`.btn-danger`), et la main rendue pendant l'appel réseau. |
+| `VideoThumb` | Vraie image extraite de la vidéo, chargée seulement à l'approche du viewport, avec repli silencieux sur un dégradé. |
+| `EnginePreview` | Miniature CSS de ce que produit un moteur: les pièces de papier se posent au survol — le mouvement réel du rendu, pas un emoji. |
+
+### Pourquoi remplacer `window.confirm()`
+
+Ce n'est pas qu'une question de style. La boîte native impose l'apparence du
+système d'exploitation au milieu du produit, **bloque le fil d'exécution** du
+navigateur, et sur mobile affiche le nom de domaine en gros au-dessus du
+message — l'utilisateur a l'impression que le site *tente* quelque chose plutôt
+que de lui poser une question. Le focus part sur **Annuler**: une frappe
+« Entrée » réflexe ne doit jamais supprimer une vidéo.
 
 ## 5. Pièges rencontrés (à ne pas réintroduire)
 

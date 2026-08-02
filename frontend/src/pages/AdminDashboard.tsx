@@ -24,6 +24,7 @@ import {
   type AdminStats,
   type AdminUser,
 } from '../api/admin'
+import ConfirmDialog from '../components/ui/ConfirmDialog'
 import { toast } from '../components/ui/Toast'
 import { useAuthStore } from '../store/authStore'
 
@@ -92,6 +93,8 @@ export default function AdminDashboard() {
   const [fullName, setFullName] = useState('')
   const [initialPassword, setInitialPassword] = useState('')
   const [lastTemporaryPassword, setLastTemporaryPassword] = useState<string | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<AdminUser | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const filtered = useMemo(() => users, [users])
 
@@ -179,8 +182,10 @@ export default function AdminDashboard() {
     }
   }
 
-  async function removeUser(user: AdminUser) {
-    if (!confirm(`Supprimer définitivement le compte ${user.email} ? Cette action supprime aussi ses vidéos/jobs.`)) return
+  async function removeUser() {
+    const user = pendingDelete
+    if (!user) return
+    setDeleting(true)
     try {
       await deleteUser(user.id)
       setUsers((prev) => prev.filter((u) => u.id !== user.id))
@@ -188,6 +193,9 @@ export default function AdminDashboard() {
       toast('success', 'Compte supprimé')
     } catch (err: any) {
       toast('error', err?.response?.data?.detail || 'Suppression impossible')
+    } finally {
+      setDeleting(false)
+      setPendingDelete(null)
     }
   }
 
@@ -334,7 +342,7 @@ export default function AdminDashboard() {
                     {user.is_active ? <Ban className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
                     {user.is_active ? 'Bloquer' : 'Réactiver'}
                   </button>
-                  <button onClick={() => removeUser(user)} className="text-red-300 hover:text-red-200 border border-red-500/30 rounded-xl px-3 py-2 flex items-center gap-1">
+                  <button onClick={() => setPendingDelete(user)} className="text-red-300 hover:text-red-200 border border-red-500/30 rounded-xl px-3 py-2 flex items-center gap-1">
                     <Trash2 className="w-4 h-4" /> Supprimer
                   </button>
                 </div>
@@ -343,6 +351,22 @@ export default function AdminDashboard() {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        busy={deleting}
+        title="Supprimer ce compte ?"
+        message={
+          <>
+            Le compte <span className="font-medium text-dark-200">{pendingDelete?.email}</span>,
+            ses vidéos et ses montages seront définitivement effacés.
+            Cette action est irréversible.
+          </>
+        }
+        confirmLabel="Supprimer le compte"
+        onConfirm={removeUser}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   )
 }

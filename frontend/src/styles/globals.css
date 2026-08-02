@@ -119,6 +119,19 @@
     pointer-events: none;
   }
   .btn-accent:hover::after { transform: translateX(130%); }
+  /* Action destructrice. Ni dégradé ni éclat: on ne rend pas désirable un
+     bouton qui efface quelque chose. Le rouge est plein pour qu'il ne puisse
+     pas être confondu avec une action secondaire. */
+  .btn-danger {
+    @apply relative rounded-xl px-6 py-2.5 font-semibold text-white;
+    background: linear-gradient(180deg, #f04b4b 0%, #d32323 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 10px 28px -14px rgba(220, 38, 38, 0.9);
+    transition: transform 0.24s var(--ease-premium), filter 0.24s;
+  }
+  .btn-danger:hover { filter: brightness(1.08); }
+  .btn-danger:active { transform: scale(0.985); }
+  .btn-danger:disabled { @apply cursor-not-allowed opacity-45; filter: saturate(0.5); transform: none; }
+
   .btn-primary:disabled, .btn-secondary:disabled, .btn-accent:disabled {
     @apply cursor-not-allowed opacity-45;
     filter: saturate(0.5);

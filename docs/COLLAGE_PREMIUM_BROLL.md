@@ -254,6 +254,29 @@ n'est pas une montre, « c'est cher **car** je l'ai importé » n'est pas une
 voiture, « **son** produit » n'est pas du son, « **au cours de** » n'est pas un
 cours, « le **lien** en bio » n'est pas une chaîne.
 
+### 4.1ter La composition — une scène qui se LIT en deux secondes
+
+L'ancrage règle *ce qu'on montre*; ces règles règlent *comment on le montre*.
+Toutes ont été décidées en regardant des rendus, pas du code.
+
+| Règle | Le défaut qu'elle corrige |
+|---|---|
+| **Quatre pièces au plus** (`COLLAGE_SCENE_OBJECTS`) | À six éléments de taille voisine, la scène devenait une planche de timbres: l'œil n'avait aucun point d'entrée. Le contrat de données accepte toujours six objets (`MAX_OBJECTS`), mais le rendu n'en pose que quatre. |
+| **Le sujet reçoit la plus grande cellule**, puis un facteur `COLLAGE_HERO_SCALE` | La cellule héros existait déjà, mais l'écart de rayon entre cellules était trop faible pour se voir. La voiture dont on parlait faisait la taille de la coche décorative à côté. |
+| **La profondeur suit la taille** | Ombre et contour à taille fixe: toutes les pièces semblaient posées à la même altitude, ce qui annulait la hiérarchie que le layout venait d'établir. |
+| **Papiers harmonisés** | Le tour de rôle `papers[i % n]` collait deux feuilles identiques côte à côte et laissait passer un papier de la même valeur que le fond — la pièce disparaissait, il ne restait que son contour crème. Désormais: aucun papier fondu dans le fond, le sujet prend le plus contrasté, et deux voisines ne partagent jamais leur couleur. |
+| **Fonds alternés entre scènes voisines** | Deux plans jaunes qui s'enchaînent se lisent comme un seul long plan: la coupe disparaît. |
+| **Découpes non répétées d'une scène à l'autre** | Sur une vidéo d'une minute, revoir la même coche et la même étincelle à chaque plan se remarque immédiatement. Seul le SUJET a le droit de revenir — s'il reparle de sa voiture, la voiture revient. |
+| **Feuilles d'aspects variés, inclinaison seedée** | Quatre carrés identiques inclinés en alternance stricte font un gabarit, pas une main qui pose du papier. |
+| **Trame proportionnelle à la pièce** | À période fixe en pixels, une grande pièce recevait de gros pois au lieu d'une trame d'impression. |
+
+Deux découpes ne doivent jamais se ressembler: `flame` et `drop` dérivaient du
+même contour, si bien que « ça cartonne » et « hydratation » produisaient
+exactement la même image. Un test compare désormais le rendu réel des 92
+découpes deux à deux et refuse toute nouvelle paire indistinguable — à
+l'exception de `check`/`cross`, jumelles **volontaires** (mêmes disques,
+marques opposées).
+
 ### 4.2 `CollagePromptBuilder` — le verrou de style
 
 Une constante, une version. Tout changement de `STYLE_LOCK` impose
@@ -471,6 +494,8 @@ design). Les deux verrous sont volontairement redondants.
 | `COLLAGE_MAX_SHARE` | *(profil : 0.5 / 1.0 / 0.7)* | part des beats routés en collage |
 | `COLLAGE_GROUNDING` | `1` | ancrage lexical (§ 4.1bis). `0` = comportement historique |
 | `COLLAGE_GROUNDED_OBJECTS` | `2` | objets imposés par le texte prononcé |
+| `COLLAGE_SCENE_OBJECTS` | `4` | pièces réellement posées par scène (§ 4.1ter) |
+| `COLLAGE_HERO_SCALE` | `1.28` | taille du sujet par rapport aux appuis |
 | `COLLAGE_QUALITY_MIN_SCORE` | `62` | seuil d'acceptation |
 | `COLLAGE_QUALITY_MAX_ATTEMPTS` | `2` | `1` désactive la relance |
 | `COLLAGE_CACHE_ENABLED` / `_TTL_DAYS` | `1` / `30` | cache concepts + images |
