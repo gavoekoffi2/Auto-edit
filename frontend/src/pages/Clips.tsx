@@ -190,27 +190,34 @@ export default function Clips() {
   const shownClip = okClips.find((c) => c.index === previewClip) ?? null
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-6 flex items-center gap-4">
+    <div className="mx-auto max-w-5xl py-8 shell-gutter sm:py-10">
+      <div className="mb-6 flex items-start gap-4">
         <button onClick={() => navigate('/dashboard')}
-          className="text-dark-400 hover:text-white transition-colors" aria-label="Retour au dashboard">
-          <ArrowLeft className="w-5 h-5" />
+          className="mt-1 grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/[0.08] text-dark-400 transition-colors hover:border-white/25 hover:text-white"
+          aria-label="Retour au studio">
+          <ArrowLeft className="h-4 w-4" />
         </button>
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Scissors className="w-6 h-6 text-primary-400" />
+          <p className="eyebrow">Découpage automatique</p>
+          <h1 className="mt-2 flex items-center gap-2.5 text-title font-bold">
+            <Scissors className="h-6 w-6 text-primary-300" />
             Vidéo longue → Clips
           </h1>
-          <p className="text-dark-400 text-sm">
+          <p className="mt-2 max-w-xl text-sm leading-relaxed text-dark-400">
             Importe une vidéo (URL publique ou fichier). L'IA propose les meilleurs
             extraits, tu choisis ceux à monter, puis tu télécharges tes clips.
           </p>
         </div>
       </div>
 
+      {/* Fil d'étapes: un parcours en quatre temps qui n'annonçait nulle part
+          où l'on en était. Savoir qu'il reste deux étapes change la patience
+          qu'on accorde à l'analyse. */}
+      <Stepper phase={phase} />
+
       {/* ================= Étape 1 : import ================= */}
       {phase === 'input' && (
-        <div className="card mb-6 space-y-5">
+        <div className="panel mb-6 space-y-5">
           <div>
             <label className="block text-sm font-medium text-dark-300 mb-2">
               URL de la vidéo source
@@ -236,9 +243,9 @@ export default function Clips() {
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="h-px bg-dark-700 flex-1" />
+            <div className="h-px flex-1 bg-white/[0.07]" />
             <span className="text-xs text-dark-500">ou</span>
-            <div className="h-px bg-dark-700 flex-1" />
+            <div className="h-px flex-1 bg-white/[0.07]" />
           </div>
 
           <div>
@@ -256,8 +263,8 @@ export default function Clips() {
                 : <><Upload className="w-4 h-4" /> Importer un fichier depuis cet appareil</>}
             </button>
             {uploadPct !== null && (
-              <div className="mt-2 h-1.5 bg-dark-800 rounded-full overflow-hidden">
-                <div className="h-full bg-primary-500 transition-all" style={{ width: `${uploadPct}%` }} />
+              <div className="bar-track mt-2 h-1.5">
+                <div className="bar-fill" data-live="true" style={{ width: `${Math.max(uploadPct, 3)}%` }} />
               </div>
             )}
             <p className="text-xs text-dark-500 mt-2">
@@ -265,10 +272,10 @@ export default function Clips() {
             </p>
           </div>
 
-          <label className="flex items-start gap-2 text-sm text-dark-300 cursor-pointer">
+          <label className="flex cursor-pointer items-start gap-2.5 text-sm leading-relaxed text-dark-300">
             <input type="checkbox" checked={rightsConfirmed}
               onChange={(e) => setRightsConfirmed(e.target.checked)}
-              className="mt-0.5 accent-primary-500" />
+              className="mt-0.5 h-4 w-4 shrink-0 rounded accent-primary-500" />
             <span>
               Je confirme avoir les droits nécessaires sur cette vidéo (c'est ma
               vidéo, ou j'ai l'autorisation de son auteur).
@@ -287,10 +294,10 @@ export default function Clips() {
                     }))
                 ).map((m) => (
                   <button key={m.id} onClick={() => setSelectedStyle(m.id)}
-                    className={`w-full text-left px-3 py-2 rounded-lg border text-sm flex items-center gap-2 transition-colors ${
+                    className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm transition-all duration-300 ease-premium ${
                       selectedStyle === m.id
-                        ? 'border-primary-500 bg-primary-500/10 text-white'
-                        : 'border-dark-700 bg-dark-800/60 text-dark-300 hover:border-dark-500'
+                        ? 'border-primary-500/50 bg-primary-500/[0.10] text-white'
+                        : 'border-white/[0.07] bg-white/[0.02] text-dark-400 hover:border-white/20 hover:text-dark-200'
                     }`}>
                     <span>{m.icon}</span>
                     <span className="truncate">{m.name}</span>
@@ -304,7 +311,7 @@ export default function Clips() {
               </label>
               <input type="range" min={1} max={10} value={maxClips}
                 onChange={(e) => setMaxClips(Number(e.target.value))}
-                className="w-full accent-primary-500" />
+                className="range-premium w-full" />
               <p className="text-xs text-dark-500 mt-2">
                 Tu choisiras ensuite lesquels monter — rien n'est rendu sans ta
                 sélection, et le maximum réel dépend de ton plan.
@@ -316,7 +323,7 @@ export default function Clips() {
 
       {/* ================= Analyse en cours ================= */}
       {phase === 'analyzing' && analyzeJobId && (
-        <div className="card mb-6">
+        <div className="mb-6">
           <JobProgress jobId={analyzeJobId} onComplete={handleAnalyzeComplete} />
         </div>
       )}
@@ -325,7 +332,7 @@ export default function Clips() {
       {phase === 'selecting' && (
         <div className="space-y-6">
           {previewMoment !== null && moments[previewMoment] && sourceVideoId && (
-            <div className="card">
+            <div className="panel">
               <h2 className="font-semibold mb-3 flex items-center gap-2">
                 <Play className="w-4 h-4 text-primary-400" />
                 Aperçu de l'extrait : {moments[previewMoment].title}
@@ -362,7 +369,7 @@ export default function Clips() {
 
             <div className="space-y-3">
               {moments.map((m, i) => (
-                <div key={i} className={`card !p-4 ${m.selected ? 'border-primary-500/40' : 'opacity-70'}`}>
+                <div key={i} className={`panel !p-4 ${m.selected ? 'border-primary-500/40' : 'opacity-70'}`}>
                   <div className="flex items-start gap-3">
                     <button onClick={() => updateMoment(i, { selected: !m.selected })}
                       className="mt-1 text-primary-400" aria-label="Sélectionner cet extrait">
@@ -373,7 +380,7 @@ export default function Clips() {
                         <Pencil className="w-3.5 h-3.5 text-dark-500 shrink-0" />
                         <input value={m.title}
                           onChange={(e) => updateMoment(i, { title: e.target.value })}
-                          className="bg-transparent border-b border-dark-700 focus:border-primary-500 outline-none font-semibold w-full text-sm py-0.5"
+                          className="w-full border-b border-white/[0.09] bg-transparent py-0.5 text-sm font-semibold outline-none transition-colors focus:border-primary-500"
                           maxLength={120} />
                       </div>
                       {m.hook && (
@@ -403,13 +410,13 @@ export default function Clips() {
                           Début
                           <input type="number" step={1} min={0} value={Math.round(m.start)}
                             onChange={(e) => updateMoment(i, { start: Math.max(0, Number(e.target.value)) })}
-                            className="w-16 bg-dark-800 border border-dark-700 rounded px-1.5 py-0.5 text-white" />
+                            className="w-16 rounded-lg border border-white/[0.08] bg-black/30 px-1.5 py-0.5 tabular-nums text-white outline-none focus:border-primary-500" />
                         </label>
                         <label className="inline-flex items-center gap-1">
                           Fin
                           <input type="number" step={1} min={0} value={Math.round(m.end)}
                             onChange={(e) => updateMoment(i, { end: Math.max(0, Number(e.target.value)) })}
-                            className="w-16 bg-dark-800 border border-dark-700 rounded px-1.5 py-0.5 text-white" />
+                            className="w-16 rounded-lg border border-white/[0.08] bg-black/30 px-1.5 py-0.5 tabular-nums text-white outline-none focus:border-primary-500" />
                         </label>
                       </div>
                     </div>
@@ -438,7 +445,7 @@ export default function Clips() {
 
       {/* ================= Rendu en cours ================= */}
       {phase === 'rendering' && renderJobId && (
-        <div className="card mb-6">
+        <div className="mb-6">
           <JobProgress jobId={renderJobId} onComplete={handleRenderComplete} />
         </div>
       )}
@@ -447,7 +454,7 @@ export default function Clips() {
       {phase === 'done' && clips !== null && (
         <div className="space-y-6">
           {shownClip && renderJobId && (
-            <div className="card">
+            <div className="panel">
               <h2 className="font-semibold mb-3 flex items-center gap-2">
                 <Play className="w-4 h-4 text-primary-400" />
                 Aperçu : {shownClip.title}
@@ -467,7 +474,7 @@ export default function Clips() {
             </h2>
             <div className="grid sm:grid-cols-2 gap-4">
               {(clips ?? []).map((clip) => (
-                <div key={clip.index} className={`card !p-4 ${clip.output_path ? '' : 'opacity-60'}`}>
+                <div key={clip.index} className={`panel !p-4 ${clip.output_path ? '' : 'opacity-60'}`}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-semibold truncate">{clip.title}</p>
@@ -516,11 +523,64 @@ export default function Clips() {
             </div>
           </div>
 
-          <button onClick={reset} className="btn-secondary">
+          <button onClick={reset} className="btn-secondary text-sm">
             Transformer une autre vidéo
           </button>
         </div>
       )}
     </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Fil d'étapes du parcours clips                                              */
+/* -------------------------------------------------------------------------- */
+const STEPS: Array<{ id: Phase | 'render'; label: string }> = [
+  { id: 'input', label: 'Importer' },
+  { id: 'selecting', label: 'Choisir les extraits' },
+  { id: 'render', label: 'Monter' },
+  { id: 'done', label: 'Télécharger' },
+]
+
+/** Index d'étape de chaque phase — deux phases d'attente partagent l'étape
+ *  qu'elles préparent, pour que le fil n'ait pas huit crans. */
+const PHASE_STEP: Record<Phase, number> = {
+  input: 0, analyzing: 0, selecting: 1, rendering: 2, done: 3,
+}
+
+function Stepper({ phase }: { phase: Phase }) {
+  const current = PHASE_STEP[phase]
+  return (
+    <ol className="mb-6 flex items-center gap-2" aria-label="Progression">
+      {STEPS.map((step, index) => {
+        const done = index < current
+        const active = index === current
+        return (
+          <li key={step.id} className="flex min-w-0 flex-1 items-center gap-2">
+            <span
+              className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-bold transition-colors duration-300 ${
+                done
+                  ? 'bg-emerald-400/15 text-emerald-300'
+                  : active
+                    ? 'bg-brand-sweep text-white'
+                    : 'border border-white/10 text-dark-600'
+              }`}
+            >
+              {done ? '✓' : index + 1}
+            </span>
+            <span
+              className={`hidden truncate text-xs font-medium sm:block ${
+                active ? 'text-white' : done ? 'text-dark-400' : 'text-dark-600'
+              }`}
+            >
+              {step.label}
+            </span>
+            {index < STEPS.length - 1 && (
+              <span className="h-px min-w-4 flex-1 bg-white/[0.08]" aria-hidden />
+            )}
+          </li>
+        )
+      })}
+    </ol>
   )
 }

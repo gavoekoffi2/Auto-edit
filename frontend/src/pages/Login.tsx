@@ -40,67 +40,67 @@ export default function Login() {
   }
 
   return (
-    <div className="relative isolate min-h-[80vh] flex items-center justify-center overflow-hidden px-4">
+    <div className="relative isolate flex min-h-[82vh] items-center justify-center overflow-hidden px-4 py-12">
       <div className="absolute inset-0 -z-10" aria-hidden>
-        <div className="cf-aurora left-[-10%] top-[-10%] h-[380px] w-[380px] bg-primary-600/40" />
-        <div className="cf-aurora right-[-8%] bottom-[-15%] h-[340px] w-[340px] bg-accent-500/25" style={{ animationDelay: '-8s' }} />
+        <div className="halo left-[-10%] top-[-10%] h-[420px] w-[420px] bg-primary-700/35" />
+        <div className="halo bottom-[-15%] right-[-8%] h-[380px] w-[380px] bg-iris-700/25" />
         <div className="cf-grid-dots absolute inset-0" />
       </div>
       <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="mx-auto mb-4 w-fit"><Logo size={48} /></div>
-          <h1 className="text-2xl font-bold">Bon retour 👋</h1>
-          <p className="text-dark-400 mt-2">Connecte-toi à ton compte CutForge</p>
+        <div className="mb-8 text-center">
+          <div className="mx-auto mb-5 w-fit"><Logo size={46} /></div>
+          <h1 className="text-title font-bold">Bon retour</h1>
+          <p className="mt-2 text-sm text-dark-400">Connecte-toi à ton studio CutForge</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="card glass space-y-4">
+        <form onSubmit={handleSubmit} className="panel space-y-4">
           {error && (
-            <div className="bg-red-400/10 border border-red-400/20 rounded-lg p-3 text-red-400 text-sm">
+            <div className="rounded-xl border border-red-400/20 bg-red-400/[0.08] p-3 text-sm leading-relaxed text-red-300">
               {error}
             </div>
           )}
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-dark-300 mb-1">Email</label>
+            <label htmlFor="email" className="mb-1.5 block text-xs font-medium text-dark-400">Email</label>
             <input
               id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="input-field"
-              placeholder="you@example.com"
+              className="field"
+              placeholder="toi@exemple.com"
               required
               autoComplete="email"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-dark-300 mb-1">Mot de passe</label>
+            <label htmlFor="password" className="mb-1.5 block text-xs font-medium text-dark-400">Mot de passe</label>
             <input
               id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="input-field"
+              className="field"
               placeholder="Ton mot de passe"
               required
               autoComplete="current-password"
             />
           </div>
 
-          <button type="submit" className="btn-primary w-full flex items-center justify-center gap-2" disabled={loading}>
-            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Se connecter'}
+          <button type="submit" className="btn-primary flex w-full items-center justify-center gap-2" disabled={loading}>
+            {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Se connecter'}
           </button>
 
-          <div className="text-center space-y-2">
-            <p className="text-dark-400 text-sm">
-              <Link to="/forgot-password" className="text-primary-400 hover:underline">
+          <div className="space-y-2 pt-1 text-center">
+            <p className="text-sm text-dark-500">
+              <Link to="/forgot-password" className="text-primary-300 transition-colors hover:text-primary-200">
                 Mot de passe oublié ?
               </Link>
             </p>
-            <p className="text-dark-400 text-sm">
+            <p className="text-sm text-dark-500">
               Pas encore de compte ?{' '}
-              <Link to="/signup" className="text-primary-400 hover:underline">
+              <Link to="/signup" className="font-medium text-primary-300 transition-colors hover:text-primary-200">
                 Créer un compte
               </Link>
             </p>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import {
   Zap, VolumeX, Sparkles, Loader2, ArrowLeft, ChevronLeft, ChevronRight,
   Image as ImageIcon, Music, Subtitles, Smartphone, Megaphone, PenTool, Check,
@@ -7,6 +8,8 @@ import {
 import VideoPlayer from '../components/video/VideoPlayer'
 import Timeline from '../components/video/Timeline'
 import JobProgress from '../components/video/JobProgress'
+import Surface from '../components/ui/Surface'
+import Toggle from '../components/ui/Toggle'
 import { getVideo, getStreamUrl } from '../api/videos'
 import {
   getJobDownloadUrl,
@@ -292,10 +295,10 @@ export default function Editor() {
 
   if (loadError) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-8 text-center">
-        <p className="text-red-400 mb-4">{loadError}</p>
-        <button onClick={() => navigate('/dashboard')} className="btn-secondary">
-          Retour au dashboard
+      <div className="mx-auto max-w-md py-20 text-center shell-gutter">
+        <p className="mb-5 text-sm text-red-300">{loadError}</p>
+        <button onClick={() => navigate('/dashboard')} className="btn-secondary text-sm">
+          Retour au studio
         </button>
       </div>
     )
@@ -303,8 +306,13 @@ export default function Editor() {
 
   if (!video) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 text-primary-500 animate-spin" />
+      <div className="mx-auto max-w-[1600px] space-y-5 py-8 shell-gutter" aria-busy>
+        <div className="skeleton h-10 w-72" />
+        <div className="skeleton h-40 w-full" />
+        <div className="grid gap-5 lg:grid-cols-12">
+          <div className="skeleton h-[420px] lg:col-span-7 xl:col-span-8" />
+          <div className="skeleton h-[420px] lg:col-span-5 xl:col-span-4" />
+        </div>
       </div>
     )
   }
@@ -316,32 +324,34 @@ export default function Editor() {
   const notice = fallbackNotice(completedResult)
 
   return (
-    <div className="pb-14">
+    <div className="pb-10">
       {/* ---------------------------------------------------------------- */}
       {/* Barre d'action COLLANTE : le bouton de lancement reste visible en  */}
       {/* permanence. Avant, il vivait au bas d'une colonne latérale et il   */}
       {/* fallait faire défiler tout l'écran pour lancer un montage.         */}
+      {/* Elle se colle SOUS l'en-tête de la coquille (64 px), sinon les     */}
+      {/* deux se chevauchent au défilement.                                 */}
       {/* ---------------------------------------------------------------- */}
-      <div className="sticky top-0 z-30 border-b border-white/10 bg-dark-950/85 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-4 py-3 sm:gap-4 sm:px-6 lg:px-8">
+      <div className="sticky top-16 z-20 border-b border-white/[0.06] bg-surface-canvas/80 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-[1600px] items-center gap-3 py-3 shell-gutter sm:gap-4">
           <button
             onClick={() => navigate('/dashboard')}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/10 text-dark-300 transition-colors hover:border-white/25 hover:text-white"
-            aria-label="Retour au dashboard"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/[0.08] text-dark-400 transition-colors hover:border-white/25 hover:text-white"
+            aria-label="Retour au studio"
           >
             <ArrowLeft className="h-4 w-4" />
           </button>
 
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-base font-semibold leading-tight sm:text-lg">
+            <h1 className="truncate text-[15px] font-semibold leading-tight sm:text-base">
               {video.title}
             </h1>
-            <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-dark-400">
-              <span>{(video.size_bytes / (1024 * 1024)).toFixed(1)} Mo</span>
+            <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-dark-500">
+              <span className="tabular-nums">{(video.size_bytes / (1024 * 1024)).toFixed(1)} Mo</span>
               {video.duration_s != null && (
                 <>
                   <span aria-hidden>·</span>
-                  <span>{formatDuration(video.duration_s)}</span>
+                  <span className="tabular-nums">{formatDuration(video.duration_s)}</span>
                 </>
               )}
               {currentMode && (
@@ -358,7 +368,7 @@ export default function Editor() {
           <button
             onClick={handleAutoEdit}
             disabled={processing}
-            className="btn-accent flex shrink-0 items-center justify-center gap-2 px-4 py-2.5 text-sm sm:px-7 sm:text-base"
+            className="btn-accent flex shrink-0 items-center justify-center gap-2 !px-4 !py-2.5 text-sm sm:!px-7"
           >
             {processing ? (
               <>
@@ -377,37 +387,43 @@ export default function Editor() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[1600px] shell-gutter">
         {/* -------------------------------------------------------------- */}
         {/* Sélecteur de moteur — HORIZONTAL. Les moteurs étaient empilés    */}
         {/* verticalement dans une colonne étroite : la liste s'allongeait à */}
         {/* chaque nouveau moteur et poussait le reste de l'écran vers le    */}
         {/* bas. Ici, familles en onglets + rail qui défile latéralement.    */}
         {/* -------------------------------------------------------------- */}
-        <section className="pt-6">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <section className="pt-7">
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h2 className="font-display text-sm font-semibold uppercase tracking-[0.18em] text-dark-400">
-                Moteur de montage
-              </h2>
-              <p className="mt-1 text-sm text-dark-500">
+              <p className="eyebrow">Moteur de montage</p>
+              <p className="mt-1.5 text-sm text-dark-400">
                 {visibleFamilies.find((f) => f.id === activeFamily)?.hint ??
                   'Choisis la direction artistique du rendu'}
               </p>
             </div>
 
-            <div className="flex flex-wrap gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] p-1">
+            {/* Onglets de famille: l'indicateur GLISSE d'un onglet à l'autre
+                au lieu de clignoter — on suit des yeux où on vient d'aller. */}
+            <div className="flex flex-wrap gap-1 rounded-xl border border-white/[0.07] bg-white/[0.025] p-1">
               {visibleFamilies.map((family) => (
                 <button
                   key={family.id}
                   onClick={() => setActiveFamily(family.id)}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-                    activeFamily === family.id
-                      ? 'bg-primary-500/20 text-primary-200 ring-1 ring-primary-500/40'
-                      : 'text-dark-400 hover:text-white'
+                  aria-pressed={activeFamily === family.id}
+                  className={`relative rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-colors duration-200 ${
+                    activeFamily === family.id ? 'text-white' : 'text-dark-500 hover:text-dark-200'
                   }`}
                 >
-                  {family.label}
+                  {activeFamily === family.id && (
+                    <motion.span
+                      layoutId="family-tab"
+                      className="absolute inset-0 rounded-lg border border-primary-500/35 bg-primary-500/15"
+                      transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                    />
+                  )}
+                  <span className="relative">{family.label}</span>
                 </button>
               ))}
             </div>
@@ -426,18 +442,14 @@ export default function Editor() {
         <div className="mt-6 grid gap-5 lg:grid-cols-12">
           <div className="space-y-4 lg:col-span-7 xl:col-span-8">
             {completedResult && (
-              <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+              <Note tone="ok">
                 Aperçu du dernier montage terminé. Relancer un montage masque cet
                 aperçu jusqu'à la fin du nouveau rendu.
-              </div>
+              </Note>
             )}
-            {notice && (
-              <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-                ⚡ {notice}
-              </div>
-            )}
+            {notice && <Note tone="warn">{notice}</Note>}
 
-            <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/40">
+            <div className="overflow-hidden rounded-2xl border border-white/[0.07] bg-black shadow-e3">
               <VideoPlayer src={previewSrc} />
             </div>
 
@@ -463,66 +475,66 @@ export default function Editor() {
             )}
 
             {!!completedResult?.transcription && (
-              <div className="card">
-                <h3 className="mb-2 font-semibold">Transcription</h3>
-                <p className="max-h-40 overflow-y-auto text-sm leading-relaxed text-dark-400">
+              <Surface>
+                <h3 className="mb-2.5 text-sm font-semibold">Transcription</h3>
+                <p className="max-h-40 overflow-y-auto pr-2 text-sm leading-relaxed text-dark-400">
                   {typeof (completedResult.transcription as { text?: unknown }).text === 'string'
                     ? (completedResult.transcription as { text: string }).text
                     : ''}
                 </p>
-              </div>
+              </Surface>
             )}
           </div>
 
-          {/* Réglages : chips compacts sur deux colonnes plutôt qu'une liste
-              de cases à cocher empilées. */}
+          {/* Réglages : interrupteurs compacts sur deux colonnes plutôt qu'une
+              liste de cases à cocher empilées. */}
           <aside className="space-y-4 lg:col-span-5 xl:col-span-4">
-            <div className="card">
-              <h3 className="mb-3 font-semibold">Options du montage</h3>
+            <Surface>
+              <h3 className="mb-3.5 text-sm font-semibold">Options du montage</h3>
               <div className="grid grid-cols-2 gap-2">
-                <OptionChip
+                <Toggle
                   icon={<VolumeX className="h-4 w-4" />}
-                  label="Couper les silences"
+                  label="Silences coupés"
                   checked={!!options.remove_silence}
                   onToggle={toggle('remove_silence')}
                 />
-                <OptionChip
+                <Toggle
                   icon={<Subtitles className="h-4 w-4" />}
-                  label="Sous-titres animés"
+                  label="Sous-titres"
                   checked={!!options.dynamic_captions}
                   onToggle={toggle('dynamic_captions')}
                 />
-                <OptionChip
+                <Toggle
                   icon={<PenTool className="h-4 w-4" />}
                   label="Motion design"
                   checked={!!options.motion_design}
                   onToggle={toggle('motion_design')}
                 />
-                <OptionChip
+                <Toggle
                   icon={<ImageIcon className="h-4 w-4" />}
                   label="Illustrations"
                   checked={!!options.ai_broll}
                   onToggle={toggle('ai_broll')}
                 />
-                <OptionChip
+                <Toggle
                   icon={<Music className="h-4 w-4" />}
                   label="Musique"
                   checked={!!options.music}
                   onToggle={toggle('music')}
                 />
-                <OptionChip
+                <Toggle
                   icon={<Sparkles className="h-4 w-4" />}
                   label="Effets sonores"
                   checked={!!options.sfx}
                   onToggle={toggle('sfx')}
                 />
-                <OptionChip
+                <Toggle
                   icon={<Smartphone className="h-4 w-4" />}
                   label="Vertical 9:16"
                   checked={!!options.vertical_9_16}
                   onToggle={toggle('vertical_9_16')}
                 />
-                <OptionChip
+                <Toggle
                   icon={<Megaphone className="h-4 w-4" />}
                   label="CTA final"
                   checked={!!options.final_cta}
@@ -531,15 +543,15 @@ export default function Editor() {
               </div>
 
               {options.visual_mode === 'credit_saver' && (
-                <p className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.07] px-3 py-2 text-xs text-emerald-300/90">
-                  Ce moteur n'appelle aucune API d'image : les illustrations sont
+                <p className="mt-3.5 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.07] px-3 py-2.5 text-xs leading-relaxed text-emerald-300/90">
+                  Ce moteur n'appelle aucune API d'image&nbsp;: les illustrations sont
                   découpées par CutForge. Coût de génération nul.
                 </p>
               )}
 
               {options.ai_broll && options.visual_mode !== 'credit_saver' && (
-                <div className="mt-3">
-                  <label className="mb-1 block text-xs text-dark-400" htmlFor="demographic">
+                <div className="mt-3.5">
+                  <label className="mb-1.5 block text-xs text-dark-400" htmlFor="demographic">
                     Personnes dans les images générées
                   </label>
                   <select
@@ -549,7 +561,7 @@ export default function Editor() {
                       ...prev,
                       broll_demographic: e.target.value as JobOptions['broll_demographic'],
                     }))}
-                    className="w-full rounded-lg border border-dark-700 bg-dark-800 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+                    className="field text-sm"
                   >
                     <option value="african">Africains / Afrique (défaut)</option>
                     <option value="caucasian">Blancs / caucasiens</option>
@@ -557,18 +569,19 @@ export default function Editor() {
                   </select>
                 </div>
               )}
-            </div>
+            </Surface>
 
-            <details className="card group">
-              <summary className="flex cursor-pointer list-none items-center justify-between font-semibold">
+            <details className="panel group !p-0">
+              <summary className="flex cursor-pointer list-none items-center justify-between p-5 text-sm font-semibold sm:p-6">
                 Branding
-                <span className="text-xs font-normal text-dark-500 group-open:hidden">
-                  optionnel
+                <span className="flex items-center gap-2 text-xs font-normal text-dark-500">
+                  <span className="group-open:hidden">optionnel</span>
+                  <ChevronRight className="h-4 w-4 transition-transform duration-300 ease-premium group-open:rotate-90" />
                 </span>
               </summary>
-              <div className="mt-4 space-y-3">
+              <div className="space-y-3 px-5 pb-5 sm:px-6 sm:pb-6">
                 <div>
-                  <label className="mb-1 block text-xs text-dark-400" htmlFor="logo-text">
+                  <label className="mb-1.5 block text-xs text-dark-400" htmlFor="logo-text">
                     Texte intro / logo
                   </label>
                   <input
@@ -578,11 +591,11 @@ export default function Editor() {
                     value={logoText}
                     onChange={(e) => setLogoText(e.target.value)}
                     placeholder="Ex. Lance ton e-commerce"
-                    className="w-full rounded-lg border border-dark-700 bg-dark-800 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+                    className="field text-sm"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs text-dark-400" htmlFor="cta-text">
+                  <label className="mb-1.5 block text-xs text-dark-400" htmlFor="cta-text">
                     Texte du CTA final
                   </label>
                   <input
@@ -592,35 +605,58 @@ export default function Editor() {
                     value={ctaText}
                     onChange={(e) => setCtaText(e.target.value)}
                     placeholder="Ex. Abonne-toi 🔔"
-                    className="w-full rounded-lg border border-dark-700 bg-dark-800 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+                    className="field text-sm"
                   />
                 </div>
               </div>
             </details>
 
             {Array.isArray(completedResult?.steps_completed) && (
-              <div className="card">
-                <h3 className="mb-2 font-semibold">Résumé technique</h3>
-                <div className="space-y-1 text-sm">
+              <Surface>
+                <h3 className="mb-3 text-sm font-semibold">Résumé technique</h3>
+                <div className="flex flex-wrap gap-1.5">
                   {(completedResult!.steps_completed as string[]).map((step) => (
-                    <div key={step} className="flex items-center gap-2 text-emerald-400">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                    <span
+                      key={step}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/20 bg-emerald-400/[0.08] px-2 py-1 text-[11px] text-emerald-300"
+                    >
+                      <Check className="h-3 w-3" strokeWidth={3} />
                       {step.replace(/_/g, ' ')}
-                    </div>
+                    </span>
                   ))}
                   {Array.isArray(completedResult?.steps_failed) &&
                     (completedResult!.steps_failed as string[]).map((step) => (
-                      <div key={step} className="flex items-center gap-2 text-red-400">
-                        <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
-                        {step.replace(/_/g, ' ')} (échec)
-                      </div>
+                      <span
+                        key={step}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-red-400/20 bg-red-400/[0.08] px-2 py-1 text-[11px] text-red-300"
+                      >
+                        ✕ {step.replace(/_/g, ' ')}
+                      </span>
                     ))}
                 </div>
-              </div>
+              </Surface>
             )}
           </aside>
         </div>
       </div>
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Bandeau d'information non bloquant                                          */
+/* -------------------------------------------------------------------------- */
+function Note({ tone, children }: { tone: 'ok' | 'warn'; children: React.ReactNode }) {
+  const tones = {
+    ok: 'border-emerald-500/22 bg-emerald-500/[0.08] text-emerald-200',
+    warn: 'border-amber-500/22 bg-amber-500/[0.08] text-amber-200',
+  }
+  return (
+    <div className={`flex items-start gap-2.5 rounded-xl border px-4 py-3 text-sm leading-relaxed ${tones[tone]}`}>
+      {tone === 'ok'
+        ? <Check className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.5} />
+        : <Zap className="mt-0.5 h-4 w-4 shrink-0" />}
+      <span>{children}</span>
     </div>
   )
 }
@@ -678,21 +714,33 @@ function EngineRail(props: {
               // `flex-1` + `basis` : quand la famille tient dans la largeur, les
               // cartes s'étalent au lieu de laisser un vide à droite; dès qu'il
               // y en a trop, elles gardent leur largeur mini et le rail défile.
-              className={`group relative min-w-[16.5rem] flex-1 basis-[17rem] snap-start rounded-2xl border p-4 text-left transition-all duration-300 ${
+              className={`group relative min-w-[16.5rem] flex-1 basis-[17rem] snap-start overflow-hidden rounded-2xl border p-4 text-left transition-all duration-400 ease-premium ${
                 selected
-                  ? 'border-primary-500/60 bg-primary-500/[0.12] shadow-[0_18px_40px_-22px_rgba(63,114,255,0.9)]'
-                  : 'border-white/10 bg-white/[0.03] hover:-translate-y-0.5 hover:border-white/25'
+                  ? 'border-primary-500/50 bg-primary-500/[0.10] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_22px_50px_-26px_rgba(63,114,255,0.95)]'
+                  : 'border-white/[0.07] bg-white/[0.025] shadow-e1 hover:-translate-y-[3px] hover:border-white/20 hover:shadow-e3'
               }`}
             >
+              {/* Liseré de marque sur la carte sélectionnée: il rend le choix
+                  lisible d'un coup d'œil même sur un rail qui défile. */}
+              {selected && (
+                <motion.span
+                  layoutId="engine-edge"
+                  className="absolute inset-x-0 top-0 h-[2px] bg-brand-sweep"
+                  transition={{ type: 'spring', stiffness: 400, damping: 32 }}
+                />
+              )}
+
               <div className="flex items-start justify-between gap-2">
-                <span className="text-2xl leading-none">{mode.icon}</span>
-                {selected ? (
-                  <span className="grid h-5 w-5 place-items-center rounded-full bg-primary-500 text-white">
-                    <Check className="h-3 w-3" strokeWidth={3} />
-                  </span>
-                ) : (
-                  <span className="h-5 w-5 rounded-full border border-white/15" />
-                )}
+                <span className="text-[26px] leading-none">{mode.icon}</span>
+                <span
+                  className={`grid h-5 w-5 place-items-center rounded-full transition-all duration-300 ${
+                    selected
+                      ? 'scale-100 bg-primary-500 text-white'
+                      : 'scale-90 border border-white/12 text-transparent'
+                  }`}
+                >
+                  <Check className="h-3 w-3" strokeWidth={3} />
+                </span>
               </div>
 
               <p className="mt-3 font-display text-[15px] font-semibold leading-snug">
@@ -704,21 +752,21 @@ function EngineRail(props: {
                   <span
                     className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
                       mode.badge.startsWith('0')
-                        ? 'bg-emerald-400/15 text-emerald-300'
-                        : 'bg-white/10 text-dark-300'
+                        ? 'bg-emerald-400/14 text-emerald-300'
+                        : 'bg-white/[0.07] text-dark-400'
                     }`}
                   >
                     {mode.badge}
                   </span>
                 )}
                 {mode.pipeline !== 'v2' && (
-                  <span className="rounded-md bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-dark-400">
+                  <span className="rounded-md bg-white/[0.07] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-dark-500">
                     ancien moteur
                   </span>
                 )}
               </div>
 
-              <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-dark-400">
+              <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-dark-500">
                 {mode.description}
               </p>
             </button>
@@ -743,35 +791,6 @@ function RailArrow(props: { side: 'left' | 'right'; onClick: () => void }) {
       }`}
     >
       <Icon className="h-4 w-4" />
-    </button>
-  )
-}
-
-/* -------------------------------------------------------------------------- */
-/* Réglages                                                                    */
-/* -------------------------------------------------------------------------- */
-function OptionChip(props: {
-  icon: React.ReactNode
-  label: string
-  checked: boolean
-  onToggle: () => void
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={props.checked}
-      onClick={props.onToggle}
-      className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-xs font-medium transition-all ${
-        props.checked
-          ? 'border-primary-500/45 bg-primary-500/10 text-white'
-          : 'border-white/10 bg-white/[0.02] text-dark-400 hover:border-white/25'
-      }`}
-    >
-      <span className={props.checked ? 'text-primary-300' : 'text-dark-500'}>
-        {props.icon}
-      </span>
-      <span className="leading-tight">{props.label}</span>
     </button>
   )
 }
@@ -808,37 +827,54 @@ function MontageRecap(props: {
   ]
 
   return (
-    <div className="card">
-      <h3 className="mb-3 font-semibold">Contenu du montage</h3>
+    <Surface>
+      <h3 className="mb-3.5 text-sm font-semibold">Contenu du montage</h3>
+
+      {/* La découpe est LE chiffre du produit: il mérite sa propre tuile, pas
+          une ligne de texte perdue au milieu des autres. */}
       {source > 0 && (
-        <p className="mb-3 text-sm text-dark-200">
-          ✂️ Découpe : <strong>{removed.toFixed(0)} s</strong> retirés (silences,
-          hésitations, répétitions) sur {source.toFixed(0)} s
-          {percent > 0 ? ` — vidéo ${percent} % plus courte` : ''}.
-        </p>
+        <div className="mb-4 flex items-center gap-4 rounded-xl border border-white/[0.07] bg-white/[0.025] p-4">
+          <div>
+            <p className="font-display text-2xl font-bold leading-none tabular-nums text-white">
+              −{removed.toFixed(0)}<span className="ml-0.5 text-base text-dark-500">s</span>
+            </p>
+            <p className="mt-1.5 text-[11px] text-dark-500">retirés sur {source.toFixed(0)} s</p>
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="bar-track h-1.5">
+              <div className="bar-fill" style={{ width: `${Math.min(100, percent)}%` }} />
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-dark-400">
+              Silences, hésitations et répétitions coupés
+              {percent > 0 ? ` — vidéo ${percent} % plus courte.` : '.'}
+            </p>
+          </div>
+        </div>
       )}
-      <div className="grid gap-2.5 sm:grid-cols-2">
+
+      <div className="grid gap-2 sm:grid-cols-2">
         {items.map(([icon, label, ok]) => (
           <div
             key={label}
-            className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${
+            className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 ${
               ok
-                ? 'border-white/10 bg-white/5 text-dark-100'
-                : 'border-red-400/20 bg-red-400/5 text-red-300'
+                ? 'border-white/[0.07] bg-white/[0.03] text-dark-100'
+                : 'border-red-400/18 bg-red-400/[0.06] text-red-300'
             }`}
           >
-            <span>{icon}</span>
+            <span className="text-sm">{icon}</span>
             <span className="text-xs font-medium">{label}</span>
           </div>
         ))}
       </div>
+
       {props.motionRequested && n('motion_scenes_rendered') === 0 && (
-        <p className="mt-3 rounded-lg bg-amber-400/10 p-2.5 text-xs text-amber-300">
-          ⚠️ Aucune scène motion design dans ce rendu — le reste du montage
+        <p className="mt-3 rounded-xl border border-amber-400/20 bg-amber-400/[0.08] p-3 text-xs leading-relaxed text-amber-300">
+          Aucune scène motion design dans ce rendu — le reste du montage
           (punch-zooms, SFX, captions) est bien présent.
         </p>
       )}
-    </div>
+    </Surface>
   )
 }
 

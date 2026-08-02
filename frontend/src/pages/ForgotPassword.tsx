@@ -29,7 +29,7 @@ export default function ForgotPassword() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Zap className="w-12 h-12 text-accent-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold">Reset your password</h1>
+          <h1 className="text-title font-bold">Réinitialiser le mot de passe</h1>
           <p className="text-dark-400 mt-2">
             Enter your email and we'll send you a reset link
           </p>
@@ -55,7 +55,7 @@ export default function ForgotPassword() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="input-field"
+                className="field"
                 placeholder="you@example.com"
                 required
                 autoComplete="email"

@@ -128,31 +128,44 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
   const config = statusConfig[job.status as keyof typeof statusConfig] || statusConfig.pending
   const Icon = config.icon
   const isAnimating = job.status === 'processing' || job.status === 'pending'
+  const stage = currentStage(job.progress)
 
   return (
-    <div className="card">
-      <div className="flex items-center gap-3 mb-4">
-        <Icon className={`w-6 h-6 ${config.color} ${isAnimating ? 'animate-spin' : ''}`} />
-        <div>
-          <p className={`font-medium ${config.color}`}>{config.label}</p>
-          {job.status === 'processing' && (
-            <p className="text-sm text-dark-400">{job.progress} % effectués</p>
+    <div className="panel">
+      <div className="flex items-center gap-4">
+        {/* L'anneau porte le pourcentage: pendant un rendu de plusieurs
+            minutes, c'est la seule chose que l'utilisateur regarde. */}
+        <div className="relative grid h-14 w-14 shrink-0 place-items-center">
+          <div
+            className="ring-progress absolute inset-0 rounded-full"
+            style={{ '--p': isAnimating ? Math.max(job.progress, 3) : 100 } as React.CSSProperties}
+          />
+          {isAnimating ? (
+            <span className="font-display text-xs font-bold tabular-nums">{job.progress}%</span>
+          ) : (
+            <Icon className={`h-5 w-5 ${config.color}`} />
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <p className={`text-sm font-semibold ${config.color}`}>{config.label}</p>
+          <p className="mt-1 truncate text-xs text-dark-500">
+            {isAnimating ? stage : 'Le rendu est disponible ci-dessous.'}
+          </p>
+          {isAnimating && (
+            <div className="bar-track mt-2.5 h-1.5">
+              <div
+                className="bar-fill"
+                data-live="true"
+                style={{ width: `${Math.max(job.progress, 3)}%` }}
+              />
+            </div>
           )}
         </div>
       </div>
 
-      {/* Progress bar */}
-      {isAnimating && (
-        <div className="w-full bg-dark-700 rounded-full h-2 mb-3">
-          <div
-            className="bg-primary-500 h-2 rounded-full transition-all duration-500"
-            style={{ width: `${job.progress}%` }}
-          />
-        </div>
-      )}
-
       {connectionWarning && isAnimating && (
-        <p className="text-xs text-amber-300 bg-amber-400/10 rounded-lg p-3 mb-3">
+        <p className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/[0.08] p-3 text-xs leading-relaxed text-amber-300">
           {connectionWarning}
         </p>
       )}
@@ -161,21 +174,21 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
         <button
           onClick={handleCancel}
           disabled={cancelling}
-          className="btn-secondary text-sm inline-flex items-center gap-2 mb-3"
+          className="btn-secondary mt-4 inline-flex items-center gap-2 !px-4 !py-2 text-xs"
         >
-          {cancelling ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
-          {cancelling ? 'Annulation...' : 'Annuler le traitement'}
+          {cancelling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
+          {cancelling ? 'Annulation…' : 'Annuler le traitement'}
         </button>
       )}
 
       {job.status === 'failed' && (
-        <div className="space-y-3">
-          <p className="text-sm text-red-400 bg-red-400/10 rounded-lg p-3">
+        <div className="mt-4 space-y-3">
+          <p className="rounded-xl border border-red-400/20 bg-red-400/[0.08] p-3 text-sm leading-relaxed text-red-300">
             {job.error_message || 'Une erreur inattendue est survenue'}
           </p>
           {onRetry && (
-            <button onClick={onRetry} className="btn-secondary text-sm flex items-center gap-2">
-              <RefreshCw className="w-4 h-4" />
+            <button onClick={onRetry} className="btn-secondary inline-flex items-center gap-2 !px-4 !py-2 text-xs">
+              <RefreshCw className="h-4 w-4" />
               Relancer le montage
             </button>
           )}
@@ -186,16 +199,34 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
         <button
           onClick={handleDownload}
           disabled={downloading}
-          className="btn-accent inline-flex items-center gap-2"
+          className="btn-accent mt-4 inline-flex items-center gap-2 text-sm"
         >
           {downloading ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
+            <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
-            <Download className="w-4 h-4" />
+            <Download className="h-4 w-4" />
           )}
           {downloading ? 'Téléchargement…' : 'Télécharger la vidéo'}
         </button>
       )}
     </div>
   )
+}
+
+/**
+ * Étape lisible déduite de l'avancement.
+ *
+ * Le backend renvoie un pourcentage, pas un libellé. Un pourcentage seul
+ * pendant quatre minutes donne l'impression d'un blocage; nommer ce qui se
+ * passe transforme l'attente en démonstration de ce que le produit fait.
+ * Les bornes suivent l'ordre réel des étapes du moteur.
+ */
+function currentStage(progress: number): string {
+  if (progress < 12) return 'Préparation de la vidéo…'
+  if (progress < 30) return 'Transcription de la parole…'
+  if (progress < 45) return 'Découpe des silences et des hésitations…'
+  if (progress < 62) return 'Choix des illustrations et du collage…'
+  if (progress < 78) return 'Motion design et sous-titres animés…'
+  if (progress < 92) return 'Sound design et mixage…'
+  return 'Encodage final…'
 }

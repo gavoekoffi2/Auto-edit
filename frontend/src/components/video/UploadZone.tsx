@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useDropzone, type FileRejection } from 'react-dropzone'
-import { Upload, Film, Loader2 } from 'lucide-react'
+import { Upload, Film } from 'lucide-react'
 import axios from 'axios'
 import {
   ALLOWED_VIDEO_EXTENSIONS,
@@ -95,39 +95,44 @@ export default function UploadZone({ onUploadComplete }: Props) {
   return (
     <div
       {...getRootProps()}
-      className={`group relative cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed p-10 text-center sm:p-14
-        ${isDragActive
-          ? 'border-primary-400 bg-primary-500/10 scale-[1.01]'
-          : 'border-dark-600 bg-dark-900/40 hover:border-primary-500/60 hover:bg-dark-900/70'}
-        ${uploading ? 'pointer-events-none border-primary-500/40' : ''}`}
-      style={{ transition: 'all 0.3s var(--ease-out-expo)' }}
+      className={`group relative cursor-pointer overflow-hidden rounded-3xl p-10 text-center sm:p-14 ${
+        uploading ? 'pointer-events-none' : ''
+      }`}
+      style={{
+        // Bordure pointillée dessinée en SVG plutôt qu'en `border-dashed`: le
+        // tiret natif se déforme sur les grands rayons et « craque » dans les
+        // angles. Ici il reste régulier tout autour, à toutes les tailles.
+        backgroundColor: isDragActive ? 'rgba(63,114,255,0.07)' : 'rgba(255,255,255,0.018)',
+        backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg'%3e%3crect width='100%25' height='100%25' fill='none' rx='24' ry='24' stroke='%23${
+          isDragActive ? '6593ff' : 'ffffff2e'
+        }' stroke-width='2' stroke-dasharray='10%2c 12' stroke-linecap='round'/%3e%3c/svg%3e")`,
+        transform: isDragActive ? 'scale(1.006)' : 'none',
+        transition: 'all 0.35s var(--ease-premium)',
+      }}
     >
       <input {...getInputProps()} />
 
       {/* halo d'ambiance */}
       <div
-        className={`pointer-events-none absolute left-1/2 top-0 h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary-600/25 blur-3xl transition-opacity duration-500 ${
+        className={`pointer-events-none absolute left-1/2 top-0 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary-600/25 blur-[90px] transition-opacity duration-500 ${
           isDragActive || uploading ? 'opacity-100' : 'opacity-0 group-hover:opacity-70'
         }`}
         aria-hidden
       />
 
       {uploading ? (
-        <div className="relative flex flex-col items-center gap-4">
-          <div className="relative">
-            <Loader2 className="h-12 w-12 animate-spin text-primary-400" />
-            <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white">
-              {progress}%
-            </span>
+        <div className="relative flex flex-col items-center gap-5">
+          {/* Anneau de progression: le chiffre au centre est l'information,
+              l'anneau en est la lecture périphérique. */}
+          <div className="relative grid h-20 w-20 place-items-center">
+            <div className="ring-progress absolute inset-0 rounded-full" style={{ '--p': progress } as React.CSSProperties} />
+            <span className="font-display text-lg font-bold tabular-nums">{progress}%</span>
           </div>
-          <p className="text-lg font-semibold">Envoi de ta vidéo…</p>
-          <div className="h-2 w-full max-w-md overflow-hidden rounded-full bg-dark-700">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-primary-500 via-fuchsia-400 to-accent-400 transition-all duration-300"
-              style={{ width: `${progress}%` }}
-            />
+          <p className="text-heading font-semibold">Envoi de ta vidéo…</p>
+          <div className="bar-track h-1.5 w-full max-w-md">
+            <div className="bar-fill" data-live="true" style={{ width: `${Math.max(progress, 3)}%` }} />
           </div>
-          <p className="max-w-sm text-sm text-dark-400">
+          <p className="max-w-sm text-sm leading-relaxed text-dark-400">
             {uploadHelperText(progress)}
             {selectedFileSize ? ` Taille: ${formatFileSize(selectedFileSize)}.` : ''}
           </p>
@@ -135,29 +140,35 @@ export default function UploadZone({ onUploadComplete }: Props) {
       ) : (
         <div className="relative flex flex-col items-center gap-5">
           <div
-            className={`flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-gradient-to-tr from-primary-600/30 to-fuchsia-500/20 ${
-              isDragActive ? 'scale-110' : 'group-hover:-translate-y-1'
-            }`}
-            style={{ transition: 'transform 0.3s var(--ease-out-expo)' }}
+            className="grid h-16 w-16 place-items-center rounded-2xl border border-white/[0.09] bg-gradient-to-br from-primary-600/30 via-iris-600/20 to-transparent shadow-e2"
+            style={{
+              transform: isDragActive ? 'scale(1.12) rotate(-4deg)' : 'none',
+              transition: 'transform 0.4s var(--ease-snap)',
+            }}
           >
-            {isDragActive ? (
-              <Film className="h-7 w-7 text-primary-300" />
-            ) : (
-              <Upload className="h-7 w-7 text-primary-300" />
-            )}
+            {isDragActive
+              ? <Film className="h-7 w-7 text-primary-200" />
+              : <Upload className="h-7 w-7 text-primary-200 transition-transform duration-500 ease-premium group-hover:-translate-y-1" />}
           </div>
           <div>
-            <p className="text-lg font-semibold">
-              {isDragActive ? 'Lâche ta vidéo ici ✨' : 'Glisse ta vidéo parlée ici'}
+            <p className="text-heading font-semibold">
+              {isDragActive ? 'Lâche ta vidéo ici' : 'Glisse ta vidéo parlée ici'}
             </p>
-            <p className="mt-1.5 text-sm text-dark-400">
+            <p className="mt-2 text-sm text-dark-400">
               ou clique pour parcourir — {ALLOWED_VIDEO_EXTENSIONS.slice(0, 4).map((ext) => ext.toUpperCase()).join(', ')}…
               · max {MAX_FILE_SIZE_MB / 1024} Go
             </p>
           </div>
-          <span className="rounded-full border border-white/10 bg-white/5 px-3.5 py-1 text-xs text-dark-300">
-            ✂️ Coupes · 🎨 Motion design · 📝 Sous-titres · 🔊 SFX — automatiques
-          </span>
+          <div className="flex flex-wrap items-center justify-center gap-1.5">
+            {['Coupes', 'Collage papier', 'Sous-titres', 'Sound design'].map((step) => (
+              <span
+                key={step}
+                className="rounded-full border border-white/[0.07] bg-white/[0.03] px-3 py-1 text-[11px] font-medium text-dark-400"
+              >
+                {step}
+              </span>
+            ))}
+          </div>
         </div>
       )}
     </div>

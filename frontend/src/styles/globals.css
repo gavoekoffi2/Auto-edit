@@ -9,16 +9,36 @@
   :root {
     /* Easing cinéma (skill ui-ux-pro-max : Modern Dark / Cinema) */
     --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-    --hairline: rgba(255, 255, 255, 0.08);
+    /* Courbe signature du produit : départ franc, arrivée posée. Toute
+       transition de l'application connectée l'utilise — c'est ce qui donne à
+       l'ensemble une seule « main », plutôt que dix animations qui se parlent
+       pas. */
+    --ease-premium: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-snap: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+    --hairline: rgba(255, 255, 255, 0.07);
+    --hairline-strong: rgba(255, 255, 255, 0.13);
+
+    /* Surfaces (miroir des tokens Tailwind `surface.*`). */
+    --canvas: #07070b;
+    --surface-base: #0b0c12;
+    --surface-raised: #101219;
+    --surface-overlay: #161822;
+
+    /* Gouttière commune à toutes les pages connectées. */
+    --shell-gutter: 1rem;
   }
+  @media (min-width: 640px) { :root { --shell-gutter: 1.5rem; } }
+  @media (min-width: 1280px) { :root { --shell-gutter: 2.5rem; } }
+
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     scroll-behavior: smooth;
   }
   body {
-    @apply bg-dark-950 text-white font-sans antialiased;
-    background-color: #06060a;
+    @apply text-white font-sans antialiased;
+    background-color: var(--canvas);
   }
   ::selection {
     background: rgba(63, 114, 255, 0.35);
@@ -34,48 +54,133 @@
     border-radius: 6px;
   }
   ::-webkit-scrollbar { width: 10px; height: 10px; }
-  ::-webkit-scrollbar-track { background: #0a0a10; }
+  ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb {
     background: #23232e;
     border-radius: 8px;
-    border: 2px solid #0a0a10;
+    border: 2px solid transparent;
+    background-clip: padding-box;
   }
-  ::-webkit-scrollbar-thumb:hover { background: #32323f; }
+  ::-webkit-scrollbar-thumb:hover { background: #32323f; background-clip: padding-box; }
 }
 
 @layer components {
+  /* ======================================================================
+     BOUTONS
+     Trois niveaux seulement, et un seul geste: le bouton s'enfonce (0.985)
+     quand on l'active. Le dégradé de marque est réservé à l'action PRIMAIRE
+     d'un écran — s'il est partout, il ne veut plus rien dire.
+     ====================================================================== */
   .btn-primary {
-    @apply bg-primary-600 hover:bg-primary-500 text-white font-semibold py-2.5 px-6 rounded-lg shadow-lg shadow-primary-600/25 hover:shadow-primary-600/40 active:scale-[0.98];
-    transition: all 0.25s var(--ease-out-expo);
+    @apply relative overflow-hidden rounded-xl px-6 py-2.5 font-semibold text-white;
+    background: linear-gradient(180deg, #4f7fff 0%, #2a55f5 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.22),
+      0 10px 30px -12px rgba(63, 114, 255, 0.85);
+    transition: transform 0.24s var(--ease-premium), box-shadow 0.24s var(--ease-premium), filter 0.24s;
   }
+  .btn-primary:hover { filter: brightness(1.08); box-shadow: inset 0 1px 0 rgba(255,255,255,0.28), 0 16px 40px -14px rgba(63,114,255,1); }
+  .btn-primary:active { transform: scale(0.985); }
+
   .btn-secondary {
-    @apply bg-dark-800/80 hover:bg-dark-700 text-white font-semibold py-2.5 px-6 rounded-lg border border-white/10 active:scale-[0.98];
-    transition: all 0.25s var(--ease-out-expo);
+    @apply rounded-xl px-6 py-2.5 font-semibold text-dark-100;
+    background: rgba(255, 255, 255, 0.045);
+    border: 1px solid var(--hairline);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: background 0.24s var(--ease-premium), border-color 0.24s, transform 0.24s var(--ease-premium), color 0.24s;
   }
+  .btn-secondary:hover { background: rgba(255,255,255,0.08); border-color: var(--hairline-strong); @apply text-white; }
+  .btn-secondary:active { transform: scale(0.985); }
+
+  /* Action DÉCISIVE (« forger le montage », « télécharger »): le dégradé de
+     marque complet, balayé d'un reflet au survol. Un seul par écran. */
   .btn-accent {
-    @apply relative overflow-hidden bg-accent-500 hover:bg-accent-400 text-white font-semibold py-2.5 px-6 rounded-lg shadow-lg shadow-accent-500/30 hover:shadow-accent-500/50 active:scale-[0.98];
-    transition: all 0.25s var(--ease-out-expo);
+    @apply relative overflow-hidden rounded-xl px-6 py-2.5 font-semibold text-white;
+    background: linear-gradient(120deg, #3f72ff 0%, #7c3aed 48%, #f97316 100%);
+    background-size: 160% 100%;
+    background-position: 0% 50%;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.26),
+      0 14px 38px -14px rgba(124, 58, 237, 0.9);
+    transition: background-position 0.6s var(--ease-premium), transform 0.24s var(--ease-premium), box-shadow 0.24s;
   }
-  /* reflet qui balaye le bouton accent au survol */
+  .btn-accent:hover {
+    background-position: 100% 50%;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.32), 0 20px 50px -16px rgba(249, 115, 22, 0.75);
+  }
+  .btn-accent:active { transform: scale(0.985); }
   .btn-accent::after {
     content: "";
     position: absolute;
     inset: 0;
-    background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.35) 50%, transparent 70%);
-    transform: translateX(-120%);
-    transition: transform 0.7s var(--ease-out-expo);
+    background: theme('backgroundImage.sheen');
+    transform: translateX(-130%);
+    transition: transform 0.85s var(--ease-premium);
+    pointer-events: none;
   }
-  .btn-accent:hover::after { transform: translateX(120%); }
-  .input-field {
-    @apply w-full bg-dark-800 border border-dark-600 rounded-lg px-4 py-2.5 text-white placeholder-dark-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors;
+  .btn-accent:hover::after { transform: translateX(130%); }
+  .btn-primary:disabled, .btn-secondary:disabled, .btn-accent:disabled {
+    @apply cursor-not-allowed opacity-45;
+    filter: saturate(0.5);
+    transform: none;
   }
-  .card {
-    @apply bg-dark-900 rounded-2xl p-6;
+
+  /* ======================================================================
+     CHAMPS
+     Ombre INTÉRIEURE: le champ est creusé dans la surface, il ne flotte pas
+     au-dessus. C'est le détail qui sépare un formulaire premium d'un
+     formulaire de démo.
+     ====================================================================== */
+  .input-field, .field {
+    @apply w-full rounded-xl px-4 py-2.5 text-white placeholder-dark-600;
+    background: rgba(0, 0, 0, 0.28);
     border: 1px solid var(--hairline);
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.4);
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+  }
+  .input-field:hover, .field:hover { border-color: var(--hairline-strong); }
+  .input-field:focus, .field:focus {
+    @apply outline-none;
+    border-color: rgba(101, 147, 255, 0.7);
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.4), 0 0 0 3px rgba(63, 114, 255, 0.18);
+  }
+
+  /* ======================================================================
+     SURFACES
+     ====================================================================== */
+  .card, .panel {
+    @apply rounded-2xl p-6;
+    background: var(--surface-raised);
+    border: 1px solid var(--hairline);
+    box-shadow: theme('boxShadow.e2');
+  }
+  .panel-flush { @apply rounded-2xl; background: var(--surface-raised); border: 1px solid var(--hairline); box-shadow: theme('boxShadow.e2'); }
+  .panel-quiet {
+    @apply rounded-2xl;
+    background: rgba(255, 255, 255, 0.022);
+    border: 1px solid var(--hairline);
+  }
+  /* Verre: réservé aux éléments qui SURVOLENT le contenu (barres collantes,
+     menus, feuilles mobiles). Jamais pour du contenu statique. */
+  .glass-panel {
+    background: linear-gradient(180deg, rgba(22, 24, 34, 0.82), rgba(11, 12, 18, 0.78));
+    backdrop-filter: blur(20px) saturate(1.4);
+    -webkit-backdrop-filter: blur(20px) saturate(1.4);
+    border: 1px solid var(--hairline);
+    box-shadow: theme('boxShadow.e3');
   }
   .gradient-text {
     @apply bg-gradient-to-r from-primary-300 via-fuchsia-300 to-accent-300 bg-clip-text text-transparent;
     background-size: 200% 200%;
+  }
+  /* Filet de titre: la majuscule espacée au-dessus d'un bloc. Donne du rang à
+     une section sans ajouter un deuxième niveau de titre.
+     NB: le nom `eyebrow` n'est pas cosmétique — `overline` est déjà une
+     utilitaire Tailwind (`text-decoration: overline`), et la couche utilities
+     passe APRÈS components: la classe aurait souligné chaque intitulé par le
+     haut. */
+  .eyebrow {
+    @apply text-overline font-semibold uppercase text-dark-500;
   }
   .glass {
     background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
@@ -123,32 +228,93 @@
     mask-image: radial-gradient(ellipse 75% 60% at 50% 38%, black 35%, transparent 75%);
     -webkit-mask-image: radial-gradient(ellipse 75% 60% at 50% 38%, black 35%, transparent 75%);
   }
+  /* Carte réactive au curseur: un halo suit le pointeur, la carte s'élève de
+     3 px. Le mouvement est minuscule — c'est voulu. Une carte qui saute de
+     10 px fait « template gratuit ». */
   .cf-card {
     position: relative;
-    transition: transform 0.35s var(--ease-out-expo), border-color 0.35s, box-shadow 0.35s;
+    transition: transform 0.4s var(--ease-premium), border-color 0.4s, box-shadow 0.4s;
   }
   .cf-card::after {
     content: "";
     position: absolute;
     inset: -1px;
     border-radius: inherit;
-    background: radial-gradient(420px circle at var(--gx, 50%) var(--gy, 0%),
-                rgba(63, 114, 255, 0.16), transparent 65%);
+    background: radial-gradient(480px circle at var(--gx, 50%) var(--gy, 0%),
+                rgba(101, 147, 255, 0.13), transparent 62%);
     opacity: 0;
-    transition: opacity 0.35s;
+    transition: opacity 0.4s;
     pointer-events: none;
   }
   .cf-card:hover {
-    transform: translateY(-4px);
-    border-color: rgba(63, 114, 255, 0.35);
-    box-shadow: 0 18px 40px -18px rgba(63, 114, 255, 0.25);
+    transform: translateY(-3px);
+    border-color: var(--hairline-strong);
+    box-shadow: theme('boxShadow.e3');
   }
   .cf-card:hover::after { opacity: 1; }
+
+  /* ======================================================================
+     NAVIGATION DE L'APPLICATION CONNECTÉE
+     ====================================================================== */
+  .nav-item {
+    @apply relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-dark-400;
+    transition: color 0.2s var(--ease-premium), background 0.2s var(--ease-premium);
+  }
+  .nav-item:hover { @apply text-white; background: rgba(255, 255, 255, 0.05); }
+  .nav-item[data-active="true"] { @apply text-white; }
+  .nav-item[data-active="true"] .nav-icon { @apply text-primary-300; }
+
+  /* ======================================================================
+     ÉTATS
+     ====================================================================== */
+  .ring-progress {
+    /* Anneau de progression sans SVG: un conic-gradient masqué en couronne.
+       Zéro nœud DOM supplémentaire, animation gratuite pour le compositeur. */
+    background: conic-gradient(from -90deg,
+                #6593ff calc(var(--p, 0) * 1%),
+                rgba(255, 255, 255, 0.08) 0);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+    transition: background 0.6s var(--ease-premium);
+  }
+  /* Curseur natif restylé: la piste blanche par défaut de Chrome est le seul
+     élément de l'interface qui criait « formulaire non fini ». */
+  .range-premium {
+    @apply h-1.5 w-full cursor-pointer appearance-none rounded-full;
+    background: rgba(255, 255, 255, 0.09);
+  }
+  .range-premium::-webkit-slider-thumb {
+    @apply h-4 w-4 appearance-none rounded-full border-0 bg-white;
+    box-shadow: 0 0 0 4px rgba(63, 114, 255, 0.28), 0 2px 6px rgba(0, 0, 0, 0.5);
+    transition: box-shadow 0.2s var(--ease-premium);
+  }
+  .range-premium:hover::-webkit-slider-thumb { box-shadow: 0 0 0 6px rgba(63,114,255,0.32), 0 2px 6px rgba(0,0,0,0.5); }
+  .range-premium::-moz-range-thumb {
+    @apply h-4 w-4 rounded-full border-0 bg-white;
+    box-shadow: 0 0 0 4px rgba(63, 114, 255, 0.28);
+  }
+
+  .bar-track { @apply relative overflow-hidden rounded-full; background: rgba(255,255,255,0.07); }
+  .bar-fill {
+    @apply h-full rounded-full;
+    background: linear-gradient(90deg, #3f72ff, #8b5cf6 60%, #f97316);
+    transition: width 0.7s var(--ease-premium);
+  }
+  /* Le liseré qui court sur la barre pendant un rendu: c'est ce qui fait la
+     différence entre « ça travaille » et « c'est figé ». */
+  .bar-fill[data-live="true"]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+    animation: skeletonSweep 1.8s var(--ease-premium) infinite;
+  }
 
   /* pastille de statut */
   .status-pill {
     @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold;
     border: 1px solid var(--hairline);
+    background: rgba(255, 255, 255, 0.04);
   }
   .status-pill[data-tone="ok"]      { @apply bg-emerald-400/10 text-emerald-300 border-emerald-400/30; }
   .status-pill[data-tone="busy"]    { @apply bg-primary-500/10 text-primary-300 border-primary-500/30; }
@@ -180,6 +346,24 @@
 
 @layer utilities {
   .text-balance { text-wrap: balance; }
+  .text-pretty { text-wrap: pretty; }
+  /* Gouttière unique du parcours connecté: toutes les pages s'alignent, y
+     compris quand on passe de l'une à l'autre. */
+  .shell-gutter { padding-left: var(--shell-gutter); padding-right: var(--shell-gutter); }
+  /* Un halo diffus, toujours DERRIÈRE le contenu et jamais cliquable. */
+  .halo {
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(110px);
+    pointer-events: none;
+    z-index: -1;
+  }
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
   /* Rails horizontaux (sélecteur de moteurs) : on défile sans la barre système,
      qui casse l'alignement des cartes et alourdit visuellement la section. */
   .no-scrollbar {
@@ -222,4 +406,7 @@
   .reveal { opacity: 1; transform: none; transition: none; }
   .skeleton::after { animation: none; }
   .btn-accent::after { display: none; }
+  .bar-fill[data-live="true"]::after { animation: none; }
+  .cf-card:hover { transform: none; }
+  .cf-card::after { display: none; }
 }

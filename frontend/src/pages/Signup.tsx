@@ -63,18 +63,18 @@ export default function Signup() {
   return (
     <div className="relative isolate min-h-[80vh] flex items-center justify-center overflow-hidden px-4">
       <div className="absolute inset-0 -z-10" aria-hidden>
-        <div className="cf-aurora left-[-10%] top-[-10%] h-[380px] w-[380px] bg-primary-600/40" />
-        <div className="cf-aurora right-[-8%] bottom-[-15%] h-[340px] w-[340px] bg-accent-500/25" style={{ animationDelay: '-8s' }} />
+        <div className="halo left-[-10%] top-[-10%] h-[420px] w-[420px] bg-primary-700/35" />
+        <div className="halo bottom-[-15%] right-[-8%] h-[380px] w-[380px] bg-iris-700/25" />
         <div className="cf-grid-dots absolute inset-0" />
       </div>
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="mx-auto mb-4 w-fit"><Logo size={48} /></div>
-          <h1 className="text-2xl font-bold">Crée ton compte</h1>
+          <h1 className="text-title font-bold">Crée ton compte</h1>
           <p className="text-dark-400 mt-2">2 montages offerts par mois — sans carte bancaire</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="card glass space-y-4">
+        <form onSubmit={handleSubmit} className="panel space-y-4">
           {error && (
             <div className="bg-red-400/10 border border-red-400/20 rounded-lg p-3 text-red-400 text-sm">
               {error}
@@ -88,7 +88,7 @@ export default function Signup() {
               type="text"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              className="input-field"
+              className="field"
               placeholder="John Doe"
               autoComplete="name"
             />
@@ -101,7 +101,7 @@ export default function Signup() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="input-field"
+              className="field"
               placeholder="you@example.com"
               required
               autoComplete="email"
@@ -115,7 +115,7 @@ export default function Signup() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="input-field"
+              className="field"
               placeholder="Min 8 characters, include a number"
               minLength={8}
               required
@@ -130,7 +130,7 @@ export default function Signup() {
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="input-field"
+              className="field"
               placeholder="Re-enter your password"
               minLength={8}
               required
