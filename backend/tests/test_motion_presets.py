@@ -15,6 +15,8 @@ def test_named_families_exist():
         "editorial_paper", "sketch_notes",
         # Famille du style « board de présentation » (opt-in également)
         "board_pitch",
+        # Familles 3D natives (moteur `motion_3d`) — en rotation elles aussi
+        "clay_3d", "glass_3d", "chrome_3d", "iso_3d", "paper_3d",
     }
 
 

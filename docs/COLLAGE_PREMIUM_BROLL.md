@@ -372,7 +372,10 @@ quatrième direction ne demande aucune modification du pipeline.
 |---|---|---|---|---|
 | `collage_premium` | `editorial` | oui, si crédits | oui | image générée découpée, ou pièces dessinées en repli |
 | `collage_ugc_product` | `ugc_product` | **jamais** | non | pièces dessinées uniquement |
-| `collage_ugc_motion` | `ugc_motion` | **jamais** | oui | pièces dessinées + scènes motion design |
+| `collage_ugc_motion` | `ugc_motion` | **jamais** | oui | pièces dessinées + scènes motion design 3D |
+
+Le motion design de ces moteurs est rendu par `autoedit_engine/motion_3d.py`
+(volumes ombrés, caméra qui tourne) : aucun crédit image n'est consommé.
 
 ### Illustrer sans image générée
 
@@ -385,6 +388,33 @@ bibliothèque de contenus.
 
 Le rendu construit alors **une pièce par objet** au lieu de partitionner une
 image : chaque élément a sa forme propre et sa propre entrée d'animation.
+
+### Précision : les pièces amènent à l'écran ce qui est DIT
+
+Règle produit : *« ce que la personne dit, les papiers de collage l'amènent à
+l'écran »*. Deux mécanismes la garantissent, tous deux hors ligne :
+
+1. **Aucune découpe tirée au sort.** `collage_shapes.resolve_pictogram_ex()`
+   renvoie `(pictogramme, correspondance_réelle)`. Sans correspondance, la
+   découpe est *neutre* et l'appelant le sait — l'ancien repli tirait une forme
+   par empreinte du mot, et l'écran montrait une chaussure pendant qu'on parlait
+   de garantie.
+2. **Les objets viennent du discours.** `collage_concept_planner.spoken_objects()`
+   relit la phrase mot à mot et retient, **dans l'ordre où ils sont prononcés**,
+   les termes qui savent devenir une découpe (jamais deux fois le même
+   pictogramme). La bibliothèque de métaphores du profil ne sert plus qu'à
+   compléter, ou à sauver une phrase sans aucun terme illustrable.
+
+Côté LLM, même discipline : un objet proposé par le modèle qu'aucune découpe ne
+sait représenter est **écarté** et remplacé par un mot réellement prononcé, et la
+consigne envoyée au planner interdit explicitement d'introduire un objet dont
+l'extrait ne parle pas.
+
+Un mot isolé n'est reconnu que si la règle le couvre **depuis son début** et sur
+l'essentiel de sa longueur : le français décline par la fin (`livraison` →
+`livraisons`), jamais par le début. C'est ce qui empêche les faux amis —
+« franchement » n'est pas une pièce de monnaie (`franc`), « important » n'est pas
+une porte (`port`), « éviter » n'est pas une horloge (`vite`).
 
 ### Direction produit
 

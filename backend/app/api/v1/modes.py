@@ -25,7 +25,10 @@ MODE_DEFINITIONS: list[dict] = [
             "Le moteur par défaut qui comprend le SENS de la phrase et en fait "
             "une scène : métaphore visuelle, collage papier éditorial (photos "
             "noir & blanc tramées, papier coloré, contours crème) et éléments "
-            "qui s'assemblent un par un sur un fond vide. 100 % automatique."
+            "qui s'assemblent un par un sur un fond vide. Les pièces sont "
+            "tirées des mots réellement prononcés, et les scènes de motion "
+            "design sont rendues en 3D (volumes, lumière, caméra qui tourne). "
+            "100 % automatique."
         ),
         "pipeline": "v2",
         "default": True,
@@ -75,8 +78,9 @@ MODE_DEFINITIONS: list[dict] = [
         "badge": "0 crédit image",
         "description": (
             "Le moteur UGC Produit, plus les scènes de motion design animées du "
-            "moteur CutForge. Toujours aucune image IA générée : collage papier "
-            "et motion design procédural uniquement."
+            "moteur CutForge, rendues en 3D (volumes ombrés, caméra qui tourne, "
+            "ombre de contact). Toujours aucune image IA générée : collage papier "
+            "et 3D procédurale uniquement."
         ),
         "pipeline": "v2",
         "defaults": {
@@ -256,7 +260,8 @@ MODE_DEFINITIONS: list[dict] = [
         "icon": "⚡",
         "description": (
             "Économise les crédits : silences coupés, captions, zooms, SFX, "
-            "transitions et motion design procédural — aucune image IA payante."
+            "transitions et scènes de motion design rendues en 3D par le moteur "
+            "local — aucune image IA payante."
         ),
         "pipeline": "v2",
         "defaults": {

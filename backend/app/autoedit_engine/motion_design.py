@@ -29,7 +29,7 @@ import json
 import math
 import os
 import sys
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
@@ -41,6 +41,7 @@ except AttributeError:  # Pillow < 9.1
 
 from . import config
 from . import content
+from . import motion_3d
 from . import silhouettes
 from .fonts import load_font
 from .render_utils import ProResPipe, alpha_fade, clamp, ease_in_out, ease_out_back, ease_out_cube
@@ -52,6 +53,9 @@ INK = config.MOTION_INK
 # Stage background (mutable: varied per video by select_palette()).
 BG_TOP = config.MOTION_BG_TOP
 BG_BOTTOM = config.MOTION_BG_BOTTOM
+# Famille de preset active + style 3D associé (posés par select_palette()).
+FAMILY: Optional[str] = None
+STYLE_3D: Optional[str] = None
 
 
 def select_palette(seed_text: str, preset: Optional[str] = None) -> str:
@@ -63,7 +67,7 @@ def select_palette(seed_text: str, preset: Optional[str] = None) -> str:
     family, so two different videos never share the same look — even when every
     scene falls back to the procedural drawings. Returns the chosen family name.
     """
-    global ACCENT, GOLD, BG_TOP, BG_BOTTOM, INK
+    global ACCENT, GOLD, BG_TOP, BG_BOTTOM, INK, FAMILY, STYLE_3D
     try:
         from . import motion_presets
         chosen = (motion_presets.preset_for(preset) if preset
@@ -72,9 +76,19 @@ def select_palette(seed_text: str, preset: Optional[str] = None) -> str:
         # Encre du texte: sombre sur les familles à fond clair (sketch_notes),
         # blanche partout ailleurs — sinon les titres seraient illisibles.
         INK = getattr(chosen, "ink", config.MOTION_INK)
+        FAMILY = chosen.name
+        # Le style 3D suit la famille. Il peut être forcé (MOTION_3D_STYLE) ou
+        # coupé (MOTION_3D=0) pour revenir à l'ancien repli au trait.
+        STYLE_3D = (config.MOTION_3D_STYLE
+                    or motion_presets.style_3d_for(chosen.name)) \
+            if config.MOTION_3D_ENABLED else None
         return chosen.name
     except Exception:
         # Fallback to the legacy palette table if presets are unavailable.
+        # On repart aussi du style 3D signature: garder celui du montage
+        # précédent donnerait une scène habillée avec la mauvaise palette.
+        FAMILY = None
+        STYLE_3D = (motion_3d.DEFAULT_STYLE if config.MOTION_3D_ENABLED else None)
         palettes = getattr(config, "MOTION_PALETTES", None)
         if not palettes:
             return "default"
@@ -786,7 +800,10 @@ def _illu_box(kind: str, layout: str = "stage_center") -> Tuple[int, int, int, i
     if layout == "corner_stack":
         return (430, 300, W - 60, 1080)       # tucked top-right, room left for the stack
     if layout == "ticker_strip":
-        return (140, 260, W - 140, 1280)      # centered high, room low for the ticker bar
+        # La bande défilante mange le bas du cadre (bandeau à y=1370 + kicker
+        # juste au-dessus): l'illustration s'arrête donc assez haut pour laisser
+        # passer la phrase prononcée SANS chevaucher le bandeau.
+        return (140, 250, W - 140, 1080)      # centered high, room low for the ticker bar
     if layout == "frame_card":
         return (160, 300, W - 160, 1220)      # bracketed card, room below for headline
     if layout == "diagonal_split":
@@ -1108,7 +1125,10 @@ def _draw_spoken_line(draw: ImageDraw.ImageDraw, target: Image.Image,
     dl = ImageDraw.Draw(layer)
     font = load_font("Montserrat", 46)
     max_w = W - 180
-    lines = _wrap_words(dl, text, font, max_w, max_lines=3)
+    # La bande défilante réserve tout le bas: on y tient la phrase en 2 lignes,
+    # sinon le cartouche recouvrait le kicker et le bandeau lui-même.
+    tight = layout == "ticker_strip"
+    lines = _wrap_words(dl, text, font, max_w, max_lines=2 if tight else 3)
     if not lines:
         return
     line_h = 58
@@ -1117,7 +1137,12 @@ def _draw_spoken_line(draw: ImageDraw.ImageDraw, target: Image.Image,
     # Keep the spoken line high enough for TikTok safe-zone captions, but below
     # the main illustration/headline. Full-bleed and ticker layouts reserve more
     # space near the bottom, so the readable line floats slightly above them.
-    y0 = 1500 if layout not in {"ticker_strip", "fullbleed_frame"} else 1180
+    if tight:
+        y0 = 1110
+    elif layout == "fullbleed_frame":
+        y0 = 1180
+    else:
+        y0 = 1500
     y0 = min(y0, H - box_h - 180)
     x0, x1 = 80, W - 80
     dl.rounded_rectangle((x0, y0, x1, y0 + box_h), radius=34,
@@ -1972,6 +1997,39 @@ def scene_events(scene: dict) -> dict:
     }
 
 
+def _plate_size(scene: dict) -> Tuple[int, int]:
+    """Taille de la plaque d'illustration pour cette scène (toutes compositions).
+
+    Contrairement à la silhouette (qui ne supporte que les masques rectangulaires
+    parce qu'un cercle couperait la tête du personnage), une scène 3D est une
+    IMAGE: elle se recadre proprement dans n'importe quel masque.
+    """
+    layout = scene.get("layout") or "stage_center"
+    if layout in BOARD_LAYOUTS:
+        x0, y0, x1, y1 = BOARD_CARD
+    else:
+        x0, y0, x1, y1 = _illu_box(scene.get("kind", "idea"), layout)
+    return (max(1, x1 - x0), max(1, y1 - y0))
+
+
+def _render3d_provider(scene: dict, style: str) -> Callable[[float], Image.Image]:
+    """Fabrique la fonction `t -> plaque 3D` d'une scène.
+
+    L'objet 3D est ANIMÉ (la caméra tourne, les pièces arrivent en cascade):
+    la plaque est donc recalculée à chaque image, contrairement à une
+    illustration IA qui est fixe.
+    """
+    w, h = _plate_size(scene)
+    icon = scene.get("icon") or content.DEFAULT_ICON
+    dur = float(scene.get("duration", config.MOTION_SCENE_DUR))
+    seed = f"{scene.get('id', '')}|{scene.get('headline', '')}"
+
+    def provider(t: float) -> Image.Image:
+        return motion_3d.render_plate(icon, w, h, t=t, dur=dur, style=style,
+                                      accent=ACCENT, gold=GOLD, seed=seed)
+    return provider
+
+
 def _silhouette_size(scene: dict) -> Optional[Tuple[int, int]]:
     """Taille de la plaque silhouette pour cette scène, ou None si sa
     composition la recadrerait mal (voir *_SILHOUETTE_LAYOUTS)."""
@@ -1979,12 +2037,9 @@ def _silhouette_size(scene: dict) -> Optional[Tuple[int, int]]:
     if layout in BOARD_LAYOUTS:
         if layout not in BOARD_SILHOUETTE_LAYOUTS:
             return None
-        x0, y0, x1, y1 = BOARD_CARD
-    else:
-        if layout not in GENERIC_SILHOUETTE_LAYOUTS:
-            return None
-        x0, y0, x1, y1 = _illu_box(scene.get("kind", "idea"), layout)
-    return (max(1, x1 - x0), max(1, y1 - y0))
+    elif layout not in GENERIC_SILHOUETTE_LAYOUTS:
+        return None
+    return _plate_size(scene)
 
 
 def _silhouette_plate(scene: dict) -> Optional[Image.Image]:
@@ -2021,10 +2076,27 @@ def render_scene(scene: dict, out_path: str, fps: int = config.FPS) -> dict:
         except OSError as exc:
             print(f"[motion_design] WARN cannot read {image_path}: {exc} "
                   f"-> procedural drawing", file=sys.stderr)
-    # Une silhouette n'est PAS une image IA: le rapport du job doit continuer à
-    # ne compter que les illustrations réellement payées.
+    # Ni une scène 3D ni une silhouette ne sont des images IA: le rapport du
+    # job doit continuer à ne compter que les illustrations réellement payées.
     ai_illustrated = illu is not None
-    if illu is None and scene.get("silhouette") is not False:
+
+    # Repli n°1 — SCÈNE 3D PROCÉDURALE. C'est elle qui remplace le « dessin au
+    # trait » qui ne racontait rien. Recalculée à chaque image (la caméra
+    # tourne), donc fournie sous forme de callable.
+    provider: Optional[Callable[[float], Image.Image]] = None
+    render3d_used: Optional[str] = None
+    if illu is None and STYLE_3D and scene.get("render3d") is not False:
+        try:
+            provider = _render3d_provider(scene, STYLE_3D)
+            provider(0.0)      # échec immédiat plutôt qu'à la 60e image
+            render3d_used = STYLE_3D
+        except Exception as exc:  # noqa: BLE001 - on retombe silencieusement
+            print(f"[motion_design] WARN rendu 3D indisponible ({exc}) "
+                  f"-> silhouette / dessin", file=sys.stderr)
+            provider = None
+
+    # Repli n°2 — silhouette vectorielle, puis n°3 — dessin au trait.
+    if illu is None and provider is None and scene.get("silhouette") is not False:
         illu = _silhouette_plate(scene)
         if illu is not None:
             silhouette_used = (scene.get("silhouette")
@@ -2035,14 +2107,16 @@ def render_scene(scene: dict, out_path: str, fps: int = config.FPS) -> dict:
     n_frames = max(1, int(round(dur * fps)))
     with ProResPipe(out_path, fps=fps) as pipe:
         for fi in range(n_frames):
-            pipe.write(_compose_frame(scene, illu, stage, fi / fps, dur))
+            t = fi / fps
+            frame_illu = provider(t) if provider is not None else illu
+            pipe.write(_compose_frame(scene, frame_illu, stage, t, dur))
 
     events = scene_events(scene)
-    if illu is None:
+    if illu is None and provider is None:
         events["draw"] = T_ILLU       # the drawing draws itself -> pencil SFX
     return {**scene, "mov": out_path, "duration": round(dur, 3),
             "illustrated": ai_illustrated, "silhouette": silhouette_used,
-            "events": events}
+            "render3d": render3d_used, "events": events}
 
 
 def render_all(scenes: List[dict], outdir: str, *, preset: Optional[str] = None,
@@ -2069,10 +2143,11 @@ def render_all(scenes: List[dict], outdir: str, *, preset: Optional[str] = None,
         # reshuffled per video so different edits don't even share the same
         # layout order.
         layout = layouts[i]
-        # Sans image IA, la scène sera illustrée par une SILHOUETTE vectorielle:
-        # on l'oriente alors vers une composition qui montre le personnage en
-        # entier (board_quote reste volontairement un beat purement typographique).
-        if (layout in BOARD_LAYOUTS and layout != "board_quote"
+        # Sans image IA NI rendu 3D, la scène est illustrée par une SILHOUETTE
+        # vectorielle: on l'oriente alors vers une composition qui montre le
+        # personnage en entier (board_quote reste volontairement un beat
+        # purement typographique). Une scène 3D, elle, se recadre partout.
+        if (not STYLE_3D and layout in BOARD_LAYOUTS and layout != "board_quote"
                 and layout not in BOARD_SILHOUETTE_LAYOUTS
                 and not scene.get("image")):
             layout = BOARD_SILHOUETTE_LAYOUTS[i % len(BOARD_SILHOUETTE_LAYOUTS)]
@@ -2092,6 +2167,8 @@ def render_all(scenes: List[dict], outdir: str, *, preset: Optional[str] = None,
         out.append(rendered)
         if rendered["illustrated"]:
             src = "AI illustration"
+        elif rendered.get("render3d"):
+            src = f"3D '{scene.get('icon')}' / {rendered['render3d']}"
         elif rendered.get("silhouette"):
             src = f"silhouette '{rendered['silhouette']}'"
         else:

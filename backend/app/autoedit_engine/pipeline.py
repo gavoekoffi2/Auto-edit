@@ -210,6 +210,9 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
         "motion_scenes_derived": 0,
         "motion_scenes_rendered": 0,
         "motion_ai_illustrations": 0,
+        # Scènes rendues par le moteur 3D procédural (0 crédit image).
+        "motion_scenes_3d": 0,
+        "motion_3d_style": None,
         "broll_images": 0,
         # Moteur Collage Premium (collage_assemble) — 0 quand il est éteint.
         "collage_beats": 0,
@@ -368,6 +371,10 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
             rep["motion_scenes_rendered"] = len(rendered_scenes)
             rep["motion_ai_illustrations"] = sum(
                 1 for s in rendered_scenes if s.get("illustrated"))
+            rep["motion_scenes_3d"] = sum(
+                1 for s in rendered_scenes if s.get("render3d"))
+            rep["motion_3d_style"] = next(
+                (s["render3d"] for s in rendered_scenes if s.get("render3d")), None)
             if rendered_scenes:
                 motion_json = p("motion_clips", "_motion_clips.json")
                 json.dump(rendered_scenes, open(motion_json, "w", encoding="utf-8"),

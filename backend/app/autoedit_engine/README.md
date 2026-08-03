@@ -17,7 +17,7 @@ cut + grade → dynamic zoom → motion design + overlays (ballotage) → SFX �
 | 1 | `transcribe.py` | `transcripts/<v>_vu.json` (ElevenLabs Scribe, word-level) |
 | 2 | `build_edl.py` | `edl.json`, `clips_graded/seg_*.mp4`, `base_only.mp4` (cut + warm_cinematic grade + concat **filter**) |
 | 3 | `overlays.py` | `animations/*.mov` (counters / progress / lists / stats / lower-thirds → ProRes 4444) |
-| 4 | `motion_design.py` | `motion_clips/md_*.mov` — **scènes illustrées animées** qui dessinent ce que la personne explique (illustration IA flat-design ou dessin procédural trait-par-trait, flèches dessinées, cercle marqueur, étapes numérotées, compteurs) |
+| 4 | `motion_design.py` + `motion_3d.py` | `motion_clips/md_*.mov` — **scènes illustrées animées** qui montrent ce que la personne explique (illustration IA 3D quand une clé existe, sinon **scène 3D procédurale** rendue localement : volumes ombrés, caméra qui tourne, ombre de contact ; puis flèches dessinées, cercle marqueur, étapes numérotées, compteurs) |
 | 5 | `genimg.py` | `broll/*.png` (OpenRouter `gemini-2.5-flash-image`, **n ≈ duration/5**, évite les beats motion) + `motion/*.png` (illustrations des scènes) |
 | 6 | `broll_anim.py` | `broll_clips/br_*.mov` (punch/slide/rise/glitch/flash/… + Ken Burns + cyan brackets) |
 | 7 | `plan_overlays.py` | `edl.json` overlays + `sfx_cues.json` (ballotage, priorité motion, riser+whoosh+pops par scène — chaque SFX est lié à un visuel, pas de gap-fill) |
@@ -55,13 +55,49 @@ le transcript et illustrés par une **prise d'écran complète animée** de
 * scène `steps`  — pastilles d'étapes numérotées qui apparaissent en cascade ;
 * scène `number` — compteur animé doré (pourcentages / chiffres clés).
 
-L'illustration vient de l'API image (style flat-design vectoriel, sans texte) ;
-sans clé API, un **dessin procédural** (bibliothèque de 14 icônes line-art) se
-trace à l'écran trait par trait, façon whiteboard. Chaque scène exporte ses
+L'illustration vient de l'API image (rendu 3D cinéma, sans texte) ; sans clé
+API — ou en mode économique — la scène est rendue par le **moteur 3D
+procédural** `motion_3d.py` (voir plus bas). Chaque scène exporte ses
 `events` (entrée / éléments / sortie) que `plan_overlays` convertit en SFX :
 `riser` 0,45 s avant, `whoosh`/`transition` à l'entrée, `pop`/`ding`/`click`
 sur chaque élément, `swoosh_down` à la sortie. Les B-rolls évitent ces spans et
 les popups ne s'affichent jamais par-dessus.
+
+## Moteur 3D procédural (`motion_3d.py`)
+
+Le repli sans image IA n'est plus un dessin au trait — quatre lignes blanches ne
+racontent rien sur un montage réel. C'est désormais une **vraie scène 3D**,
+rendue localement, sans crédit image et sans asset externe :
+
+* **primitives ombrées** — prisme extrudé (polygone 2D extrudé en Z, faces
+  latérales éclairées par leur normale, arêtes ciselées) et sphère (normale par
+  pixel, Blinn-Phong : ambiante + diffuse + spéculaire + rim light) ;
+* **caméra** yaw/pitch avec perspective faible qui **tourne pendant la scène** :
+  c'est la rotation qui fait lire le volume ;
+* **studio** par style (dégradé, halo, sol, vignette) + **ombre de contact**
+  floutée, cascade d'apparition des pièces, balayage de lumière à l'entrée ;
+* **34 modèles** (argent, croissance, fusée, bouclier, cadenas, horloge,
+  téléphone, panier, engrenages, globe, banque, carte…) composés à partir des
+  primitives et indexés sur les icônes que `content.icon_for_text` détecte déjà
+  dans le discours : l'objet 3D illustre donc ce que la personne dit ;
+* **5 styles** — `clay_studio` (pâte à modeler), `glass_neon` (verre néon),
+  `chrome_metal` (chrome), `iso_blocks` (isométrique), `paper_relief` (papier en
+  relief). Le style suit la famille de preset (`motion_presets.style_3d_for`),
+  qui elle-même tourne par graine stable : deux vidéos ne rendent pas le même 3D,
+  un même job reste reproductible.
+
+Les couleurs d'objet sont des **rôles** (`primary` / `secondary` / `light` /
+`dark` / `shade`) résolus par la palette de la famille : un même modèle
+s'habille correctement dans les cinq directions artistiques.
+
+Rollback / réglage :
+
+```bash
+MOTION_3D=0                    # revient au repli au trait
+MOTION_3D_STYLE=glass_neon     # force un style pour tous les montages
+python -m app.autoedit_engine.motion_3d growth --style iso_blocks --out planche.png
+python -m app.autoedit_engine.motion_3d --list
+```
 
 Shared helpers: `config.py` (every spec constant), `content.py` (transcript →
 montage decisions: overlays, scènes motion design, idées B-roll), `timeline.py` (`s2o` source→output mapping), `sfx_lib.py`

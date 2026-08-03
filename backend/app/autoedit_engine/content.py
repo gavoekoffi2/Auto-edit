@@ -104,6 +104,7 @@ ICON_RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\b(attention|danger|risque|erreur|pi[eè]ge|warning)\b", re.I), "warning"),
     (re.compile(r"\b(crypto|bitcoin|usdt|p2p|binance|bitget|wallet|blockchain|web3)\b", re.I), "crypto"),
     (re.compile(r"\b(change|exchange|taux|devise|devises|dollar|euro|conversion|convertir)\b", re.I), "bank"),
+    (re.compile(r"\b(s[ée]curit[ée]|confiance|garantie|prot[ée]ger|fiable|secure|trust|safe)\b", re.I), "shield"),
     (re.compile(r"\b(otp|code|v[ée]rification|kyc|identit[ée])\b", re.I), "check"),
     (re.compile(r"\b(carte bancaire|visa|mastercard|carte|bank card)\b", re.I), "card"),
     (re.compile(r"\b(mobile money|momo|paiement|payer|argent|cash|prix|euro|franc|fcfa|revenu|salaire|money|pay)\b", re.I), "money"),
@@ -116,7 +117,6 @@ ICON_RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\b(m[ée]thode|syst[èe]me|processus|outil|automatis|machine|process|tool|system)\b", re.I), "gear"),
     (re.compile(r"\b(formation|apprendre|cours|[ée]tudier|livre|le[çc]on|learn|course|book|teach)\b", re.I), "book"),
     (re.compile(r"\b(publicit[ée]|annonce|promo|marketing|communiquer|message|parler|announce|ad)\b", re.I), "megaphone"),
-    (re.compile(r"\b(s[ée]curit[ée]|confiance|garantie|prot[ée]ger|fiable|secure|trust|safe)\b", re.I), "shield"),
     (re.compile(r"\b(temps|heure|minute|jour|semaine|mois|ann[ée]e|rapide|vite|time|fast|deadline)\b", re.I), "clock"),
     (re.compile(r"\b(lancer|d[ée]marrer|commencer|d[ée]but|launch|start|fus[ée]e|rocket)\b", re.I), "rocket"),
     (re.compile(r"\b(lieu|localis|adresse|ville|pays|carte|livraison|transport|map|location)\b", re.I), "map"),
@@ -138,10 +138,36 @@ DEFAULT_ICON = DEFAULT_ICON_POOL[0]
 
 
 def icon_for_text(text: str) -> str:
-    """Best procedural icon id for a chunk of spoken text."""
-    for pattern, icon in ICON_RULES:
-        if pattern.search(text):
-            return icon
+    """Best procedural icon id for a chunk of spoken text.
+
+    On ne prend PAS la première règle qui matche: sur une phrase entière, ça
+    fait gagner un mot de détail sur le sujet réel. « La sécurité est totale,
+    personne ne touche à ton argent sans ta vérification » parle de SÉCURITÉ,
+    pas de vérification — l'ancienne règle « premier match gagne » sortait
+    pourtant une coche, parce que la règle `check` est déclarée plus haut.
+
+    Le concept retenu est donc celui qui:
+      1. est évoqué le plus souvent (nombre de termes DISTINCTS reconnus) — une
+         phrase qui dit « argent », « paiement » et « prix » parle d'argent,
+         quel que soit le mot de détail qui traîne à côté;
+      2. à égalité, l'ordre de déclaration, qui encode la spécificité des
+         règles (`shield` avant `check`: la sécurité est le sujet, la
+         vérification n'en est qu'une étape).
+    """
+    best: Optional[tuple[int, int, str]] = None
+    for order, (pattern, icon) in enumerate(ICON_RULES):
+        hits = pattern.findall(text or "")
+        if not hits:
+            continue
+        distinct = len({h.lower() if isinstance(h, str) else str(h).lower()
+                        for h in hits})
+        # Tri croissant: -distinct d'abord (le plus d'occurrences gagne), puis
+        # l'ordre de déclaration.
+        candidate = (-distinct, order, icon)
+        if best is None or candidate < best:
+            best = candidate
+    if best is not None:
+        return best[2]
     h = sum(ord(c) for c in text) if text else 0
     return DEFAULT_ICON_POOL[h % len(DEFAULT_ICON_POOL)]
 

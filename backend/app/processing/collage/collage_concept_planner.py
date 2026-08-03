@@ -214,10 +214,13 @@ class CollageConceptPlanner:
     def _concept_from_payload(self, payload: dict, beat: dict,
                               planner: str) -> Optional[CollageConcept]:
         """Valide + normalise la réponse du modèle. None si inexploitable."""
+        from . import collage_shapes
+
         raw_objects = payload.get("objects")
         if not isinstance(raw_objects, list):
             return None
         names: list[str] = []
+        unmatched: list[str] = []
         for item in raw_objects:
             if isinstance(item, dict):
                 name = str(item.get("name") or "").strip()
@@ -229,7 +232,16 @@ class CollageConceptPlanner:
                 continue
             if name.lower() in {n.lower() for n in names}:
                 continue
-            names.append(name)
+            # PRÉCISION: un objet qu'aucune découpe ne sait représenter ne doit
+            # pas atterrir sur une forme prise au hasard. On le met de côté et
+            # on le remplace par un terme réellement prononcé.
+            if collage_shapes.resolve_pictogram_ex(name)[1]:
+                names.append(name)
+            else:
+                unmatched.append(name)
+        if len(names) < ccfg.MIN_OBJECTS:
+            filler = [w for w in spoken_objects(beat["text"], ccfg.MAX_OBJECTS)]
+            names = _merge_objects(names + filler, unmatched, ccfg.MAX_OBJECTS)
         if len(names) < ccfg.MIN_OBJECTS:
             return None
         names = names[: ccfg.MAX_OBJECTS]
@@ -277,6 +289,12 @@ class CollageConceptPlanner:
         metaphor, names, default_emotion = profile.metaphor_for(key)
         emotion = _emotion_for(beat["text"]) or default_emotion
         palette, background = _resolve_palette({}, emotion, beat["excerpt"])
+        # Ce qui est PRONONCÉ passe devant la bibliothèque de métaphores.
+        spoken = spoken_objects(beat["text"], ccfg.MAX_OBJECTS)
+        objects = _merge_objects(spoken, names, ccfg.MAX_OBJECTS)
+        if spoken:
+            metaphor = (f"{metaphor} — pièces tirées du propos: "
+                        f"{', '.join(spoken[:4])}")
         return CollageConcept(
             id=beat["id"],
             source_start=beat["source_start"],
@@ -285,13 +303,12 @@ class CollageConceptPlanner:
             meaning=beat["excerpt"][:240],
             emotion=emotion,
             metaphor=metaphor,
-            objects=_build_objects(list(names)[: ccfg.MAX_OBJECTS], palette,
-                                   beat["id"]),
+            objects=_build_objects(objects, palette, beat["id"]),
             background_color=background,
             palette=palette,
             label=_normalize_label(None, beat["text"]),
             planner="heuristic",
-            confidence=0.55,
+            confidence=0.55 + (0.15 if spoken else 0.0),
         )
 
 
@@ -305,6 +322,77 @@ def _icon_for(text: str) -> str:
         return icon_for_text(text)
     except Exception:  # noqa: BLE001 - moteur indisponible (tests isolés)
         return "idea"
+
+
+# --------------------------------------------------------------------------- #
+# PRÉCISION DU COLLAGE — les pièces amènent à l'écran ce qui est DIT
+#
+# Règle produit: « les papiers de collage amènent à l'écran ce que la personne
+# dit ». Avant, les objets venaient d'une bibliothèque de métaphores indexée sur
+# UNE intention dominante: on parlait de livraison en 48 h et la scène montrait
+# une balance et une passerelle. Ici on relit la phrase mot à mot et on retient,
+# DANS L'ORDRE OÙ ILS SONT PRONONCÉS, les termes qui savent devenir une découpe.
+# --------------------------------------------------------------------------- #
+#: Un mot n'est retenu que s'il désigne quelque chose de montrable. On s'appuie
+#: sur les règles de découpe elles-mêmes (source de vérité unique).
+_SPOKEN_MIN_LEN = 3
+
+
+def spoken_objects(text: str, limit: int = 6) -> list[str]:
+    """Termes prononcés qui donnent une découpe RÉELLE, dans l'ordre du discours.
+
+    Un même pictogramme n'est jamais retenu deux fois: deux mots synonymes
+    (« prix » puis « tarif ») produiraient la même pièce en double.
+    """
+    from . import collage_shapes
+
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in re.findall(r"[A-Za-zÀ-ÿ']{%d,}" % _SPOKEN_MIN_LEN, text or ""):
+        word = raw.strip("'").lower()
+        if len(word) < _SPOKEN_MIN_LEN or word in collage_shapes._STOPWORDS:
+            continue
+        pictogram, matched = collage_shapes.resolve_pictogram_ex(word)
+        if not matched or pictogram in seen:
+            continue
+        seen.add(pictogram)
+        out.append(word)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _merge_objects(spoken: Sequence[str], library: Sequence[str],
+                   limit: int) -> list[str]:
+    """Objets finaux: ce qui est DIT d'abord, la bibliothèque pour compléter.
+
+    La métaphore du profil garde son rôle — donner une scène cohérente quand la
+    phrase ne contient aucun terme illustrable — mais elle ne passe plus DEVANT
+    ce que la personne vient de dire.
+    """
+    from . import collage_shapes
+
+    out: list[str] = []
+    fallback: list[str] = []
+    seen: set[str] = set()
+    for name in list(spoken) + list(library):
+        pictogram, matched = collage_shapes.resolve_pictogram_ex(name)
+        if not matched:
+            # Objet sans découpe: on ne le pose PAS sur une forme neutre tant
+            # qu'on a mieux. Il ne sert qu'à ne jamais rendre une scène vide.
+            fallback.append(name)
+            continue
+        if pictogram in seen:
+            continue
+        seen.add(pictogram)
+        out.append(name)
+        if len(out) >= limit:
+            return out
+    for name in fallback:
+        if len(out) >= ccfg.MIN_OBJECTS:
+            break
+        out.append(name)
+    return out[:limit]
 
 
 def _emotion_for(text: str) -> Optional[Emotion]:

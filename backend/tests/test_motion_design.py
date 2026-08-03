@@ -182,6 +182,25 @@ def test_icon_mapping_matches_concepts():
         assert icon in motion_design.ICONS
 
 
+def test_icon_follows_the_dominant_concept_not_the_first_rule():
+    """La scène doit illustrer le SUJET de la phrase, pas un mot de détail.
+
+    « Premier match gagne » sortait une coche sur une phrase qui parle de
+    sécurité, uniquement parce que la règle `check` est déclarée plus haut que
+    `shield`. On compte désormais les termes reconnus par concept.
+    """
+    assert content.icon_for_text(
+        "La sécurité est totale : personne ne peut toucher à ton argent "
+        "sans ta vérification."
+    ) == "shield"
+    # Un concept répété l'emporte sur une règle déclarée plus tôt.
+    assert content.icon_for_text(
+        "Le prix, le paiement et l'argent : tout est transparent malgré le risque."
+    ) == "money"
+    # Le mot spécifique reste gagnant quand il est seul de son concept.
+    assert content.icon_for_text("vérification OTP avant validation") == "check"
+
+
 # --------------------------------------------------------------------------- #
 # stroke math + event timeline
 # --------------------------------------------------------------------------- #
