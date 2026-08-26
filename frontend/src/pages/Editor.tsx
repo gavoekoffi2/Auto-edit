@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   Zap, VolumeX, Sparkles, Loader2, ArrowLeft, ChevronLeft, ChevronRight,
   Image as ImageIcon, Music, Subtitles, Smartphone, Megaphone, PenTool, Check,
+  MessageSquare, Play, Palette, Send, SlidersHorizontal,
 } from 'lucide-react'
 import VideoPlayer from '../components/video/VideoPlayer'
 import Timeline from '../components/video/Timeline'
@@ -160,6 +161,8 @@ export default function Editor() {
   const [options, setOptions] = useState<JobOptions>(FALLBACK_MODES[0].defaults)
   const [ctaText, setCtaText] = useState('')
   const [logoText, setLogoText] = useState('')
+  const [editPrompt, setEditPrompt] = useState('')
+  const [promptApplied, setPromptApplied] = useState(false)
 
   // Charge le catalogue de modes depuis l'API (DRY avec le backend).
   useEffect(() => {
@@ -228,6 +231,23 @@ export default function Editor() {
     setOptions((prev) => ({ ...prev, [key]: !prev[key] }))
   }
 
+  const applyEditPrompt = () => {
+    const prompt = editPrompt.trim().toLowerCase()
+    if (!prompt) return
+    setOptions((prev) => ({
+      ...prev,
+      ...(prompt.includes('sous') || prompt.includes('caption') ? { dynamic_captions: true } : {}),
+      ...(prompt.includes('silence') || prompt.includes('pause') ? { remove_silence: true } : {}),
+      ...(prompt.includes('b-roll') || prompt.includes('broll') || prompt.includes('illustr') ? { ai_broll: true } : {}),
+      ...(prompt.includes('musique') || prompt.includes('music') ? { music: true } : {}),
+      ...(prompt.includes('son') || prompt.includes('sfx') || prompt.includes('bruit') ? { sfx: true } : {}),
+      ...(prompt.includes('horizontal') ? { vertical_9_16: false } : {}),
+      ...(prompt.includes('vertical') || prompt.includes('reels') || prompt.includes('tiktok') ? { vertical_9_16: true } : {}),
+    }))
+    setPromptApplied(true)
+    toast('info', 'Préférences appliquées au prochain rendu')
+  }
+
   const handleAutoEdit = useCallback(async () => {
     if (!videoId) return
     setProcessing(true)
@@ -289,6 +309,7 @@ export default function Editor() {
     [modes, activeFamily],
   )
   const currentMode = modes.find((m) => m.id === selectedMode)
+  const styleTheme = getStyleTheme(currentMode?.id)
 
   if (loadError) {
     return (
@@ -419,6 +440,59 @@ export default function Editor() {
             onSelect={setSelectedMode}
           />
         </section>
+
+        {currentMode && (
+          <section className="mt-5 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.025]">
+            <div className="grid gap-6 p-5 lg:grid-cols-[minmax(0,1fr)_18rem] lg:p-6">
+              <div className="min-w-0">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-primary-300">
+                      <Palette className="h-3.5 w-3.5" /> Direction artistique
+                    </div>
+                    <h2 className="font-display text-xl font-semibold">{currentMode.name}</h2>
+                    <p className="mt-1 max-w-2xl text-sm leading-relaxed text-dark-400">{currentMode.description}</p>
+                  </div>
+                  <span className="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-300">Aperçu du rendu</span>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <StylePreviewFrame theme={styleTheme} label="Captions" value="Synchronisées" />
+                  <StylePreviewFrame theme={styleTheme} label="B-roll & motion" value={options.ai_broll ? 'Activé' : 'Désactivé'} />
+                  <StylePreviewFrame theme={styleTheme} label="Sound design" value={options.sfx ? 'Activé' : 'Désactivé'} />
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {getStyleFeatures(currentMode, options).map((feature) => (
+                    <span key={feature} className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-xs text-dark-200">{feature}</span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                <div className="mb-3 flex items-center gap-2 text-sm font-semibold"><MessageSquare className="h-4 w-4 text-primary-300" /> Modifier avec un prompt</div>
+                <p className="mb-3 text-xs leading-relaxed text-dark-500">Décris une intention de montage. Les réglages correspondants seront activés pour le prochain rendu.</p>
+                <textarea
+                  value={editPrompt}
+                  onChange={(event) => { setEditPrompt(event.target.value); setPromptApplied(false) }}
+                  placeholder="Ajoute des sous-titres lisibles et un B-roll discret…"
+                  rows={4}
+                  className="w-full resize-none rounded-lg border border-white/10 bg-dark-950/80 px-3 py-2.5 text-sm text-white placeholder:text-dark-600 focus:border-primary-500 focus:outline-none"
+                />
+                <button type="button" onClick={applyEditPrompt} disabled={!editPrompt.trim()} className="btn-secondary mt-3 flex w-full items-center justify-center gap-2 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40"><Send className="h-3.5 w-3.5" /> Appliquer</button>
+                {promptApplied && <p className="mt-2 text-center text-[11px] text-emerald-300">Préférences ajoutées aux options ci-dessous.</p>}
+                <div className="mt-4 border-t border-white/10 pt-3">
+                  <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.15em] text-dark-500"><SlidersHorizontal className="h-3.5 w-3.5" /> Actions rapides</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {['Ajoute du B-roll', 'Coupe les pauses', 'Format Reels'].map((suggestion) => (
+                      <button key={suggestion} type="button" onClick={() => setEditPrompt(suggestion)} className="rounded-md border border-white/10 px-2 py-1 text-[11px] text-dark-400 transition hover:border-primary-400/40 hover:text-white">{suggestion}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* -------------------------------------------------------------- */}
         {/* Aperçu + réglages, côte à côte                                   */}
@@ -619,6 +693,48 @@ export default function Editor() {
               </div>
             )}
           </aside>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+type StyleTheme = { gradient: string; accent: string; texture: string; label: string }
+
+function getStyleTheme(id?: string): StyleTheme {
+  const themes: Record<string, StyleTheme> = {
+    pill_editorial: { gradient: 'linear-gradient(135deg, #d7e5ff, #3f72ff 55%, #111827)', accent: '#f4c95d', texture: 'radial-gradient(circle at 25% 20%, rgba(255,255,255,.65), transparent 30%)', label: 'EDITORIAL' },
+    neon_hype: { gradient: 'linear-gradient(135deg, #101827, #0e7490 52%, #7c3aed)', accent: '#67e8f9', texture: 'repeating-linear-gradient(115deg, transparent 0 9px, rgba(255,255,255,.08) 10px 11px)', label: 'NEON' },
+    handwritten_note: { gradient: 'linear-gradient(135deg, #f4e6c8, #c98d61 56%, #2d1d20)', accent: '#fff1b8', texture: 'repeating-linear-gradient(0deg, rgba(255,255,255,.12) 0 1px, transparent 1px 7px)', label: 'NOTES' },
+    collage_premium: { gradient: 'linear-gradient(135deg, #13233b, #405d7c 48%, #e59e65)', accent: '#f4d28b', texture: 'radial-gradient(circle at 75% 25%, rgba(255,255,255,.3), transparent 32%)', label: 'COLLAGE' },
+    board_pitch: { gradient: 'linear-gradient(135deg, #10251f, #39705d 50%, #e3b86d)', accent: '#f1d08c', texture: 'linear-gradient(120deg, transparent 35%, rgba(255,255,255,.12) 36% 39%, transparent 40%)', label: 'BOARD' },
+  }
+  return themes[id ?? ''] ?? { gradient: 'linear-gradient(135deg, #17172a, #4c4c86 52%, #c26b8c)', accent: '#f3b7d4', texture: 'radial-gradient(circle at 20% 20%, rgba(255,255,255,.35), transparent 28%)', label: 'CUTFORGE' }
+}
+
+function getStyleFeatures(mode: ModeDescriptor, options: JobOptions): string[] {
+  const features = [
+    options.dynamic_captions ? 'Captions mot à mot' : 'Captions désactivées',
+    options.remove_silence ? 'Pauses supprimées' : 'Prises originales',
+    options.vertical_9_16 ? 'Format 9:16 natif' : 'Format horizontal',
+  ]
+  if (options.motion_design) features.push(mode.defaults.motion_preset ? `Motion ${mode.defaults.motion_preset.replace(/_/g, ' ')}` : 'Motion design')
+  if (options.ai_broll) features.push('B-roll contextualisé')
+  if (options.music) features.push('Musique avec ducking')
+  if (options.sfx) features.push('Effets sonores synchronisés')
+  return features
+}
+
+function StylePreviewFrame(props: { theme: StyleTheme; label: string; value: string }) {
+  return (
+    <div className="group relative min-h-[9.5rem] overflow-hidden rounded-xl border border-white/10 bg-dark-950">
+      <div className="absolute inset-0 opacity-90 transition-transform duration-500 group-hover:scale-105" style={{ backgroundImage: `${props.theme.texture}, ${props.theme.gradient}` }} />
+      <div className="relative flex h-full min-h-[9.5rem] flex-col justify-between p-3">
+        <div className="flex items-center justify-between text-[9px] font-bold tracking-[0.2em] text-white/70"><span>{props.theme.label}</span><Play className="h-3 w-3 fill-current" /></div>
+        <div>
+          <div className="mb-2 h-1 w-12 rounded-full" style={{ backgroundColor: props.theme.accent }} />
+          <p className="text-xs font-semibold text-white">{props.label}</p>
+          <p className="mt-0.5 text-[11px] text-white/65">{props.value}</p>
         </div>
       </div>
     </div>
