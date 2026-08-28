@@ -198,7 +198,11 @@ export default function Dashboard() {
                 {plan !== 'free' && <Crown className="h-3.5 w-3.5" />}
                 PLAN {plan.toUpperCase()}
               </span>
-              <a href="#upload" className="btn-accent flex items-center gap-2 text-sm">
+              <a href="/ad-studio" className="btn-accent flex items-center gap-2 text-sm">
+                <Sparkles className="h-4 w-4" />
+                Créer une publicité
+              </a>
+              <a href="#upload" className="btn-primary flex items-center gap-2 text-sm">
                 <Plus className="h-4 w-4" />
                 Nouveau montage
               </a>

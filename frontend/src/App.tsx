@@ -18,6 +18,7 @@ const Clips = lazy(() => import('./pages/Clips'))
 const Pricing = lazy(() => import('./pages/Pricing'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
+const AdStudio = lazy(() => import('./pages/AdStudio'))
 
 function PageLoader() {
   return (
@@ -68,6 +69,14 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <AdminDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/ad-studio"
+              element={
+                <ProtectedRoute>
+                  <AdStudio />
                 </ProtectedRoute>
               }
             />
