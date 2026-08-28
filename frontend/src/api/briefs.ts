@@ -48,3 +48,8 @@ export async function previewBrief(input: BriefInput): Promise<BriefPreview> {
   const response = await client.post<BriefPreview>('/briefs/preview', input)
   return response.data
 }
+
+export async function createVoiceover(script: string): Promise<Blob> {
+  const response = await client.post('/briefs/voiceover', { script }, { responseType: 'blob' })
+  return response.data as Blob
+}

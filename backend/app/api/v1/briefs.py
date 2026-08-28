@@ -5,10 +5,18 @@ actual media generation remains delegated to the existing Celery/FFmpeg pipeline
 """
 from __future__ import annotations
 
+import os
 import re
 from typing import Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
+from uuid import uuid4
+
+from app.api.deps import get_current_user
+from app.config import settings
+from app.models.user import User
+from app.processing.voiceover_service import VoiceoverError, VoiceoverService
 from pydantic import BaseModel, Field
 
 router = APIRouter()
@@ -46,6 +54,11 @@ class StoryScene(BaseModel):
     motion: str
     audio: str
     text_overlay: str
+
+
+class BriefVoiceoverRequest(BaseModel):
+    script: str = Field(min_length=20, max_length=12000)
+    voice_id: str | None = Field(default=None, max_length=120)
 
 
 class BriefPreviewResponse(BaseModel):
@@ -181,3 +194,16 @@ def build_storyboard(data: BriefPreviewRequest) -> BriefPreviewResponse:
 @router.post("/preview", response_model=BriefPreviewResponse)
 async def preview_brief(data: BriefPreviewRequest) -> BriefPreviewResponse:
     return build_storyboard(data)
+
+
+@router.post("/voiceover")
+async def create_voiceover(
+    data: BriefVoiceoverRequest,
+    current_user: User = Depends(get_current_user),
+):
+    target = os.path.join(settings.UPLOAD_DIR, str(current_user.id), "brief_previews", f"{uuid4()}.mp3")
+    try:
+        VoiceoverService().synthesize(data.script, str(target), voice_id=data.voice_id)
+    except VoiceoverError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return FileResponse(str(target), media_type="audio/mpeg", filename="voiceover.mp3")

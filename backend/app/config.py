@@ -135,6 +135,9 @@ class Settings(BaseSettings):
     TRANSCRIPTION_PROVIDER: str = "auto"
     TRANSCRIPTION_LANGUAGE: str = "fr"   # code langue (Scribe + Whisper). "" = auto-détection
     ELEVENLABS_API_KEY: Optional[str] = None
+    TTS_PROVIDER: str = "elevenlabs"  # elevenlabs | none
+    TTS_VOICE_ID: str = "21m00Tcm4TlvDq8ikWAM"
+    TTS_MODEL: str = "eleven_multilingual_v2"
 
     # Whisper (repli local) — "small" plus précis que "base" en français.
     WHISPER_MODEL: str = "small"

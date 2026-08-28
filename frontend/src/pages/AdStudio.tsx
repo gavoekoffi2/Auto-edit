@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ArrowRight, Check, Clapperboard, Loader2, MessageSquareText, Play, Sparkles } from 'lucide-react'
-import { previewBrief, type AdTemplateId, type BriefPreview } from '../api/briefs'
+import { createVoiceover, previewBrief, type AdTemplateId, type BriefPreview } from '../api/briefs'
 import { toast } from '../components/ui/Toast'
 import Reveal from '../components/ui/Reveal'
 
@@ -35,6 +35,7 @@ export default function AdStudio() {
   const [duration, setDuration] = useState(45)
   const [preview, setPreview] = useState<BriefPreview | null>(null)
   const [loading, setLoading] = useState(false)
+  const [voiceoverLoading, setVoiceoverLoading] = useState(false)
 
   const selected = useMemo(() => templates.find((item) => item.id === templateId) ?? templates[0], [templateId])
 
@@ -54,6 +55,26 @@ export default function AdStudio() {
       toast('error', 'Impossible de générer le storyboard pour le moment')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleVoiceover = async () => {
+    if (!preview) return
+    setVoiceoverLoading(true)
+    try {
+      const script = preview.scenes.map((scene) => scene.narration).join(' ')
+      const blob = await createVoiceover(script)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'voiceover-publicite.mp3'
+      link.click()
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+      toast('success', 'Voix off générée et téléchargée')
+    } catch {
+      toast('error', 'Configure un fournisseur TTS pour générer la voix off')
+    } finally {
+      setVoiceoverLoading(false)
     }
   }
 
@@ -117,7 +138,7 @@ export default function AdStudio() {
             <div className="flex flex-col gap-3 border-b border-white/10 pb-5 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-wider text-primary-300">Storyboard prêt</p><h2 className="mt-1 text-2xl font-bold">{preview.title}</h2><p className="mt-1 text-sm text-dark-400">{preview.summary}</p></div><span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-xs font-bold text-emerald-300">{preview.format} · {preview.duration_s}s</span></div>
             {preview.warnings.length > 0 && <p className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/10 p-3 text-xs text-amber-200">{preview.warnings.join(' ')}</p>}
             <div className="mt-5 grid gap-3 md:grid-cols-2 lg:grid-cols-3">{preview.scenes.map((scene) => <article key={scene.order} className="rounded-2xl border border-white/10 bg-dark-950/50 p-4"><div className="flex items-center justify-between"><span className="rounded-full bg-primary-500/15 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-primary-200">{scene.order}. {scene.role}</span><span className="text-[11px] text-dark-500">{formatTime(scene.start_s)}–{formatTime(scene.end_s)}</span></div><p className="mt-3 text-sm font-medium text-white">{scene.text_overlay}</p><p className="mt-2 text-xs leading-relaxed text-dark-400">{scene.narration}</p><p className="mt-3 border-t border-white/10 pt-3 text-[11px] text-dark-500">{scene.motion}</p></article>)}</div>
-            <div className="mt-5 flex flex-wrap items-center gap-3"><button type="button" className="btn-accent flex items-center gap-2"><ArrowRight className="h-4 w-4" /> Préparer le rendu</button><span className="text-xs text-dark-500">Le rendu final utilisera les assets de marque, la vidéo source ou les médias fournis.</span></div>
+            <div className="mt-5 flex flex-wrap items-center gap-3"><button type="button" onClick={handleVoiceover} disabled={voiceoverLoading} className="btn-accent flex items-center gap-2">{voiceoverLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquareText className="h-4 w-4" />} Générer la voix off</button><button type="button" className="btn-primary flex items-center gap-2"><ArrowRight className="h-4 w-4" /> Préparer le rendu</button><span className="text-xs text-dark-500">La voix off nécessite `ELEVENLABS_API_KEY`. Le rendu utilisera les assets de marque et médias fournis.</span></div>
           </section>
         </Reveal>}
       </div>
