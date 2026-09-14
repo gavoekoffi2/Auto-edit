@@ -74,6 +74,35 @@ Upload → Whisper (word-level) → Silence detect → EDL (filler words FR/EN)
 | **Formation / éducatif** | Captions lisibles + B-roll discret + horizontal |
 | **Collage Premium ✂️** | Métaphore visuelle + collage papier éditorial assemblé à l'écran ([doc](docs/COLLAGE_PREMIUM_BROLL.md)) |
 
+### Illustrations automatiques 🎬
+
+CutForge lit le transcript, décide **où** une illustration aide vraiment, quoi
+montrer et comment l'animer sur la voix — la vidéo originale reste le socle.
+
+```
+00:00 ───────── TALKING HEAD ─────────
+00:35 ── PROCESSUS ──     « produit → trafic → livraison »
+00:41 ───────── TALKING HEAD ─────────
+01:25 ── DIAGRAMME ──     « client → serveur → entrepôt »
+01:32 ───────── TALKING HEAD ─────────
+```
+
+* **12 types de scènes** — whiteboard, diagramme, flowchart, processus,
+  comparaison, statistiques, timeline, concept, infographie, typographie
+  cinétique, interface, motion graphics ;
+* **10 figures de discours détectées** (FR/EN) — listes, étapes, comparaisons,
+  chiffres, cause/effet, problème/solution, définitions, processus,
+  architectures ;
+* **aucune clé API requise** — le mode `offline` est le défaut et ne contacte
+  rien ; les modes `free` et `cloud` sont optionnels et retombent toujours sur
+  l'analyse locale ;
+* **aucun GPU**, rendu parallèle borné, pensé pour un VPS ;
+* **YouTube 16:9 en priorité**, plus 9:16 et 1:1.
+
+📖 [`docs/ILLUSTRATION_ENGINE.md`](docs/ILLUSTRATION_ENGINE.md) ·
+🖼️ [exemples réels](docs/ILLUSTRATION_ENGINE_EXAMPLES.md) ·
+⚖️ [licences](docs/THIRD_PARTY_LICENSES.md)
+
 Les modes V1 historiques (`tiktok`, `youtube`, `podcast`) restent supportés.
 
 ### Audit & architecture
@@ -81,6 +110,11 @@ Les modes V1 historiques (`tiktok`, `youtube`, `podcast`) restent supportés.
 - [`AUTOEDIT_AUDIT.md`](AUTOEDIT_AUDIT.md) — audit technique complet, bugs corrigés, manques.
 - [`docs/VIDEO_PIPELINE_ARCHITECTURE.md`](docs/VIDEO_PIPELINE_ARCHITECTURE.md) — pipeline V2, contrats, EDL, intégration HyperFrames / Remotion / video-use / OpenRouter.
 - [`docs/COLLAGE_PREMIUM_BROLL.md`](docs/COLLAGE_PREMIUM_BROLL.md) — moteur Collage Premium B-roll (`collage_assemble`) : analyse sémantique, métaphore visuelle, verrou de style, contrôle qualité automatique, routage du type de B-roll.
+- [`docs/ILLUSTRATION_ENGINE.md`](docs/ILLUSTRATION_ENGINE.md) — moteur d'illustration : analyse du discours, score visuel, storyboard, 12 types de scènes, renderers et replis, SFX contextuels, synchronisation, modes offline/free/cloud.
+- [`docs/ILLUSTRATION_ENGINE_EXAMPLES.md`](docs/ILLUSTRATION_ENGINE_EXAMPLES.md) — sorties réelles du moteur, avec rendus.
+- [`docs/ILLUSTRATION_ENGINE_AUDIT.md`](docs/ILLUSTRATION_ENGINE_AUDIT.md) — audit de l'ancien moteur, contrats préservés, audit des licences.
+- [`docs/THIRD_PARTY_LICENSES.md`](docs/THIRD_PARTY_LICENSES.md) — licences tierces et décisions juridiques.
+- [`docs/SFX_LICENSES.md`](docs/SFX_LICENSES.md) — provenance des effets sonores (tous synthétisés).
 
 ## Quick Start
 

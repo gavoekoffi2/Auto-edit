@@ -57,6 +57,13 @@ from . import (
     video_dynamics,
 )
 
+# The new illustration engine lives outside this package. Import it defensively
+# so `autoedit_engine` keeps working as a standalone CLI if it is not present.
+try:
+    from ..illustration_engine import bridge as illustration_bridge
+except Exception:  # noqa: BLE001 - legacy engine still covers the step
+    illustration_bridge = None
+
 
 def _log(step: str, msg: str = "") -> None:
     print(f"\n=== {step} === {msg}")
@@ -183,6 +190,9 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
         do_motion: bool = True, broll_demographic: str = "african",
         visual_mode: str = "auto_fallback", motion_preset: Optional[str] = None,
         style_seed_text: Optional[str] = None, disable_paid_images: bool = False,
+        illustration_style: Optional[str] = None,
+        illustration_intensity: Optional[str] = None,
+        illustration_ai_mode: Optional[str] = None,
         cleanup_level: Optional[str] = None,
         smart_crop_mode: Optional[str] = None,
         scrub_source_subtitles: bool = True,
@@ -203,6 +213,9 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
         "ai_images_skipped": True,
         "fallback_reason": None,
         "motion_preset": motion_preset,
+        "illustration_style": illustration_style,
+        "illustration_intensity": illustration_intensity,
+        "illustration_ai_mode": illustration_ai_mode,
         "source_duration_s": 0.0,
         "kept_duration_s": 0.0,
         "removed_duration_s": 0.0,
@@ -345,11 +358,48 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     # for the same moment of speech (B-roll skips the motion spans).
     motion_json: Optional[str] = None
     motion_scenes: list = []
-    if do_motion:
-        _p(40, "4 motion_design")
+    # The ILLUSTRATION ENGINE is the default illustrator. It replaces the
+    # legacy motion_design monolith with a director that decides WHERE a
+    # picture helps, WHAT it should show and HOW to animate it on the voice.
+    # It emits the same clip records, so every downstream stage is unchanged.
+    # Setting ILLUSTRATION_ENGINE_ENABLED=false restores the legacy engine.
+    used_illustration_engine = False
+    if do_motion and illustration_bridge is not None and illustration_bridge.is_active():
+        _p(40, "4 illustration_engine")
+        try:
+            motion_scenes, ill_report = illustration_bridge.run(
+                vu_data, p("motion_clips"),
+                style=illustration_style, intensity=illustration_intensity,
+                ai_mode=illustration_ai_mode,
+                width=config.WIDTH, height=config.HEIGHT, fps=config.FPS,
+                workdir=workdir, visual_mode=visual_mode,
+                disable_paid_images=disable_paid_images)
+        except Exception as exc:  # noqa: BLE001 - never lose a montage over it
+            print(f"[pipeline] WARN illustration_engine a échoué ({exc}) "
+                  f"-> repli sur motion_design", file=sys.stderr)
+            motion_scenes = []
+        else:
+            used_illustration_engine = True
+            rep["illustration_engine"] = ill_report
+            rep["motion_scenes_derived"] = ill_report.get("scenes_planned", 0)
+            rep["motion_scenes_rendered"] = len(motion_scenes)
+            rep["motion_ai_illustrations"] = sum(
+                1 for s in motion_scenes if s.get("illustrated"))
+            if motion_scenes:
+                motion_json = p("motion_clips", "_motion_clips.json")
+                json.dump(motion_scenes, open(motion_json, "w", encoding="utf-8"),
+                          ensure_ascii=False, indent=2)
+            else:
+                print("[pipeline] illustration_engine: aucun passage ne "
+                      "justifiait une illustration", file=sys.stderr)
+
+    if do_motion and not used_illustration_engine:
+        _p(40, "4 motion_design (legacy)")
         motion_scenes = content.derive_motion_scenes(
             vu_data, demographic=broll_demographic)
         rep["motion_scenes_derived"] = len(motion_scenes)
+        rep["illustration_engine"] = {"enabled": False,
+                                      "reason": "moteur legacy actif"}
         if motion_scenes:
             # Stable per-job look: a seed (job/video id or transcript) keeps a
             # given render reproducible while different videos vary — it picks
@@ -376,8 +426,8 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
                 print("[pipeline] WARN motion_design: scenes derived but none "
                       "rendered — check ffmpeg/PIL in this environment",
                       file=sys.stderr)
-    else:
-        _p(40, "4 motion_design", "skipped (--no-motion)")
+    elif not do_motion:
+        _p(40, "4 illustrations", "skipped (--no-motion)")
 
     # 5 & 6) B-roll images + animation ---------------------------------------
     # Visual mode decides whether the PAID image API may run:
@@ -401,7 +451,9 @@ def run(source: str, workdir: str, *, vu: Optional[str] = None,
     if do_broll:
         ideas_all = content.derive_broll_ideas(
             vu_data, demographic=broll_demographic, graphic_specs=specs,
-            avoid_spans=content.motion_scene_spans(motion_scenes),
+            avoid_spans=(illustration_bridge.spans(motion_scenes)
+                         if used_illustration_engine
+                         else content.motion_scene_spans(motion_scenes)),
         )
         collage_ideas, photo_ideas = _split_collage_ideas(ideas_all)
         if collage_ideas:
@@ -715,12 +767,31 @@ def main(argv: Optional[list[str]] = None) -> int:
                     help="force a motion-design family (clean_fintech, neon_social, …)")
     ap.add_argument("--disable-paid-images", action="store_true",
                     help="never call the paid image API (credit safe)")
+    ap.add_argument("--illustration-style", default=None,
+                    help="professional | education | business | technology | "
+                         "finance | marketing | minimal | whiteboard | "
+                         "dark_premium | clean")
+    ap.add_argument("--illustration-intensity", default=None,
+                    choices=["low", "medium", "high"],
+                    help="how often the engine may take the screen")
+    ap.add_argument("--illustration-ai-mode", default=None,
+                    choices=["offline", "free", "cloud"],
+                    help="offline (default, no network) | free | cloud")
+    ap.add_argument("--legacy-motion", action="store_true",
+                    help="force the legacy motion_design engine")
     args = ap.parse_args(argv)
+    if args.legacy_motion:
+        os.environ["ILLUSTRATION_ENGINE_ENABLED"] = "false"
+        if illustration_bridge is not None:
+            illustration_bridge.config.ENABLED = False
     report: dict = {}
     run(args.source, args.workdir, vu=args.vu, template=args.template,
         do_broll=not args.no_broll, do_motion=not args.no_motion,
         visual_mode=args.visual_mode, motion_preset=args.motion_preset,
-        disable_paid_images=args.disable_paid_images, report=report)
+        disable_paid_images=args.disable_paid_images,
+        illustration_style=args.illustration_style,
+        illustration_intensity=args.illustration_intensity,
+        illustration_ai_mode=args.illustration_ai_mode, report=report)
     print("\n[report]", json.dumps(report.get("effects_applied", {}), ensure_ascii=False))
     return 0
 
