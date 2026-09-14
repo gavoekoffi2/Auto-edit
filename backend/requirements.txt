@@ -49,6 +49,14 @@ opencv-python-headless>=4.9,<5   # 5.x retire cv2.CascadeClassifier (Haar)
 pytest==9.0.2
 pytest-asyncio==1.3.0
 
+# --- Transcription locale (aucune API payante requise) ------------------------
+# openai-whisper (plus haut) reste le repli. faster-whisper le remplace quand il
+# est présent: même qualité, 4-5x plus rapide sur CPU et bien moins de RAM en
+# int8 — c'est ce qui rend la transcription locale réaliste sur un VPS sans GPU.
+# Le choix est automatique (WHISPER_BACKEND=auto) et retombe sur openai-whisper
+# si le paquet ou le modèle manquent.
+faster-whisper>=1.0
+
 # --- Moteur d'illustration (backend/app/illustration_engine) ------------------
 # Le moteur ne demande QUE numpy + Pillow, déjà tirés ci-dessus. Aucune clé API,
 # aucun GPU: le mode offline est le défaut et ne contacte rien.

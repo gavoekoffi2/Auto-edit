@@ -316,11 +316,53 @@ changement.
 
 ---
 
+## 12 bis. Transcription : locale et gratuite par défaut
+
+Le moteur d'illustration ne transcrit pas lui-même : il consomme le format
+mot-à-mot du pipeline
+
+```json
+{"language": "fr", "duration": 92.4, "segments": [
+  {"text": "...", "start": 0.0, "end": 4.2,
+   "words": [{"word": "Bonjour", "start": 0.0, "end": 0.4}]}]}
+```
+
+Ce format vient, par ordre de préférence :
+
+| Source | Coût | Quand |
+|---|---|---|
+| ElevenLabs Scribe | payant | seulement si `ELEVENLABS_API_KEY` est défini |
+| **faster-whisper** | **gratuit, local** | si le paquet est installé (défaut recommandé) |
+| openai-whisper | gratuit, local | repli toujours disponible |
+
+**Aucune clé n'est requise.** Sans `ELEVENLABS_API_KEY`, le pipeline transcrit
+localement ; si Scribe échoue en vol, il retombe aussi sur le local.
+
+`faster-whisper` (CTranslate2) est 4 à 5 fois plus rapide qu'openai-whisper sur
+CPU et bien plus sobre en mémoire en `int8` — c'est ce qui rend la
+transcription locale réaliste sur un VPS sans GPU. Le choix est automatique :
+
+```bash
+WHISPER_BACKEND=auto          # auto | faster_whisper | whisper
+WHISPER_COMPUTE_TYPE=int8     # int8 | int8_float16 | float32
+WHISPER_MODEL=small
+```
+
+Si `faster-whisper` est absent, ou si son modèle ne peut pas être téléchargé,
+le service journalise la raison et bascule sur `openai-whisper` — le job n'est
+jamais perdu pour ça.
+
+Les deux moteurs produisent le même contrat, `confidence` comprise, donc rien
+en aval ne sait lequel a tourné.
+
+---
+
 ## 13. Installation
 
 ```bash
 pip install -r backend/requirements.txt     # numpy + Pillow suffisent au moteur
 pip install whiteboard-animator             # optionnel — dessin à la main
+pip install faster-whisper                  # recommandé — transcription locale rapide
 ```
 
 `ffmpeg` 6+ doit être sur le `PATH` (ou `FFMPEG_BIN`).
@@ -365,6 +407,27 @@ python -m app.autoedit_engine.pipeline video.mp4 --workdir out --legacy-motion
 
 Le résultat du job porte `illustrationEngine` (rapport) et `illustrationPlan`
 (ce qui a été illustré, quand, et avec quel score).
+
+### Routes dédiées (lecture seule)
+
+Le **rendu** passe par l'API Jobs : une illustration n'a de sens que dans un
+montage, et dupliquer le pipeline créerait un second chemin à maintenir. Ces
+routes donnent ce que l'API Jobs ne peut pas donner — savoir ce que le moteur
+ferait **avant** de dépenser du CPU :
+
+| Route | Rôle |
+|---|---|
+| `GET /api/v1/illustrations/capabilities` | styles, intensités, modes, formats, types de scènes, et si le dessin à la main est installé sur cet hôte |
+| `POST /api/v1/illustrations/analyze` | comment le moteur lit un passage : figure de discours, matière extraite, score, justification |
+| `POST /api/v1/illustrations/storyboard` | le plan complet, sans rendre une frame — depuis un `transcript` ou un `job_id` |
+
+```bash
+curl -X POST /api/v1/illustrations/analyze \
+     -H 'Authorization: Bearer <token>' \
+     -d '{"text": "Il y a trois choses : le produit, le trafic et la livraison."}'
+# -> {"pattern": "list", "items": ["Produit","Trafic","Livraison"],
+#     "visual_score": 0.82, "band": "strongly_recommended", ...}
+```
 
 ### En Python
 

@@ -122,11 +122,12 @@ class VisualOpportunityDetector:
                 concepts=self.concepts.concepts(unit.text, limit=4),
                 items=list(unit.items), numbers=list(unit.numbers),
                 sides=unit.sides,
-                reason=self._reason(unit, score),
+                reason=self.reason(unit, score),
             ))
         return out
 
-    def _reason(self, unit: SemanticUnit, score: float) -> str:
+    def reason(self, unit: SemanticUnit, score: float) -> str:
+        """Human-readable justification, surfaced in the UI and the report."""
         label = band(score)
         if unit.pattern == P_KEYWORD:
             return f"{label}: aucune structure de discours détectée"

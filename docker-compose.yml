@@ -68,6 +68,9 @@ x-backend-env: &backend-env
   MOTION_MAX_SCENES: ${MOTION_MAX_SCENES:-40}
   MOTION_EVERY_SHORT: ${MOTION_EVERY_SHORT:-13.0}
   MOTION_EVERY_LONG: ${MOTION_EVERY_LONG:-16.0}
+  # Transcription locale: faster-whisper si installé, sinon openai-whisper.
+  WHISPER_BACKEND: ${WHISPER_BACKEND:-auto}
+  WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
   # --- Moteur d'illustration (app/illustration_engine) ------------------------
   # Aucune dépendance supplémentaire dans l'image: le moteur tourne avec numpy,
   # Pillow et ffmpeg, déjà présents. Aucun GPU, aucune clé API en mode offline.

@@ -106,3 +106,73 @@ def plan_only(vu_data: dict, *, style: str = None, intensity: str = None,
         "plan": board.plan_summary(),
         "storyboard": board.to_dict(),
     }
+
+# --------------------------------------------------------------------------- #
+# read-only payloads for the API
+# --------------------------------------------------------------------------- #
+# Kept here, next to plan_only, so the HTTP layer stays a thin shell and this
+# logic is importable and testable without a database or an auth chain — the
+# same separation `api/v1/modes.py` uses for the mode catalogue.
+def capabilities() -> Dict[str, Any]:
+    """What this deployment can actually do.
+
+    Exposed so a client can read the catalogue from the engine itself instead
+    of hardcoding a copy that drifts the first time a style is added. It also
+    reports whether the optional hand-drawing engine is installed on this host,
+    which no client can know on its own.
+    """
+    from .schemas.visual import VISUAL_TYPES
+    from .styles import STYLES, UI_STYLES
+
+    try:
+        from .renderers import animator_available
+        hand_drawing = animator_available()
+    except Exception:  # noqa: BLE001 - reporting capabilities must not fail
+        hand_drawing = False
+
+    return {
+        "enabled": bool(config.ENABLED),
+        "styles": sorted(STYLES),
+        "ui_styles": dict(UI_STYLES),
+        "intensities": sorted(config.INTENSITY),
+        "ai_modes": list(config.VALID_AI_MODES),
+        "ai_mode_default": config.AI_MODE,
+        "aspects": sorted(config.ASPECTS),
+        "visual_types": list(VISUAL_TYPES),
+        # The hand-drawing engine is an optional dependency: say so plainly
+        # instead of letting the UI promise what this host cannot deliver.
+        "whiteboard_animator": hand_drawing,
+        "score_bands": {
+            "none": [0.0, config.SCORE_NONE],
+            "optional": [config.SCORE_NONE, config.SCORE_OPTIONAL],
+            "recommended": [config.SCORE_OPTIONAL, config.SCORE_RECOMMENDED],
+            "strongly_recommended": [config.SCORE_RECOMMENDED, 1.0],
+        },
+    }
+
+
+def analyze_passage(text: str) -> Dict[str, Any]:
+    """How the engine reads one passage: discourse figure and extracted matter.
+
+    Purely local and side-effect free — this is the offline mode.
+    """
+    from .analyzer import ConceptDetector, SemanticAnalyzer, band
+    from .analyzer.visual_opportunity_detector import VisualOpportunityDetector
+
+    unit = SemanticAnalyzer().analyze_text(text or "", 0.0, 6.0)
+    concepts = ConceptDetector()
+    detector = VisualOpportunityDetector(60.0, concepts)
+    score = detector.score(unit)
+    return {
+        "pattern": unit.pattern,
+        "confidence": round(unit.confidence, 3),
+        "items": list(unit.items),
+        "numbers": [list(n) for n in unit.numbers],
+        "sides": list(unit.sides),
+        "concepts": concepts.concepts(text or "", limit=5),
+        "domains": concepts.domains(text or ""),
+        "suggested_title": concepts.headline(text or "", 4),
+        "visual_score": round(score, 3),
+        "band": band(score),
+        "reason": detector.reason(unit, score),
+    }

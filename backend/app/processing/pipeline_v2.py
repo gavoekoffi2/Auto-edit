@@ -512,11 +512,15 @@ def run_pipeline_v2(
     if vu_path is None:
         # Repli local Whisper (gratuit, hors-ligne).
         from app.processing.transcription_service import TranscriptionService
-        ts = TranscriptionService(model_name=settings.WHISPER_MODEL, word_timestamps=True)
+        ts = TranscriptionService(
+            model_name=settings.WHISPER_MODEL, word_timestamps=True,
+            backend=getattr(settings, "WHISPER_BACKEND", None),
+            compute_type=getattr(settings, "WHISPER_COMPUTE_TYPE", None))
+        backend = ts.resolve_backend()
         transcript = ts.transcribe(video_path, output_dir)
         vu_path = _transcript_to_vu(transcript, output_dir, video_path)
         results["transcription"] = {
-            "provider": "whisper",
+            "provider": backend,
             "language": transcript.language,
             "text": transcript.text,
             "segments_count": len(transcript.segments),
