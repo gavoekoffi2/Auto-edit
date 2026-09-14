@@ -214,9 +214,9 @@ class ScenePlanner:
             box_a = Box(0.09, BODY_TOP, 0.82, half)
             box_b = Box(0.09, BODY_TOP + half + 0.05, 0.82, half)
             divider = Box(0.20, BODY_TOP + half + 0.021, 0.60, 0.008)
-        self._add(scene, R_SIDE_A, box_a, text=_short(left, 24), shape="panel",
+        self._add(scene, R_SIDE_A, box_a, text=_short(left, 34), shape="panel",
                   icon=icons[0], emphasis=0.85, annotation=left)
-        self._add(scene, R_SIDE_B, box_b, text=_short(right, 24), shape="panel",
+        self._add(scene, R_SIDE_B, box_b, text=_short(right, 34), shape="panel",
                   icon=icons[1], emphasis=0.95, annotation=right)
         self._add(scene, R_CONNECTOR, divider, shape="divider", emphasis=0.5)
 

@@ -46,11 +46,21 @@ def test_intensity_controls_how_many_scenes_appear(demo):
     assert counts[0] >= 1
 
 
-def test_scenes_never_touch_and_keep_a_gap_of_face(demo):
-    board = _board(demo, intensity="high")
+@pytest.mark.parametrize("intensity", ["low", "medium", "high"])
+def test_scenes_never_touch_and_keep_a_gap_of_face(demo, intensity):
+    """However dense the edit, the face always comes back in between."""
+    board = _board(demo, intensity=intensity)
+    min_gap = config.intensity_profile(intensity)["min_gap"]
     scenes = sorted(board.scenes, key=lambda s: s.start)
     for previous, current in zip(scenes, scenes[1:]):
-        assert current.start - previous.end >= config.MIN_GAP - 1e-6
+        assert current.start - previous.end >= min_gap - 1e-6
+
+
+def test_a_denser_intensity_allows_a_shorter_gap():
+    gaps = [config.intensity_profile(i)["min_gap"]
+            for i in ("low", "medium", "high")]
+    assert gaps == sorted(gaps, reverse=True)
+    assert min(gaps) >= 5.0, "the talking head must still come back"
 
 
 def test_scene_durations_stay_inside_the_pacing_rules(demo):

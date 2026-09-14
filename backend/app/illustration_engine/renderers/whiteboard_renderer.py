@@ -37,6 +37,22 @@ INK = (17, 19, 24, 255)
 PAPER = (255, 255, 255, 255)
 
 
+# whiteboard-animator types its region roles as a closed Literal, so CutForge's
+# own roles have to be mapped onto its vocabulary rather than passed through.
+_ANIMATOR_ROLES = {
+    R_TITLE: "title",
+    R_ITEM: "main_concept",
+    R_SIDE_A: "main_concept",
+    R_SIDE_B: "main_concept",
+    R_NUMBER: "main_concept",
+    R_ICON: "supporting_detail",
+    R_LABEL: "label",
+    R_CAPTION: "annotation",
+    R_CONNECTOR: "decoration",
+    R_UNDERLINE: "decoration",
+}
+
+
 def animator_available() -> bool:
     """Is the MIT whiteboard-animator importable in this environment?"""
     if not config.USE_WHITEBOARD_ANIMATOR:
@@ -251,7 +267,7 @@ class WhiteboardRenderer(BaseRenderer):
                 reveal = "fill"
             regions.append(Region(
                 label=f"{element.role}_{order}",
-                role="label" if element.role in (R_CAPTION, R_LABEL) else "diagram",
+                role=_ANIMATOR_ROLES.get(element.role, "supporting_detail"),
                 object=element.icon or element.shape or element.role,
                 reveal_order=order,
                 box=Box(ymin=ymin, xmin=xmin, ymax=ymax, xmax=xmax),

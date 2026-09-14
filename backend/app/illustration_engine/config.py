@@ -79,10 +79,17 @@ SCORE_OPTIONAL = 0.60     # 0.40-0.59: only if the budget allows
 SCORE_RECOMMENDED = 0.80  # 0.60-0.79: recommended; 0.80+: strongly recommended
 
 # Intensity presets pick the acceptance threshold and the density budget.
+# `min_gap` is the seconds of uninterrupted talking head required between two
+# illustrations. It belongs to the intensity profile: a user who asks for
+# "high" is asking for a denser edit, and a fixed global gap would silently
+# ignore that.
 INTENSITY: Dict[str, Dict[str, float]] = {
-    "low":    {"threshold": SCORE_RECOMMENDED, "per_minute": 0.6, "max_coverage": 0.10},
-    "medium": {"threshold": SCORE_OPTIONAL + 0.05, "per_minute": 1.2, "max_coverage": 0.18},
-    "high":   {"threshold": SCORE_NONE + 0.05, "per_minute": 2.0, "max_coverage": 0.28},
+    "low":    {"threshold": SCORE_RECOMMENDED, "per_minute": 0.6,
+               "max_coverage": 0.10, "min_gap": 16.0},
+    "medium": {"threshold": SCORE_OPTIONAL + 0.05, "per_minute": 1.2,
+               "max_coverage": 0.18, "min_gap": 9.0},
+    "high":   {"threshold": SCORE_NONE + 0.05, "per_minute": 2.0,
+               "max_coverage": 0.28, "min_gap": 5.0},
 }
 DEFAULT_INTENSITY = os.getenv("ILLUSTRATION_INTENSITY", "medium")
 

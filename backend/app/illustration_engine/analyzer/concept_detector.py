@@ -36,6 +36,10 @@ _EXTRA_STOPWORDS = {
     "forcement", "evidemment", "rapidement", "facilement", "directement",
     "franchement", "carrement", "tellement", "vachement", "clairement",
     "comment", "pourquoi", "quand", "combien", "lequel", "laquelle",
+    # Auxiliaries and modals: they introduce the subject, they are not it.
+    "faut", "faudra", "veut", "veux", "peut", "peux", "doit", "dois",
+    "devez", "allez", "vient", "prend", "fait", "dit", "voit", "sait",
+    "envoie", "donne", "met", "vais", "suis", "sont", "etre", "avoir",
     "surtout", "plutot", "ensuite", "encore", "deja", "alors", "ainsi",
     "absolutely", "completely", "simply", "exactly", "obviously", "quickly",
     "easily", "directly", "honestly", "how", "why", "when", "much", "many",
@@ -148,13 +152,33 @@ class ConceptDetector:
         folded_text = lx.fold(text)
         return sorted(picked, key=lambda tok: folded_text.find(tok))
 
+    # Conjugated verbs and infinitives make a poor title: "PERDAIENT
+    # ENCAISSER" says nothing, while the nouns around them name the subject.
+    # Length guards keep real nouns ("argent", "avenir") out of the net.
+    _CONJUGATED = ("aient", "erent", "ames", "ates", "ions", "iez", "ais",
+                   "ait", "ant", "ez")
+    _INFINITIVE = ("er", "ir", "re")
+
+    def _looks_like_verb(self, token: str) -> bool:
+        if len(token) < 6:
+            return False
+        if token.endswith(self._CONJUGATED):
+            return True
+        # Infinitives only from 7 characters, so "argent" and "avenir" survive.
+        return len(token) >= 7 and token.endswith(self._INFINITIVE)
+
     def headline(self, text: str, max_words: int = 4, max_chars: int = 26) -> str:
         """Short title for the scene, built from its strongest concepts.
 
         Truncation happens on a word boundary: a title ending in "TRA" reads
         as a rendering bug, not as a title.
         """
-        picked = self.concepts(text, limit=max_words)
+        # Ask for more than needed, then drop the verb forms: filtering after
+        # ranking keeps the best remaining nouns instead of the leftovers.
+        ranked = self.concepts(text, limit=max_words + 3)
+        picked = [t for t in ranked if not self._looks_like_verb(t)][:max_words]
+        if not picked:
+            picked = ranked[:max_words]
         if not picked:
             picked = [w for w in (text or "").split() if len(w) > 2][:max_words]
         out: list = []

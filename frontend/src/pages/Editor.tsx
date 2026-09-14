@@ -7,6 +7,8 @@ import {
 import VideoPlayer from '../components/video/VideoPlayer'
 import Timeline from '../components/video/Timeline'
 import JobProgress from '../components/video/JobProgress'
+import IllustrationPanel from '../components/video/IllustrationPanel'
+import IllustrationPlan from '../components/video/IllustrationPlan'
 import { getVideo, getStreamUrl } from '../api/videos'
 import {
   getJobDownloadUrl,
@@ -454,6 +456,16 @@ export default function Editor() {
               />
             )}
 
+            {Array.isArray(completedResult?.illustrationPlan) && (
+              <IllustrationPlan
+                plan={completedResult.illustrationPlan as never}
+                coverage={
+                  (completedResult.illustrationEngine as { coverage?: number } | undefined)
+                    ?.coverage
+                }
+              />
+            )}
+
             {!!completedResult?.montage && (
               <MontageRecap
                 montage={completedResult.montage as Record<string, unknown>}
@@ -494,7 +506,7 @@ export default function Editor() {
                 />
                 <OptionChip
                   icon={<PenTool className="h-4 w-4" />}
-                  label="Motion design"
+                  label="Illustrations auto"
                   checked={!!options.motion_design}
                   onToggle={toggle('motion_design')}
                 />
@@ -556,6 +568,13 @@ export default function Editor() {
                     <option value="global">Mixte international</option>
                   </select>
                 </div>
+              )}
+
+              {options.motion_design && (
+                <IllustrationPanel
+                  options={options}
+                  onChange={(patch) => setOptions((prev) => ({ ...prev, ...patch }))}
+                />
               )}
             </div>
 

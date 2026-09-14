@@ -20,6 +20,7 @@ from app.illustration_engine.schemas.visual import (
     DIAGRAM, INFOGRAPHIC, KINETIC_TYPOGRAPHY, MOTION_GRAPHICS, P_LIST,
     STATISTICS, VISUAL_TYPES, VisualOpportunity, WHITEBOARD,
 )
+from app.illustration_engine.renderers import animator_available
 from tests.illustration_fixtures import has_ffmpeg
 
 W, H = 960, 540
@@ -250,12 +251,40 @@ def test_whiteboard_preview_matches_its_reveal_engine():
 def test_whiteboard_region_plan_is_skipped_without_the_package():
     scene = make_scene(WHITEBOARD, style="whiteboard")
     plan = WhiteboardRenderer("whiteboard", W, H, 30).region_plan(scene)
-    try:
-        import whiteboard_animator  # noqa: F401
-    except Exception:
+    if not animator_available():
         assert plan is None
     else:
         assert plan is not None and plan.regions
+
+
+@pytest.mark.skipif(not animator_available(),
+                    reason="whiteboard-animator not installed")
+def test_region_plan_speaks_the_animators_vocabulary():
+    """Its roles are a closed Literal: ours must be mapped, not passed through."""
+    from whiteboard_animator.regions import RegionRole
+    from typing import get_args
+
+    allowed = set(get_args(RegionRole))
+    scene = make_scene(WHITEBOARD, style="whiteboard")
+    plan = WhiteboardRenderer("whiteboard", W, H, 30).region_plan(scene)
+    assert plan is not None
+    for region in plan.regions:
+        assert region.role in allowed, region.role
+        assert region.reveal in ("stroke", "fill", "fade")
+        assert 0 <= region.box.xmin < region.box.xmax <= 1000
+        assert 0 <= region.box.ymin < region.box.ymax <= 1000
+    orders = [r.reveal_order for r in plan.regions]
+    assert orders == sorted(orders) and len(set(orders)) == len(orders)
+
+
+@pytest.mark.skipif(not animator_available() or not has_ffmpeg(),
+                    reason="needs whiteboard-animator and ffmpeg")
+def test_whiteboard_really_uses_the_third_party_animator(tmp_path):
+    scene = make_scene(WHITEBOARD, style="whiteboard")
+    renderer = WhiteboardRenderer("whiteboard", 480, 270, 12)
+    rendered = renderer.render(scene, str(tmp_path / "wb.mov"))
+    assert rendered.renderer == "whiteboard_animator"
+    assert os.path.getsize(rendered.path) > 1024
 
 
 def test_whiteboard_events_carry_a_pencil_cue():

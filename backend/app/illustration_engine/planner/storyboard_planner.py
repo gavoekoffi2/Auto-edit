@@ -7,6 +7,7 @@ type over and over.
 """
 from __future__ import annotations
 
+import math
 import re
 
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -42,9 +43,15 @@ class StoryboardPlanner:
 
     # ------------------------------------------------------------------ #
     def _budget(self, total_duration: float) -> int:
-        """How many scenes this video can carry at the chosen intensity."""
+        """Upper bound on scene count for this video at this intensity.
+
+        Rounded up, not to nearest: the coverage ceiling is the real governor
+        of how much screen the illustrations get, and rounding down here would
+        silently drop a deserved scene from a 50-second video while a
+        60-second one keeps it.
+        """
         minutes = max(total_duration, 1.0) / 60.0
-        planned = int(round(minutes * float(self.profile["per_minute"])))
+        planned = math.ceil(minutes * float(self.profile["per_minute"]))
         return max(1, min(config.MAX_SCENES, planned))
 
     @staticmethod
@@ -110,6 +117,7 @@ class StoryboardPlanner:
         threshold = float(self.profile["threshold"])
         budget = self._budget(total)
         max_coverage = float(self.profile["max_coverage"])
+        min_gap = float(self.profile.get("min_gap", config.MIN_GAP))
 
         # Strongest first: a limited budget must go to the best moments, not
         # simply to the earliest ones.
@@ -137,7 +145,7 @@ class StoryboardPlanner:
             # previous one, because ranking is by score and not by time.
             conflict = False
             for start, end, _o in accepted:
-                if opp.start < end + config.MIN_GAP and opp.end > start - config.MIN_GAP:
+                if opp.start < end + min_gap and opp.end > start - min_gap:
                     conflict = True
                     break
             if conflict:
