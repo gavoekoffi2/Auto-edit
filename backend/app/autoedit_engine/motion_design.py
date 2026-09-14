@@ -1,5 +1,21 @@
 """
-STEP 6bis — MOTION DESIGN ILLUSTRÉ (PIL -> ProRes 4444 RGBA).
+LEGACY — MOTION DESIGN ILLUSTRÉ (PIL -> ProRes 4444 RGBA).
+
+.. deprecated::
+   Ce module n'est PLUS le moteur d'illustration principal de CutForge. Il a
+   été remplacé par ``app.illustration_engine`` (voir
+   ``docs/ILLUSTRATION_ENGINE.md`` et ``docs/ILLUSTRATION_ENGINE_AUDIT.md``).
+
+   Il est conservé volontairement:
+
+   * ``pipeline.py`` y retombe si ``ILLUSTRATION_ENGINE_ENABLED=false`` ou si
+     le nouveau moteur échoue — la bascule est donc réversible sans redéploiement ;
+   * plusieurs suites de tests couvrent encore son comportement.
+
+   N'ajoutez pas de nouveaux types de scènes ici: le nouveau moteur en gère
+   douze, choisit le renderer adapté et ne se limite pas au format vertical.
+
+STEP 6bis (historique)
 
 Full-frame animated scenes that DRAW what the speaker is explaining — not just
 text.  Each scene takes over the frame for ~4.5-5.5 s while the voice keeps

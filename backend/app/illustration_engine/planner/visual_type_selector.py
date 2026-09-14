@@ -62,6 +62,13 @@ class VisualTypeSelector:
         `chosen_types` is the storyboard so far, in order.
         """
         options = self.candidates(opportunity.pattern)
+        # A provider's suggestion goes to the front of the queue but still has
+        # to pass the diversity and no-repeat checks below.
+        suggested = getattr(opportunity, "suggested_type", "")
+        if suggested and suggested in PATTERN_TYPES.get(opportunity.pattern, ()) + tuple(options):
+            options = [suggested] + [o for o in options if o != suggested]
+        elif suggested:
+            options = [suggested] + list(options)
         if not options:
             return MOTION_GRAPHICS
 

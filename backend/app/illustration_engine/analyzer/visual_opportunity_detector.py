@@ -95,10 +95,14 @@ class VisualOpportunityDetector:
         concreteness = self.concepts.concreteness(unit.text)
         importance = self.importance.score(unit)
 
+        # Weighted so that "is there something here that explains?" dominates.
+        # Rhetorical importance is a secondary input on purpose: a passage the
+        # speaker never flags as important can still be the most illustratable
+        # one in the video, and vice versa.
         raw = (
-            0.38 * illustratability
-            + 0.24 * material
-            + 0.22 * importance
+            0.40 * illustratability
+            + 0.26 * material
+            + 0.18 * importance
             + 0.16 * concreteness
         ) * self._duration_fit(unit)
 

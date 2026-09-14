@@ -108,6 +108,14 @@ def sentences_from_vu(vu: dict) -> List[Sentence]:
     return [s for s in out if s.text]
 
 
+def _is_filler(text: str) -> bool:
+    """A sentence that is only social glue: greeting, sign-off, CTA."""
+    folded = lx.fold(text or "")
+    if len(folded.split()) > 16:
+        return False
+    return lx.has_any(folded, lx.LOW_VALUE_MARKERS)
+
+
 def group_units(sentences: List[Sentence]) -> List[SemanticUnit]:
     """Merge sentences into units of roughly TARGET_UNIT_DUR seconds.
 
@@ -117,6 +125,12 @@ def group_units(sentences: List[Sentence]) -> List[SemanticUnit]:
     units: List[SemanticUnit] = []
     buf: List[Sentence] = []
     for sent in sentences:
+        # A greeting or a call to action starting a unit would drag its filler
+        # into the illustrated passage, and the scene would quote it on screen.
+        # Emit it on its own so it scores — and is rejected — by itself.
+        if not buf and _is_filler(sent.text):
+            units.append(SemanticUnit(sent.start, sent.end, sent.text))
+            continue
         buf.append(sent)
         span = buf[-1].end - buf[0].start
         if span >= TARGET_UNIT_DUR:

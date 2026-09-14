@@ -152,10 +152,16 @@ class StoryboardPlanner:
             if span is None:
                 _reject("placement impossible")
                 continue
-            projected = sum(e - s for s, e, _o in accepted) + (span[1] - span[0])
-            if total > 0 and projected / total > max_coverage:
-                _reject("couverture maximale")
-                continue
+            # The coverage ceiling protects the talking head from being
+            # crowded out; it must not make a short clip un-illustratable.
+            # The first scene is always allowed — one picture in a 15 s video
+            # is the product working, not the backbone being lost.
+            if accepted:
+                projected = (sum(e - s for s, e, _o in accepted)
+                             + (span[1] - span[0]))
+                if total > 0 and projected / total > max_coverage:
+                    _reject("couverture maximale")
+                    continue
             accepted.append((span[0], span[1], opp))
 
         accepted.sort(key=lambda item: item[0])
@@ -165,6 +171,11 @@ class StoryboardPlanner:
             visual_type = self.selector.select(opp, chosen_types, len(accepted))
             chosen_types.append(visual_type)
             title, subtitle = self._title_for(opp)
+            # A provider may have proposed a better title than the heuristic
+            # one; the type it proposed was already offered to the selector.
+            suggested_title = getattr(opp, "suggested_title", "")
+            if suggested_title:
+                title = suggested_title
             scene = self.scene_planner.plan(
                 opp, visual_type, f"ill_{index + 1:03d}", start, end,
                 title=title, subtitle=subtitle)

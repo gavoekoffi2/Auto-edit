@@ -56,9 +56,17 @@ COUNT_NOUNS: Tuple[str, ...] = (
     "critere", "criteres", "avantage", "avantages", "type", "types",
     "categorie", "categories", "etape", "etapes", "conseil", "conseils",
     "astuce", "astuces", "secret", "secrets", "principe", "principes",
+    "habitude", "habitudes", "qualite", "qualites", "competence",
+    "competences", "outil", "outils", "methode", "methodes", "technique",
+    "techniques", "strategie", "strategies", "levier", "leviers", "axe",
+    "axes", "option", "options", "choix", "niveau", "niveaux", "priorite",
+    "priorites", "obstacle", "obstacles", "defi", "defis", "ingredient",
+    "ingredients", "condition", "conditions", "benefice", "benefices",
     "thing", "things", "point", "pillar", "pillars", "reason", "reasons",
     "key", "keys", "rule", "rules", "mistake", "mistakes", "way", "ways",
-    "step", "steps", "tip", "tips", "secret", "secrets",
+    "step", "steps", "tip", "tips", "secret", "secrets", "habit", "habits",
+    "skill", "skills", "tool", "tools", "method", "methods", "option",
+    "options", "level", "levels", "priority", "priorities",
 )
 
 LIST_INTROS: Tuple[str, ...] = (
@@ -210,18 +218,38 @@ def parse_numbers(text: str) -> List[Tuple[str, float]]:
     return out
 
 
+# A sentence that announces a count AND then enumerates. Separators are what
+# distinguish "trois habitudes : la répétition, la pratique et le repos" from
+# "j'ai trois enfants".
+_ENUMERATES = re.compile(r":|,[^,]+\bet\b|\bet\b[^,]+,|;")
+
+_COUNT_TOKENS = {**NUMBER_WORDS, **{str(n): n for n in range(2, 8)}}
+
+
 def count_announcement(folded: str) -> int:
-    """"il y a trois choses" / "les 4 piliers" -> 3 / 4, else 0."""
+    """"il y a trois choses" / "les 4 piliers" / "trois habitudes :" -> the count.
+
+    Two passes: a curated noun list first (precise), then a generic rule for
+    any plural noun when the sentence goes on to enumerate. The generic pass
+    is what stops the detector from silently missing every noun nobody thought
+    to add to the list.
+    """
     for word, n in NUMBER_WORDS.items():
         if re.search(rf"\b{re.escape(word)}\b", folded):
             for noun in COUNT_NOUNS:
-                if re.search(rf"\b{re.escape(word)}\s+(?:\w+\s+){{0,2}}{re.escape(noun)}\b",
-                             folded):
+                if re.search(rf"\b{re.escape(word)}\s+(?:\w+\s+){{0,2}}"
+                             rf"{re.escape(noun)}\b", folded):
                     return n
     match = re.search(r"\b([2-7])\s+(?:\w+\s+){0,2}(" +
                       "|".join(re.escape(n) for n in COUNT_NOUNS) + r")\b", folded)
     if match:
         return int(match.group(1))
+
+    for token, n in _COUNT_TOKENS.items():
+        generic = re.search(rf"\b{re.escape(token)}\s+(?:\w+\s+){{0,2}}"
+                            rf"(\w{{4,}}s)\b", folded)
+        if generic and _ENUMERATES.search(folded[generic.end():]):
+            return n
     return 0
 
 

@@ -545,6 +545,9 @@ def run_pipeline_v2(
         visual_mode=visual_mode,
         motion_preset=motion_preset,
         disable_paid_images=disable_paid_images,
+        illustration_style=options.get("illustration_style"),
+        illustration_intensity=options.get("illustration_intensity"),
+        illustration_ai_mode=options.get("illustration_ai_mode"),
         cleanup_level=options.get("cleanup_level"),
         smart_crop_mode=options.get("smart_crop_mode"),
         scrub_source_subtitles=options.get("remove_source_subtitles", True) is not False,
@@ -567,6 +570,11 @@ def run_pipeline_v2(
     # contient (scènes motion design, B-rolls, popups, SFX) — fini les doutes
     # "est-ce l'ancien rendu ?".
     results["montage"] = montage_report
+    # The illustration plan is what the UI shows the user: when, what and why.
+    illustration_report = montage_report.get("illustration_engine") or {}
+    if illustration_report.get("enabled"):
+        results["illustrationEngine"] = illustration_report
+        results["illustrationPlan"] = illustration_report.get("plan", [])
     if do_motion:
         if montage_report.get("motion_scenes_rendered", 0) > 0:
             results["steps_completed"].append("motion_design")
