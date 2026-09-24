@@ -105,7 +105,7 @@ docker-compose up --build
 ### Access
 - **Frontend:** http://localhost (or http://localhost:3000)
 - **API:** http://localhost/api/v1
-- **API Docs:** http://localhost:8000/docs
+- **API Docs (dev uniquement):** http://localhost:8000/api/docs
 
 ### Development (without Docker)
 

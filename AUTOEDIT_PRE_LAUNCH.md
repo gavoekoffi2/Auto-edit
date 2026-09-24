@@ -1,5 +1,63 @@
 # Audit pré-déploiement — AutoEdit
 
+> **Mise à jour septembre 2026 — revue complète avant les premiers utilisateurs.**
+> Voir la section 0 ci-dessous; le reste du document est l'audit précédent.
+
+---
+
+## 0. Revue pré-lancement (septembre 2026)
+
+### 0.1 Bugs bloquants corrigés
+
+| # | Problème constaté | Impact | Correction |
+| --- | --- | --- | --- |
+| 1 | Aucun bouton ne déclenchait le paiement (« Passer Pro » menait à /signup) | Aucun revenu possible | Page Tarifs branchée sur `POST /payments/checkout` → redirection FedaPay |
+| 2 | L'URL de paiement renvoyée était le *token* FedaPay, pas l'URL | Redirection cassée | On utilise `url` de `/token` (repli `process.fedapay.com/<token>`) |
+| 3 | Un paiement passait le compte en Pro **sans date de fin** | Pro à vie pour 5 000 FCFA | Chaque paiement = `SUBSCRIPTION_PERIOD_DAYS` (30 j), prolongé si déjà actif |
+| 4 | Signature webhook au mauvais format (FedaPay signe `t=…,s=…` avec le secret `wh_…`) | Tout webhook réel rejeté (403) | Vérification au format FedaPay + anti-rejeu (5 min); statut **relu chez FedaPay** avant activation; contrôle du montant |
+| 5 | Pas de retour après paiement | Utilisateur perdu, plan non activé si webhook en retard | `callback_url` → `/billing/return` qui appelle `POST /payments/{id}/verify` |
+| 6 | Tâche Celery envoyée **avant** le commit du job | Job « en attente » pour toujours + quota bloqué | `commit_and_dispatch` (commit puis mise en file) + relance côté worker |
+| 7 | Quota gratuit compté sur les uploads seulement | Montages gratuits illimités (relancer / supprimer puis réimporter) | Quota sur les **montages**, décompté dans `usage_records` (migration 005) — échecs/annulations non décomptés |
+| 8 | Lien « mot de passe oublié » vers `/reset-password`: page inexistante | Réinitialisation impossible | Page `ResetPassword` créée |
+| 9 | Changer/réinitialiser le mot de passe ne déconnectait pas les autres sessions; lien de reset réutilisable | Session volée conservée 7 jours | Empreinte du mot de passe dans les JWT: toute session antérieure est révoquée, lien à usage unique |
+| 10 | Un admin simple pouvait nommer des admins et supprimer le fondateur | Escalade de privilèges | Rôles et suppressions réservés au super-admin; comptes super-admin protégés |
+| 11 | Limite de connexion: 5 essais / 15 min **par IP, succès compris** | Utilisateurs d'un même opérateur mobile (NAT) bloqués entre eux | Seuls les **échecs** comptent, par IP+email (5) et par IP (30) |
+
+### 0.2 Autres corrections
+
+- Erreurs API (objets/listes) affichées telles quelles → plantage React possible: utilitaire unique `getApiErrorMessage`.
+- Traces techniques (commandes ffmpeg, chemins disque) montrées à l'utilisateur en cas d'échec → messages produit `[CODE] …`.
+- Supprimer une vidéo en cours de montage laissait tourner le worker → jobs annulés avant suppression.
+- Vidéo illisible (upload tronqué) acceptée puis échec obscur → refus immédiat et clair.
+- `ffprobe` et l'envoi d'email bloquaient la boucle async (toutes les requêtes gelées) → exécutés hors boucle.
+- Jobs bloqués « en cours » à vie (message Celery perdu) → tâche horaire `fail_stale_jobs` (`STALE_JOB_HOURS`).
+- `OSError` relançait jusqu'à 3 fois un rendu de 30 min voué à l'échec → relance uniquement sur erreur réseau.
+- Fichiers des jobs annulés jamais purgés; fichiers d'un compte supprimé laissés sur disque → purgés.
+- Promesses fausses sur le site (« priorité de rendu », 5/30 min au lieu de 15/60, 4K, API…) → alignées sur les limites réelles (servies par `GET /payments/plans`).
+- Écrans en anglais (inscription, mot de passe oublié, erreurs) → français.
+- Pages **Conditions d'utilisation** et **Confidentialité** + lien support dans le pied de page.
+- `index.html` mis en cache après déploiement (page blanche) → `no-cache` + rechargement auto si un fichier JS a disparu.
+- Swagger `/api/docs` désactivé en production.
+
+### 0.3 À faire de ton côté avant d'ouvrir
+
+1. **FedaPay** (Dashboard): renseigner `FEDAPAY_SECRET_KEY` (clé API), créer un webhook vers
+   `https://<ton-domaine>/api/v1/payments/webhook` et copier son secret dans `FEDAPAY_WEBHOOK_SECRET`.
+   Tester en `FEDAPAY_ENV=sandbox` un paiement complet, puis passer en `live`.
+2. **`PUBLIC_APP_URL`** = URL publique du frontend (liens de reset et retour de paiement). L'entrypoint avertit si elle vaut `localhost`.
+3. **Email**: `EMAIL_PROVIDER=smtp` ou `sendgrid` (sinon aucun email de reset n'est envoyé).
+4. **Support**: `VITE_SUPPORT_EMAIL` (build frontend) et une boîte qui reçoit vraiment les messages.
+5. Faire relire les pages Conditions / Confidentialité par un juriste (raison sociale, pays, médiateur).
+6. Déployer: la migration **005** s'applique automatiquement au démarrage (testée sur PostgreSQL: application, reprise des jobs existants, retour arrière).
+
+### 0.4 Tests
+
+- 376 tests backend (dont 17 nouveaux: parcours HTTP réels sur base SQLite — sessions, reset, quotas, paiement, webhook, rôles admin).
+- Parcours rejoués sur PostgreSQL 16 réel (verrous, enums, jointures).
+- Frontend: `tsc` + build Vite OK.
+
+---
+
 > Audit réalisé sur la branche `claude/sleepy-brown-Rtjt7`.
 > Objectif : passer la plateforme à un état déployable chez les premiers
 > utilisateurs et défendable face à des reviewers/investisseurs.
