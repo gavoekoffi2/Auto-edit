@@ -1,24 +1,25 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Zap, Loader2 } from 'lucide-react'
-import client from '../api/client'
-import { toast } from '../components/ui/Toast'
+import { Loader2, MailCheck } from 'lucide-react'
+import Logo from '../components/ui/Logo'
+import { requestPasswordReset } from '../api/auth'
+import { getApiErrorMessage } from '../api/errors'
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
+  const [error, setError] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-
+    setError('')
     try {
-      await client.post('/auth/password-reset/request', { email })
+      await requestPasswordReset(email)
       setSent(true)
-      toast('success', 'If that email is registered, a reset link has been sent.')
-    } catch {
-      toast('error', 'Something went wrong. Please try again.')
+    } catch (err) {
+      setError(getApiErrorMessage(err, "Impossible d'envoyer le lien. Réessaie."))
     } finally {
       setLoading(false)
     }
@@ -28,24 +29,31 @@ export default function ForgotPassword() {
     <div className="min-h-[80vh] flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <Zap className="w-12 h-12 text-accent-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold">Reset your password</h1>
+          <div className="mx-auto mb-4 w-fit"><Logo size={48} /></div>
+          <h1 className="text-2xl font-bold">Mot de passe oublié</h1>
           <p className="text-dark-400 mt-2">
-            Enter your email and we'll send you a reset link
+            Indique ton email : on t'envoie un lien pour en choisir un nouveau.
           </p>
         </div>
 
         {sent ? (
           <div className="card text-center space-y-4">
+            <MailCheck className="w-10 h-10 text-emerald-400 mx-auto" />
             <p className="text-dark-300">
-              Check your email for a password reset link. It will expire in 15 minutes.
+              Si un compte existe avec <strong>{email}</strong>, un lien de réinitialisation
+              vient d'être envoyé. Il expire dans 15 minutes. Pense à vérifier tes spams.
             </p>
             <Link to="/login" className="btn-primary inline-block">
-              Back to Login
+              Retour à la connexion
             </Link>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="card space-y-4">
+            {error && (
+              <div className="bg-red-400/10 border border-red-400/20 rounded-lg p-3 text-red-400 text-sm">
+                {error}
+              </div>
+            )}
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-dark-300 mb-1">
                 Email
@@ -56,7 +64,7 @@ export default function ForgotPassword() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="input-field"
-                placeholder="you@example.com"
+                placeholder="toi@exemple.com"
                 required
                 autoComplete="email"
               />
@@ -67,13 +75,13 @@ export default function ForgotPassword() {
               className="btn-primary w-full flex items-center justify-center gap-2"
               disabled={loading}
             >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Send Reset Link'}
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Envoyer le lien'}
             </button>
 
             <p className="text-center text-dark-400 text-sm">
-              Remember your password?{' '}
+              Tu t'en souviens ?{' '}
               <Link to="/login" className="text-primary-400 hover:underline">
-                Log in
+                Se connecter
               </Link>
             </p>
           </form>

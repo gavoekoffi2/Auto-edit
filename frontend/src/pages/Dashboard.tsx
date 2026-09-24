@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   Film, Trash2, Clock, CheckCircle, AlertCircle, Loader2, ChevronLeft,
   ChevronRight, Download, Sparkles, Crown, Plus, Clapperboard,
@@ -11,6 +11,7 @@ import { listVideos, deleteVideo } from '../api/videos'
 import { listJobs, downloadJobResult } from '../api/jobs'
 import { useAuthStore } from '../store/authStore'
 import { getMe } from '../api/auth'
+import { getApiErrorMessage } from '../api/errors'
 import { toast } from '../components/ui/Toast'
 import { BRAND } from '../brand'
 
@@ -130,8 +131,8 @@ export default function Dashboard() {
       await deleteVideo(id)
       toast('success', 'Vidéo supprimée')
       setTotal((t) => t - 1)
-    } catch {
-      toast('error', 'Suppression impossible')
+    } catch (err) {
+      toast('error', getApiErrorMessage(err, 'Suppression impossible'))
       loadData() // Reload on error
     }
   }
@@ -158,7 +159,10 @@ export default function Dashboard() {
 
   const totalPages = Math.ceil(total / PAGE_SIZE)
   const plan = (user?.effective_plan || user?.plan || 'free').toLowerCase()
-  const firstName = user?.email?.split('@')[0] || 'créateur'
+  const expiresLabel = user?.subscription_expires_at
+    ? new Date(user.subscription_expires_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+    : null
+  const firstName = user?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || 'créateur'
   const doneCount = Object.values(latestJobs).filter((j) => j?.status === 'completed').length
   const busyCount = Object.values(latestJobs).filter((j) => j?.status === 'processing' || j?.status === 'pending').length
 
@@ -188,16 +192,22 @@ export default function Dashboard() {
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <span
-                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-bold tracking-wider ${
+              <Link
+                to="/pricing"
+                title={plan === 'free' ? 'Passer à un plan supérieur' : 'Gérer mon abonnement'}
+                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-bold tracking-wider transition-colors ${
                   plan === 'free'
-                    ? 'border border-white/10 bg-white/5 text-dark-300'
-                    : 'border border-amber-300/40 bg-amber-300/10 text-amber-300'
+                    ? 'border border-white/10 bg-white/5 text-dark-300 hover:border-primary-400/50 hover:text-white'
+                    : 'border border-amber-300/40 bg-amber-300/10 text-amber-300 hover:bg-amber-300/20'
                 }`}
               >
                 {plan !== 'free' && <Crown className="h-3.5 w-3.5" />}
                 PLAN {plan.toUpperCase()}
-              </span>
+                {plan === 'free' && <span className="ml-1 font-semibold normal-case tracking-normal text-primary-300">· Passer Pro</span>}
+                {plan !== 'free' && expiresLabel && (
+                  <span className="ml-1 font-medium normal-case tracking-normal text-amber-200/80">· jusqu'au {expiresLabel}</span>
+                )}
+              </Link>
               <a href="#upload" className="btn-accent flex items-center gap-2 text-sm">
                 <Plus className="h-4 w-4" />
                 Nouveau montage

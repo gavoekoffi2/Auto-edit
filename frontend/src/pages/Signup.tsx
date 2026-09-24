@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import Logo from '../components/ui/Logo'
 import { signup } from '../api/auth'
 import { useAuthStore } from '../store/authStore'
 import { toast } from '../components/ui/Toast'
+import { getApiErrorMessage } from '../api/errors'
 
 export default function Signup() {
   const [email, setEmail] = useState('')
@@ -14,6 +15,10 @@ export default function Signup() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  // Chemin interne uniquement (pas de redirection ouverte vers un autre site).
+  const rawNext = searchParams.get('next') || ''
+  const nextPath = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/dashboard'
   const setTokens = useAuthStore((s) => s.setTokens)
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -23,17 +28,17 @@ export default function Signup() {
 
     // Client-side validation
     if (password.length < 8) {
-      setError('Password must be at least 8 characters')
+      setError('Le mot de passe doit contenir au moins 8 caractères.')
       setLoading(false)
       return
     }
-    if (!/[0-9]/.test(password)) {
-      setError('Password must contain at least one number')
+    if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+      setError('Le mot de passe doit contenir au moins une lettre et un chiffre.')
       setLoading(false)
       return
     }
     if (password !== confirmPassword) {
-      setError('Passwords do not match')
+      setError('Les deux mots de passe ne correspondent pas.')
       setLoading(false)
       return
     }
@@ -42,19 +47,9 @@ export default function Signup() {
       const data = await signup(email, password, fullName || undefined)
       setTokens(data.access_token, data.refresh_token)
       toast('success', 'Compte créé ! Bienvenue sur CutForge.')
-      navigate('/dashboard')
+      navigate(nextPath)
     } catch (err: unknown) {
-      let msg = 'Signup failed'
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { detail?: string | { msg: string }[] } } }
-        const detail = axiosErr.response?.data?.detail
-        if (typeof detail === 'string') {
-          msg = detail
-        } else if (Array.isArray(detail)) {
-          msg = detail.map((d) => d.msg).join('. ')
-        }
-      }
-      setError(msg)
+      setError(getApiErrorMessage(err, "L'inscription a échoué. Réessaie."))
     } finally {
       setLoading(false)
     }
@@ -82,14 +77,14 @@ export default function Signup() {
           )}
 
           <div>
-            <label htmlFor="fullName" className="block text-sm font-medium text-dark-300 mb-1">Full Name</label>
+            <label htmlFor="fullName" className="block text-sm font-medium text-dark-300 mb-1">Nom complet <span className="text-dark-500">(facultatif)</span></label>
             <input
               id="fullName"
               type="text"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               className="input-field"
-              placeholder="John Doe"
+              placeholder="Awa Koné"
               autoComplete="name"
             />
           </div>
@@ -102,21 +97,21 @@ export default function Signup() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="input-field"
-              placeholder="you@example.com"
+              placeholder="toi@exemple.com"
               required
               autoComplete="email"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-dark-300 mb-1">Password</label>
+            <label htmlFor="password" className="block text-sm font-medium text-dark-300 mb-1">Mot de passe</label>
             <input
               id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="input-field"
-              placeholder="Min 8 characters, include a number"
+              placeholder="8 caractères min., avec un chiffre"
               minLength={8}
               required
               autoComplete="new-password"
@@ -124,14 +119,14 @@ export default function Signup() {
           </div>
 
           <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium text-dark-300 mb-1">Confirm Password</label>
+            <label htmlFor="confirmPassword" className="block text-sm font-medium text-dark-300 mb-1">Confirme le mot de passe</label>
             <input
               id="confirmPassword"
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               className="input-field"
-              placeholder="Re-enter your password"
+              placeholder="Retape ton mot de passe"
               minLength={8}
               required
               autoComplete="new-password"
@@ -139,14 +134,20 @@ export default function Signup() {
           </div>
 
           <button type="submit" className="btn-primary w-full flex items-center justify-center gap-2" disabled={loading}>
-            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Create Account'}
+            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Créer mon compte'}
           </button>
 
           <p className="text-center text-dark-400 text-sm">
-            Already have an account?{' '}
-            <Link to="/login" className="text-primary-400 hover:underline">
-              Log in
+            Déjà un compte ?{' '}
+            <Link to={rawNext ? `/login?next=${encodeURIComponent(nextPath)}` : '/login'} className="text-primary-400 hover:underline">
+              Se connecter
             </Link>
+          </p>
+          <p className="text-center text-xs text-dark-500">
+            En créant un compte, tu acceptes les{' '}
+            <Link to="/terms" className="underline hover:text-dark-300">conditions d'utilisation</Link>
+            {' '}et la{' '}
+            <Link to="/privacy" className="underline hover:text-dark-300">politique de confidentialité</Link>.
           </p>
         </form>
       </div>

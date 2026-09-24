@@ -18,6 +18,7 @@ import {
   type ModeFamily,
   type PipelineVersion,
 } from '../api/jobs'
+import { getApiErrorMessage } from '../api/errors'
 import { toast } from '../components/ui/Toast'
 
 type EditMode = string
@@ -251,12 +252,7 @@ export default function Editor() {
       toast('info', `Montage lancé : ${modes.find((m) => m.id === selectedMode)?.name ?? selectedMode}`)
     } catch (err: unknown) {
       setProcessing(false)
-      let msg = 'Impossible de démarrer le traitement'
-      if (err && typeof err === 'object' && 'response' in err) {
-        msg =
-          (err as { response?: { data?: { detail?: string } } }).response?.data?.detail || msg
-      }
-      toast('error', msg)
+      toast('error', getApiErrorMessage(err, 'Impossible de démarrer le traitement'))
     }
   }, [videoId, selectedMode, options, ctaText, logoText, pipelineVersion, modes])
 

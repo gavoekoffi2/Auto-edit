@@ -4,11 +4,13 @@ FROM node:20-alpine as build
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm install
+RUN npm ci
 
 COPY . .
 ARG VITE_API_URL=/api
 ENV VITE_API_URL=${VITE_API_URL}
+ARG VITE_SUPPORT_EMAIL=
+ENV VITE_SUPPORT_EMAIL=${VITE_SUPPORT_EMAIL}
 RUN npm run build
 
 # Production stage
@@ -39,6 +41,15 @@ server {
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
         expires 1y;
         add_header Cache-Control "public, immutable";
+    }
+
+    # index.html ne doit jamais être mis en cache: après un déploiement il
+    # référence de nouveaux fichiers hachés (sinon « page blanche »).
+    location = /index.html {
+        add_header Cache-Control "no-cache" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     }
 
     # SPA routing

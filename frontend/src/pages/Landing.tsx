@@ -413,7 +413,7 @@ const FAQ_ITEMS = [
   },
   {
     q: "C'est vraiment gratuit ?",
-    a: "Oui : 2 vidéos par mois offertes, sans carte bancaire, avec toutes les fonctions de montage. Le plan Pro débloque plus de vidéos, des durées plus longues et la priorité de rendu.",
+    a: "Oui : 2 montages par mois offerts, sans carte bancaire, avec toutes les fonctions de montage. Le plan Pro débloque les montages illimités, des vidéos plus longues et plus de montages en parallèle.",
   },
   {
     q: 'Quels formats de vidéo sont acceptés ?',
@@ -495,7 +495,7 @@ export default function Landing() {
 
             <Reveal delay={320}>
               <ul className="mt-7 flex flex-wrap gap-x-6 gap-y-2 text-sm text-dark-300">
-                {['Sans carte bancaire', '2 vidéos offertes / mois', "Pensé pour l'Afrique francophone"].map((t) => (
+                {['Sans carte bancaire', '2 montages offerts / mois', "Pensé pour l'Afrique francophone"].map((t) => (
                   <li key={t} className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-emerald-400" />
                     {t}
@@ -660,7 +660,7 @@ export default function Landing() {
       <section className="mx-auto max-w-5xl px-4 pb-24 sm:px-6 lg:px-8">
         <Reveal className="text-center">
           <h2 className="text-3xl font-bold sm:text-4xl">Commence gratuitement</h2>
-          <p className="mt-4 text-dark-300">Paiement en FCFA via Mobile Money, ou en dollars. Annulable à tout moment.</p>
+          <p className="mt-4 text-dark-300">Paiement en FCFA via Mobile Money ou carte. Sans engagement, sans renouvellement automatique.</p>
         </Reveal>
 
         <div className="mt-12 grid gap-6 sm:grid-cols-2">
@@ -669,7 +669,7 @@ export default function Landing() {
               <h3 className="font-semibold text-dark-200">Découverte</h3>
               <p className="mt-3 font-display text-4xl font-bold">0 <span className="text-base font-normal text-dark-400">FCFA</span></p>
               <ul className="mt-6 space-y-2.5 text-sm text-dark-300">
-                {['2 vidéos par mois', '5 min max par vidéo', 'Motion design + B-roll IA inclus', 'Sous-titres karaoké & SFX'].map((f) => (
+                {['2 montages par mois', '15 min max par vidéo', 'Motion design + B-roll IA inclus', 'Sous-titres karaoké & SFX'].map((f) => (
                   <li key={f} className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-400" />{f}</li>
                 ))}
               </ul>
@@ -680,9 +680,9 @@ export default function Landing() {
             <div className="card relative h-full border-primary-500/40 bg-gradient-to-b from-primary-950/40 to-dark-900">
               <span className="absolute -top-3 left-6 rounded-full bg-accent-500 px-3 py-0.5 text-xs font-bold text-white">POPULAIRE</span>
               <h3 className="font-semibold text-dark-200">Pro</h3>
-              <p className="mt-3 font-display text-4xl font-bold">5 000 <span className="text-base font-normal text-dark-400">FCFA / mois</span></p>
+              <p className="mt-3 font-display text-4xl font-bold">5 000 <span className="text-base font-normal text-dark-400">FCFA / 30 jours</span></p>
               <ul className="mt-6 space-y-2.5 text-sm text-dark-300">
-                {['Plus de vidéos chaque mois', '30 min max par vidéo', 'Priorité de rendu', 'Tous les styles & réglages avancés'].map((f) => (
+                {['Montages illimités', '60 min max par vidéo', '5 montages en parallèle', 'Tous les styles & réglages avancés'].map((f) => (
                   <li key={f} className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-400" />{f}</li>
                 ))}
               </ul>

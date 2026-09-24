@@ -3,12 +3,15 @@ import { useAuthStore } from '../../store/authStore'
 import { LogOut, User, Shield } from 'lucide-react'
 import Logo from '../ui/Logo'
 import { BRAND } from '../../brand'
+import { logoutApi } from '../../api/auth'
 
 export default function Navbar() {
   const { accessToken, user, logout } = useAuthStore()
   const navigate = useNavigate()
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Révoque le refresh token côté serveur AVANT de vider le stockage local.
+    await logoutApi()
     logout()
     navigate('/')
   }
@@ -19,13 +22,13 @@ export default function Navbar() {
         <div className="flex items-center justify-between h-16">
           <Link to="/" className="flex items-center gap-2.5">
             <Logo size={32} />
-            <span className="text-xl font-bold font-display tracking-tight">
+            <span className="hidden min-[400px]:inline text-xl font-bold font-display tracking-tight">
               Cut<span className="gradient-text">Forge</span>
             </span>
           </Link>
 
-          <div className="flex items-center gap-4">
-            <Link to="/pricing" className="text-dark-300 hover:text-white transition-colors">
+          <div className="flex items-center gap-3 sm:gap-4 text-sm sm:text-base">
+            <Link to="/pricing" className={`text-dark-300 hover:text-white transition-colors ${accessToken ? 'hidden sm:inline' : ''}`}>
               Tarifs
             </Link>
 
@@ -37,10 +40,10 @@ export default function Navbar() {
                 <Link to="/clips" className="text-dark-300 hover:text-white transition-colors">
                   Clips
                 </Link>
-                {user?.is_admin && (
-                  <Link to="/admin" className="text-dark-300 hover:text-white transition-colors flex items-center gap-1">
+                {(user?.is_admin || user?.is_super_admin) && (
+                  <Link to="/admin" className="text-dark-300 hover:text-white transition-colors flex items-center gap-1" aria-label="Administration">
                     <Shield className="w-4 h-4" />
-                    Admin
+                    <span className="hidden sm:inline">Admin</span>
                   </Link>
                 )}
                 <div className="flex items-center gap-3">
@@ -55,10 +58,10 @@ export default function Navbar() {
               </>
             ) : (
               <>
-                <Link to="/login" className="btn-secondary text-sm py-2 px-4">
+                <Link to="/login" className="btn-secondary text-sm py-2 px-3 sm:px-4">
                   Connexion
                 </Link>
-                <Link to="/signup" className="btn-primary text-sm py-2 px-4">
+                <Link to="/signup" className="btn-primary text-sm py-2 px-3 sm:px-4">
                   Commencer
                 </Link>
               </>

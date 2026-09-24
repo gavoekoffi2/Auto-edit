@@ -16,10 +16,13 @@ export default function Footer() {
             </div>
             <p className="text-dark-500 text-sm">{BRAND.tagline}</p>
           </div>
-          <div className="flex items-center gap-6 text-sm text-dark-400">
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-dark-400">
             <Link to="/pricing" className="hover:text-white transition-colors">Tarifs</Link>
             <Link to="/signup" className="hover:text-white transition-colors">Créer un compte</Link>
             <Link to="/login" className="hover:text-white transition-colors">Connexion</Link>
+            <Link to="/terms" className="hover:text-white transition-colors">Conditions</Link>
+            <Link to="/privacy" className="hover:text-white transition-colors">Confidentialité</Link>
+            <a href={`mailto:${BRAND.supportEmail}`} className="hover:text-white transition-colors">Support</a>
           </div>
           <p className="text-dark-500 text-sm">
             &copy; {new Date().getFullYear()} {BRAND.name}. Montage vidéo propulsé par l'IA.

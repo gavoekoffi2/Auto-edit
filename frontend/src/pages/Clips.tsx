@@ -15,6 +15,7 @@ import {
   type MomentSuggestion,
 } from '../api/clips'
 import { uploadVideo, validateVideoFile, getStreamUrl } from '../api/videos'
+import { getApiErrorMessage } from '../api/errors'
 import { toast } from '../components/ui/Toast'
 
 /** Styles proposés pour les clips (sous-ensemble des modes de montage v2).
@@ -38,14 +39,6 @@ function formatDuration(s: number) {
   return `${m}:${sec.toString().padStart(2, '0')}`
 }
 
-function extractApiError(e: unknown): string | null {
-  const detail = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
-  if (typeof detail === 'string') return detail
-  if (detail && typeof detail === 'object' && 'message' in (detail as object)) {
-    return String((detail as { message?: string }).message)
-  }
-  return null
-}
 
 export default function Clips() {
   const navigate = useNavigate()
@@ -97,7 +90,7 @@ export default function Clips() {
       setPhase('analyzing')
       toast('info', 'Analyse lancée : transcription puis détection des moments forts…')
     } catch (e) {
-      toast('error', extractApiError(e) || "Impossible de lancer l'analyse.")
+      toast('error', getApiErrorMessage(e, "Impossible de lancer l'analyse."))
     } finally {
       setSubmitting(false)
     }
@@ -126,7 +119,7 @@ export default function Clips() {
       await startAnalyze({ video_id: video.id })
     } catch (e) {
       setUploadPct(null)
-      toast('error', extractApiError(e) || "L'envoi du fichier a échoué.")
+      toast('error', getApiErrorMessage(e, "L'envoi du fichier a échoué."))
     }
   }, [rightsConfirmed, startAnalyze])
 
@@ -162,7 +155,7 @@ export default function Clips() {
       setPhase('rendering')
       toast('info', `Montage de ${selection.length} clip(s) lancé — style ${selectedStyle}`)
     } catch (e) {
-      toast('error', extractApiError(e) || 'Impossible de lancer le rendu.')
+      toast('error', getApiErrorMessage(e, 'Impossible de lancer le rendu.'))
     } finally {
       setSubmitting(false)
     }

@@ -8,6 +8,7 @@ import {
   uploadVideo,
   validateVideoFile,
 } from '../../api/videos'
+import { getApiErrorMessage } from '../../api/errors'
 import { toast } from '../ui/Toast'
 
 interface Props {
@@ -46,9 +47,9 @@ export default function UploadZone({ onUploadComplete }: Props) {
     } catch (err: unknown) {
       let msg = 'Upload échoué. Vérifie ta connexion puis réessaie.'
       if (axios.isAxiosError(err)) {
-        msg = err.response?.data?.detail || err.message || msg
+        msg = getApiErrorMessage(err, msg)
         if (err.code === 'ECONNABORTED' || msg.toLowerCase().includes('timeout')) {
-          msg = "La connexion a été trop lente. J'ai corrigé le timeout: recharge la page puis réessaie."
+          msg = 'La connexion a été trop lente. Recharge la page puis réessaie avec un réseau plus stable.'
         } else if (!err.response) {
           msg = 'Connexion interrompue pendant l’upload. Garde la page ouverte et réessaie avec un Wi‑Fi/4G stable.'
         }

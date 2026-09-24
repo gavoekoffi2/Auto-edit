@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import Logo from '../components/ui/Logo'
 import { login } from '../api/auth'
 import { useAuthStore } from '../store/authStore'
 import { toast } from '../components/ui/Toast'
+import { getApiErrorMessage } from '../api/errors'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -12,6 +13,10 @@ export default function Login() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  // Chemin interne uniquement (pas de redirection ouverte vers un autre site).
+  const rawNext = searchParams.get('next') || ''
+  const nextPath = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/dashboard'
   const setTokens = useAuthStore((s) => s.setTokens)
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -23,17 +28,9 @@ export default function Login() {
       const data = await login(email, password)
       setTokens(data.access_token, data.refresh_token)
       toast('success', 'Bon retour sur CutForge !')
-      navigate('/dashboard')
+      navigate(nextPath)
     } catch (err: unknown) {
-      let msg = 'Login failed'
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { detail?: string }, status?: number } }
-        msg = axiosErr.response?.data?.detail || msg
-        if (axiosErr.response?.status === 429) {
-          msg = 'Too many login attempts. Please wait and try again.'
-        }
-      }
-      setError(msg)
+      setError(getApiErrorMessage(err, 'Connexion impossible. Réessaie.'))
     } finally {
       setLoading(false)
     }
@@ -68,7 +65,7 @@ export default function Login() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="input-field"
-              placeholder="you@example.com"
+              placeholder="toi@exemple.com"
               required
               autoComplete="email"
             />
@@ -100,7 +97,7 @@ export default function Login() {
             </p>
             <p className="text-dark-400 text-sm">
               Pas encore de compte ?{' '}
-              <Link to="/signup" className="text-primary-400 hover:underline">
+              <Link to={rawNext ? `/signup?next=${encodeURIComponent(nextPath)}` : '/signup'} className="text-primary-400 hover:underline">
                 Créer un compte
               </Link>
             </p>

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { getJob, downloadJobResult, cancelJob } from '../../api/jobs'
 import { Loader2, CheckCircle, XCircle, Download, RefreshCw, Ban } from 'lucide-react'
+import { getApiErrorMessage, stripErrorCode } from '../../api/errors'
 import { toast } from '../ui/Toast'
 
 interface Props {
@@ -53,7 +54,7 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
           toast('success', 'Montage terminé !')
         } else if (data.status === 'failed') {
           stop()
-          toast('error', data.error_message || 'Le traitement a échoué')
+          toast('error', data.error_message ? stripErrorCode(data.error_message) : 'Le traitement a échoué')
         } else if (data.status === 'cancelled') {
           stop()
           onCancelled?.()
@@ -108,8 +109,8 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
       setJob(data)
       onCancelled?.()
       toast('info', 'Traitement annulé')
-    } catch {
-      toast('error', "Impossible d'annuler le traitement")
+    } catch (err) {
+      toast('error', getApiErrorMessage(err, "Impossible d'annuler le traitement"))
     } finally {
       setCancelling(false)
     }
@@ -171,7 +172,7 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
       {job.status === 'failed' && (
         <div className="space-y-3">
           <p className="text-sm text-red-400 bg-red-400/10 rounded-lg p-3">
-            {job.error_message || 'Une erreur inattendue est survenue'}
+            {job.error_message ? stripErrorCode(job.error_message) : 'Une erreur inattendue est survenue'}
           </p>
           {onRetry && (
             <button onClick={onRetry} className="btn-secondary text-sm flex items-center gap-2">
