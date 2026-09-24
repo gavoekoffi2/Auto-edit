@@ -107,7 +107,11 @@ class Settings(BaseSettings):
     # ---------------------------------------------------------------------
     RETENTION_OUTPUT_DAYS: int = 14        # rendus terminés (clips, montages)
     RETENTION_SOURCE_DAYS: int = 7         # sources importées par URL
-    RETENTION_FAILED_JOB_DAYS: int = 2     # répertoires des jobs échoués
+    RETENTION_FAILED_JOB_DAYS: int = 2     # répertoires des jobs échoués/annulés
+    # Un job encore « pending/processing » après ce délai est considéré perdu
+    # (message Celery disparu) et marqué échoué. 0 = désactivé. Doit rester
+    # supérieur au plus long rendu attendu + temps d'attente en file.
+    STALE_JOB_HOURS: int = 12
 
     # Long video processing
     # A 3-4 minute mobile video can take far longer than its playback duration
@@ -128,6 +132,11 @@ class Settings(BaseSettings):
     FEDAPAY_SECRET_KEY: Optional[str] = None
     FEDAPAY_PUBLIC_KEY: Optional[str] = None
     FEDAPAY_ENV: str = "sandbox"
+    # Secret du webhook (Dashboard FedaPay > Webhooks, commence par `wh_`).
+    # Différent de la clé API. À défaut, FEDAPAY_SECRET_KEY est essayée.
+    FEDAPAY_WEBHOOK_SECRET: Optional[str] = None
+    # Durée d'accès achetée par un paiement (abonnement mensuel).
+    SUBSCRIPTION_PERIOD_DAYS: int = 30
 
     # Transcription
     # Provider: auto (ElevenLabs Scribe si clé dispo, sinon Whisper) | elevenlabs | whisper.

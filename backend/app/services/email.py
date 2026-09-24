@@ -126,19 +126,19 @@ def get_email_provider() -> EmailProvider:
 
 
 def send_password_reset_email(*, to_email: str, reset_url: str) -> bool:
-    subject = "Reinitialise ton mot de passe CutForge"
+    subject = "Réinitialise ton mot de passe CutForge"
     text = (
-        f"Tu as demande une reinitialisation de mot de passe.\n\n"
-        f"Clique sur ce lien pour creer un nouveau mot de passe "
-        f"(valable 15 minutes):\n{reset_url}\n\n"
-        f"Si tu n'as rien demande, ignore ce message."
+        f"Tu as demandé la réinitialisation de ton mot de passe.\n\n"
+        f"Clique sur ce lien pour créer un nouveau mot de passe "
+        f"(valable 15 minutes, utilisable une seule fois) :\n{reset_url}\n\n"
+        f"Si tu n'as rien demandé, ignore ce message."
     )
-    html = f"""<!doctype html><html><body style="font-family:Inter,system-ui,sans-serif;background:#0a0a0f;color:#fff;padding:32px">
+    html = f"""<!doctype html><html lang="fr"><head><meta charset="utf-8"></head><body style="font-family:Inter,system-ui,sans-serif;background:#0a0a0f;color:#fff;padding:32px">
   <div style="max-width:520px;margin:auto;background:#16171f;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:32px">
-    <h1 style="margin:0 0 16px;font-size:22px">Reinitialise ton mot de passe</h1>
-    <p style="color:rgba(255,255,255,.7);line-height:1.6">Tu as demande une reinitialisation. Clique sur le bouton ci-dessous (valable 15 minutes).</p>
+    <h1 style="margin:0 0 16px;font-size:22px">Réinitialise ton mot de passe</h1>
+    <p style="color:rgba(255,255,255,.7);line-height:1.6">Tu as demandé une réinitialisation. Clique sur le bouton ci-dessous (valable 15 minutes).</p>
     <p style="margin:24px 0"><a href="{reset_url}" style="display:inline-block;padding:12px 24px;background:#2a55f5;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Choisir un nouveau mot de passe</a></p>
-    <p style="color:rgba(255,255,255,.45);font-size:12px">Si tu n'as rien demande, ignore ce message. Le lien expire dans 15 minutes.</p>
+    <p style="color:rgba(255,255,255,.45);font-size:12px">Si tu n'as rien demandé, ignore ce message. Le lien expire dans 15 minutes.</p>
   </div></body></html>"""
     try:
         return get_email_provider().send(to=to_email, subject=subject, html=html, text=text)
@@ -148,16 +148,18 @@ def send_password_reset_email(*, to_email: str, reset_url: str) -> bool:
 
 
 def send_job_completed_email(*, to_email: str, video_title: str, download_url: str) -> bool:
-    subject = f"Ta video « {video_title} » est prete"
+    import html as _html
+    subject = f"Ta vidéo « {video_title[:80]} » est prête"
+    safe_title = _html.escape(video_title)
     text = (
-        f"Bonne nouvelle: ta video « {video_title} » est prete a telecharger.\n\n"
+        f"Bonne nouvelle : ta vidéo « {video_title} » est prête à télécharger.\n\n"
         f"{download_url}\n"
     )
-    html = f"""<!doctype html><html><body style="font-family:Inter,system-ui,sans-serif;background:#0a0a0f;color:#fff;padding:32px">
+    html = f"""<!doctype html><html lang="fr"><head><meta charset="utf-8"></head><body style="font-family:Inter,system-ui,sans-serif;background:#0a0a0f;color:#fff;padding:32px">
   <div style="max-width:520px;margin:auto;background:#16171f;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:32px">
-    <h1 style="margin:0 0 16px;font-size:22px">Ta video est prete</h1>
-    <p style="color:rgba(255,255,255,.7)">« {video_title} » a fini d'etre montee par CutForge.</p>
-    <p style="margin:24px 0"><a href="{download_url}" style="display:inline-block;padding:12px 24px;background:#2a55f5;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Telecharger</a></p>
+    <h1 style="margin:0 0 16px;font-size:22px">Ta vidéo est prête</h1>
+    <p style="color:rgba(255,255,255,.7)">« {safe_title} » a fini d'être montée par CutForge.</p>
+    <p style="margin:24px 0"><a href="{download_url}" style="display:inline-block;padding:12px 24px;background:#2a55f5;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Télécharger</a></p>
   </div></body></html>"""
     try:
         return get_email_provider().send(to=to_email, subject=subject, html=html, text=text)

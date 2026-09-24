@@ -3,6 +3,8 @@ import os
 import logging
 from datetime import datetime, timezone
 
+from celery.exceptions import Retry
+
 from app.workers.celery_app import celery_app
 from app.db.session import SyncSessionLocal
 from app.models.job import Job
@@ -26,6 +28,29 @@ def _update_job(job_id: str, **kwargs):
         logger.error(f"Failed to update job {job_id}: {e}")
     finally:
         session.close()
+
+
+def _user_error_message(exc: Exception, default_code: str = "RENDER_FAILED") -> str:
+    """Message d'échec montrable à l'utilisateur (stocké dans job.error_message).
+
+    Les erreurs déjà codifiées ``[CODE] …`` (errors.tag) passent telles quelles.
+    Les autres (traces ffmpeg, chemins disque, exceptions Python) ne doivent
+    PAS remonter à l'écran: elles sont journalisées avec la trace complète et
+    l'utilisateur reçoit le message produit du code par défaut.
+    """
+    from app.services.errors import tag
+
+    text = str(exc or "").strip()
+    if text.startswith("[") and "]" in text[:40]:
+        return text[:1900]
+    if isinstance(exc, MemoryError):
+        return tag(default_code, "mémoire insuffisante")
+    return tag(default_code)
+
+
+# Nombre de tentatives quand la ligne Job n'est pas encore visible (course
+# entre le commit de l'API et le dépilage par le worker).
+_JOB_LOOKUP_RETRIES = 5
 
 
 class JobCancelled(Exception):
@@ -73,7 +98,10 @@ def _update_video_status(video_id: str, new_status: str):
 @celery_app.task(
     bind=True,
     name="process_video",
-    autoretry_for=(ConnectionError, OSError),
+    # Uniquement les pannes réseau transitoires. `OSError` (fichier absent,
+    # disque plein, ffmpeg introuvable…) relançait jusqu'à 3 fois un rendu de
+    # 30 min voué à échouer de la même façon.
+    autoretry_for=(ConnectionError,),
     retry_kwargs={"max_retries": 2, "countdown": 30},
     retry_backoff=True,
 )
@@ -89,6 +117,9 @@ def process_video_task(self, job_id: str):
     try:
         job = session.query(Job).filter(Job.id == job_id).first()
         if not job:
+            if self.request.retries < _JOB_LOOKUP_RETRIES:
+                logger.warning(f"Job {job_id} not visible yet — retrying")
+                raise self.retry(countdown=3, max_retries=_JOB_LOOKUP_RETRIES)
             logger.error(f"Job not found: {job_id}")
             return
 
@@ -197,9 +228,12 @@ def process_video_task(self, job_id: str):
         # touche pas, et on ne relance surtout pas la tâche.
         return {"status": "cancelled"}
 
+    except Retry:
+        raise
+
     except Exception as e:
         logger.error(f"Job {job_id} failed: {e}", exc_info=True)
-        error_msg = str(e)[:1900]  # Truncate to fit DB column
+        error_msg = _user_error_message(e)
         # Un job échoué ne doit pas laisser ses Go d'intermédiaires sur le
         # disque (c'est ce qui finissait par tuer les rendus suivants).
         if output_dir:
@@ -257,6 +291,9 @@ def process_clips_task(self, job_id: str):
     try:
         job = session.query(Job).filter(Job.id == job_id).first()
         if not job:
+            if self.request.retries < _JOB_LOOKUP_RETRIES:
+                logger.warning(f"Clips job {job_id} not visible yet — retrying")
+                raise self.retry(countdown=3, max_retries=_JOB_LOOKUP_RETRIES)
             logger.error(f"Clips job not found: {job_id}")
             return
         video = session.query(Video).filter(Video.id == job.video_id).first()
@@ -387,6 +424,9 @@ def process_clips_task(self, job_id: str):
                 logger.warning(f"Cleanup after cancel skipped: {cleanup_err}")
         return {"status": "cancelled"}
 
+    except Retry:
+        raise
+
     except Exception as e:
         logger.error(f"Clips job {job_id} failed: {e}", exc_info=True)
         # Erreurs de source URL: préfixe le code produit stable pour le
@@ -402,7 +442,7 @@ def process_clips_task(self, job_id: str):
         _update_job(
             job_id,
             status="failed",
-            error_message=str(e)[:1900],
+            error_message=_user_error_message(e),
             completed_at=datetime.now(timezone.utc),
         )
         try:
@@ -459,6 +499,7 @@ def purge_expired_files_task():
             rules.append(("completed", now - timedelta(days=settings.RETENTION_OUTPUT_DAYS)))
         if settings.RETENTION_FAILED_JOB_DAYS > 0:
             rules.append(("failed", now - timedelta(days=settings.RETENTION_FAILED_JOB_DAYS)))
+            rules.append(("cancelled", now - timedelta(days=settings.RETENTION_FAILED_JOB_DAYS)))
         for status_name, cutoff in rules:
             jobs = (
                 session.query(Job)
@@ -500,3 +541,49 @@ def purge_expired_files_task():
     logger.info("purge_expired_files: %s output dirs, %s sources, %.1f MB freed",
                 purged["outputs"], purged["sources"], purged["bytes"] / 1e6)
     return purged
+
+
+@celery_app.task(name="fail_stale_jobs")
+def fail_stale_jobs_task():
+    """Filet de sécurité: libère les jobs bloqués « pending/processing ».
+
+    Un job peut rester coincé si son message Celery est perdu (Redis vidé,
+    worker tué avant l'ack, broker indisponible). Il bloquait alors à vie le
+    quota de jobs simultanés de l'utilisateur. Au-delà de
+    ``STALE_JOB_HOURS`` sans aboutir, il est marqué ``failed`` avec un
+    message clair (et ne consomme pas le quota mensuel).
+    """
+    from datetime import timedelta
+    from app.config import settings
+    from app.services.errors import tag
+
+    hours = settings.STALE_JOB_HOURS
+    if hours <= 0:
+        return {"failed": 0}
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    session = SyncSessionLocal()
+    count = 0
+    try:
+        stale = (
+            session.query(Job)
+            .filter(Job.status.in_(["pending", "processing"]), Job.created_at < cutoff)
+            .all()
+        )
+        for job in stale:
+            job.status = "failed"
+            job.error_message = tag("RENDER_FAILED", "traitement interrompu")
+            job.completed_at = datetime.now(timezone.utc)
+            count += 1
+            try:
+                celery_app.control.revoke(str(job.id))
+            except Exception:  # noqa: BLE001 - best effort
+                pass
+        session.commit()
+    except Exception as e:  # noqa: BLE001
+        session.rollback()
+        logger.error("fail_stale_jobs failed: %s", e)
+    finally:
+        session.close()
+    if count:
+        logger.warning("fail_stale_jobs: %s stale job(s) marked failed", count)
+    return {"failed": count}

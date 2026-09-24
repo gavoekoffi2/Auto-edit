@@ -15,7 +15,7 @@ db_url = os.environ.get("DATABASE_URL_SYNC") or config.get_main_option("sqlalche
 config.set_main_option("sqlalchemy.url", db_url.replace("%", "%%"))
 
 from app.db.base import Base
-from app.models import User, Video, Job, Payment
+from app.models import User, Video, Job, Payment, UsageRecord  # noqa: F401
 
 target_metadata = Base.metadata
 

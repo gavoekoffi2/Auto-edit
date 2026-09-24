@@ -16,45 +16,13 @@ from app.models.video import Video
 from app.models.job import Job
 from app.schemas.job import JobCreate, JobResponse
 from app.api.v1.modes import FAMILIES, MODE_DEFINITIONS, DEFAULT_MODE
-from app.api.deps import get_current_user
-from app.services.auth import decode_token
+from app.api.deps import get_current_user, get_media_user
 from app.services.storage import get_absolute_path
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 optional_security = HTTPBearer(auto_error=False)
-
-
-async def get_media_user(
-    db: AsyncSession,
-    credentials: HTTPAuthorizationCredentials | None,
-    access_token: str | None,
-) -> User:
-    token = credentials.credentials if credentials else access_token
-    payload = decode_token(token) if token else None
-    if payload is None or payload.get("type") != "access" or not payload.get("sub"):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        )
-
-    try:
-        user_uuid = UUID(payload["sub"])
-    except (ValueError, TypeError, AttributeError):
-        # Un `sub` malformé doit répondre 401, pas une 500 interne.
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        )
-
-    result = await db.execute(select(User).where(User.id == user_uuid))
-    user = result.scalar_one_or_none()
-    if user is None or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
-    return user
-
-
 
 
 @router.get("/modes")
@@ -92,20 +60,17 @@ async def create_job(
             detail="Video file not found on disk. Please re-upload.",
         )
 
-    # Limite de jobs simultanés — via les règles CENTRALES (`app.services.plans`).
-    # L'ancien contrôle lisait `current_user.plan` en dur et plafonnait à 2: un
-    # fondateur (super-admin) ou un abonné Pro dont la colonne `plan` n'avait pas
-    # encore basculé restait bloqué à 2 montages, et deux requêtes simultanées
-    # passaient toutes les deux sous la limite (pas de verrou).
+    # Quotas du plan — via les règles CENTRALES (`app.services.plans`), sous
+    # verrou de la ligne utilisateur: le check-then-create est atomique (deux
+    # requêtes simultanées ne passent pas toutes les deux sous la limite).
     from app.services.plans import rules_for_user
 
     rules = rules_for_user(current_user)
-    if rules.max_concurrent_jobs is not None:
-        # Verrou de la ligne utilisateur: rend le check-then-create atomique,
-        # comme sur la route Clips.
+    if rules.max_concurrent_jobs is not None or rules.max_videos_per_month is not None:
         await db.execute(
             select(User.id).where(User.id == current_user.id).with_for_update()
         )
+    if rules.max_concurrent_jobs is not None:
         count_result = await db.execute(
             select(func.count()).select_from(Job).where(
                 Job.user_id == current_user.id,
@@ -119,6 +84,19 @@ async def create_job(
                 detail=(f"Ton plan autorise {rules.max_concurrent_jobs} montage(s) "
                         "en parallèle. Attends la fin d'un traitement ou passe à "
                         "l'offre supérieure."),
+            )
+    if rules.max_videos_per_month is not None:
+        # Le quota mensuel porte sur les MONTAGES lancés (l'action coûteuse),
+        # décomptés dans une table durable: avant, supprimer ses vidéos ou
+        # relancer N fois la même vidéo donnait des montages gratuits
+        # illimités. Les montages échoués ou annulés ne consomment pas le quota.
+        from app.services.usage import count_monthly_montages
+
+        if await count_monthly_montages(db, current_user.id) >= rules.max_videos_per_month:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=(f"Tu as utilisé tes {rules.max_videos_per_month} montages "
+                        "gratuits de ce mois. Passe en Pro pour continuer."),
             )
 
     # Merge params + options dans le payload du job (options prennent le pas)
@@ -145,14 +123,14 @@ async def create_job(
     )
     db.add(job)
     await db.flush()
+    from app.services.usage import record_montage
+    record_montage(db, current_user.id, job.id)
 
-    # Trigger async processing. Le task_id Celery est FORCÉ à l'id du job: sans
-    # ça, `celery.control.revoke(job.id)` (route d'annulation) ciblait un
-    # identifiant qui n'existait pas et l'annulation ne faisait rien — la tâche
-    # continuait et écrasait le statut « cancelled » par « completed ».
+    # Commit PUIS mise en file (task_id = id du job, cf. annulation).
     from app.workers.tasks import process_video_task
+    from app.services.job_dispatch import commit_and_dispatch
 
-    process_video_task.apply_async(args=[str(job.id)], task_id=str(job.id))
+    await commit_and_dispatch(db, job, process_video_task)
 
     logger.info(
         f"Job created: {job.id} type={data.job_type} mode={resolved_mode} "
@@ -256,6 +234,8 @@ async def delete_job(
 
     import shutil
     from app.config import settings
+    from app.services.usage import refund_before_delete
+    await refund_before_delete(db, [job])
     out_dir = os.path.join(
         os.path.abspath(settings.UPLOAD_DIR), str(job.user_id), "output", str(job.id))
     if os.path.isdir(out_dir):

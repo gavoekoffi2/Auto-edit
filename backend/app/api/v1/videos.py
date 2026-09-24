@@ -3,11 +3,10 @@ import mimetypes
 import logging
 from uuid import UUID
 from datetime import datetime, timezone
-from dateutil.relativedelta import relativedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Query, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import FileResponse
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
@@ -15,8 +14,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.models.video import Video
 from app.schemas.video import VideoResponse, VideoListResponse
-from app.api.deps import get_current_user
-from app.services.auth import decode_token
+from app.api.deps import get_current_user, get_media_user
 from app.services.storage import save_upload, get_absolute_path, get_video_duration
 from app.config import settings
 from app.services.subscriptions import effective_plan
@@ -31,41 +29,6 @@ ALLOWED_EXTENSIONS = {
     ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm", ".flv", ".wmv",
     ".3gp", ".3g2", ".mts", ".m2ts",
 }
-
-
-async def get_stream_user(
-    db: AsyncSession,
-    credentials: HTTPAuthorizationCredentials | None,
-    access_token: str | None,
-) -> User:
-    """Authenticate video streaming via header or query token.
-
-    Normal API calls use the Authorization header. Native HTML video playback
-    cannot attach custom headers, so the frontend may pass the current access
-    token as a query parameter specifically for media streaming.
-    """
-    token = credentials.credentials if credentials else access_token
-    payload = decode_token(token) if token else None
-    if payload is None or payload.get("type") != "access" or not payload.get("sub"):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        )
-
-    try:
-        user_uuid = UUID(payload["sub"])
-    except (ValueError, TypeError, AttributeError):
-        # Un `sub` malformé doit répondre 401, pas une 500 interne.
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        )
-
-    result = await db.execute(select(User).where(User.id == user_uuid))
-    user = result.scalar_one_or_none()
-    if user is None or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
-    return user
 
 
 @router.post("/upload", response_model=VideoResponse, status_code=status.HTTP_201_CREATED)
@@ -107,7 +70,8 @@ async def upload_video(
         if monthly_count >= settings.MAX_VIDEOS_PER_MONTH_FREE:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=f"Free plan limited to {settings.MAX_VIDEOS_PER_MONTH_FREE} videos/month. Upgrade to Pro.",
+                detail=(f"Le plan gratuit est limité à {settings.MAX_VIDEOS_PER_MONTH_FREE} "
+                        "vidéos par mois. Passe en Pro pour continuer."),
             )
 
     # Taille attendue (Content-Length) pour le préflight disque. Le body
@@ -124,13 +88,27 @@ async def upload_video(
         file, str(current_user.id), expected_size=expected_size
     )
 
-    # Get video duration
+    # Get video duration — ffprobe est bloquant (jusqu'à 30 s): hors de la
+    # boucle async pour ne pas geler les autres requêtes.
     abs_path = get_absolute_path(relative_path)
-    duration = get_video_duration(abs_path)
+    duration = await run_in_threadpool(get_video_duration, abs_path)
+    if not duration or duration <= 0:
+        # Signature vidéo reconnue mais flux illisible (fichier tronqué par une
+        # coupure réseau, codec exotique…): le montage échouerait plus tard
+        # avec une erreur obscure. On refuse tout de suite, clairement.
+        try:
+            os.unlink(abs_path)
+        except OSError:
+            pass
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=("Impossible de lire cette vidéo (fichier incomplet ou corrompu). "
+                    "Réessaie l'envoi ou exporte-la de nouveau en MP4."),
+        )
 
     # Limite centrale: super-admin/Enterprise illimités, ou quota personnalisé.
     duration_limit_s = effective_video_duration_limit_s(current_user, clips=False)
-    if duration is not None and duration_limit_s is not None and duration > duration_limit_s:
+    if duration_limit_s is not None and duration > duration_limit_s:
         try:
             os.unlink(abs_path)
         except OSError:
@@ -143,7 +121,7 @@ async def upload_video(
 
     video = Video(
         user_id=current_user.id,
-        title=file.filename,
+        title=os.path.basename(file.filename)[:500],
         original_path=relative_path,
         size_bytes=size_bytes,
         duration_s=duration,
@@ -202,7 +180,7 @@ async def stream_video(
     credentials: HTTPAuthorizationCredentials | None = Depends(optional_security),
     db: AsyncSession = Depends(get_db),
 ):
-    current_user = await get_stream_user(db, credentials, access_token)
+    current_user = await get_media_user(db, credentials, access_token)
     result = await db.execute(
         select(Video).where(Video.id == video_id, Video.user_id == current_user.id)
     )
@@ -237,6 +215,25 @@ async def delete_video(
     if not video:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found")
 
+    # Un montage en cours sur cette vidéo doit être arrêté AVANT de retirer ses
+    # fichiers: sinon le worker continue à tourner pour rien puis plante sur
+    # un fichier disparu.
+    from app.models.job import Job
+    active_jobs = (await db.execute(
+        select(Job).where(Job.video_id == video.id,
+                          Job.status.in_(["pending", "processing"]))
+    )).scalars().all()
+    if active_jobs:
+        try:
+            from app.workers.celery_app import celery_app
+            for job in active_jobs:
+                celery_app.control.revoke(str(job.id), terminate=True, signal="SIGTERM")
+        except Exception as e:
+            logger.warning(f"Failed to revoke jobs of video {video_id}: {e}")
+        for job in active_jobs:
+            job.status = "cancelled"
+        await db.flush()
+
     # Clean up file on disk
     try:
         file_path = get_absolute_path(video.original_path)
@@ -248,13 +245,12 @@ async def delete_video(
     # Purge aussi les répertoires de sortie des jobs de cette vidéo — la
     # cascade DB supprime les lignes Job mais laissait leurs fichiers rendus
     # sur le disque (confidentialité + espace).
+    all_jobs = (await db.execute(select(Job).where(Job.video_id == video.id))).scalars().all()
+    from app.services.usage import refund_before_delete
+    await refund_before_delete(db, all_jobs)
     try:
         import shutil
-        from sqlalchemy import select as sa_select
-        from app.models.job import Job
-        jobs_result = await db.execute(
-            sa_select(Job.id).where(Job.video_id == video.id))
-        for (jid,) in jobs_result.all():
+        for jid in [j.id for j in all_jobs]:
             out_dir = os.path.join(
                 os.path.abspath(settings.UPLOAD_DIR),
                 str(current_user.id), "output", str(jid))

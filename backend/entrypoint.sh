@@ -33,8 +33,14 @@ if [ "${APP_ENV:-development}" = "production" ]; then
     echo "[entrypoint] WARNING: APP_ENV=production with EMAIL_PROVIDER=console — password reset emails will only be logged, not sent."
   fi
   if [ -z "${FEDAPAY_SECRET_KEY:-}" ]; then
-    echo "[entrypoint] WARNING: APP_ENV=production without FEDAPAY_SECRET_KEY — webhooks will be rejected."
+    echo "[entrypoint] WARNING: APP_ENV=production without FEDAPAY_SECRET_KEY — checkout disabled, webhooks rejected."
   fi
+  if [ -z "${FEDAPAY_WEBHOOK_SECRET:-}" ]; then
+    echo "[entrypoint] WARNING: FEDAPAY_WEBHOOK_SECRET not set — FedaPay webhooks will fail signature checks (payments still activate via /billing/return)."
+  fi
+  case "${PUBLIC_APP_URL:-}" in
+    ""|http://localhost*) echo "[entrypoint] WARNING: PUBLIC_APP_URL=${PUBLIC_APP_URL:-} — reset-password and payment return links will be broken." ;;
+  esac
 fi
 
 # Dépendances binaires OBLIGATOIRES: échec franc au démarrage plutôt qu'un

@@ -23,3 +23,10 @@ class PaymentResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class PaymentVerifyResponse(PaymentResponse):
+    """Statut d'un paiement + état d'abonnement du compte après vérification."""
+
+    effective_plan: str
+    subscription_expires_at: Optional[datetime] = None

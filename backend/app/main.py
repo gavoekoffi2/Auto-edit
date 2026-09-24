@@ -63,8 +63,10 @@ app = FastAPI(
     title="CutForge API",
     description="AI-powered automatic video editing SaaS platform",
     version="1.0.0",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
+    # Documentation interactive seulement hors production (surface d'attaque).
+    docs_url=None if settings.is_production else "/api/docs",
+    redoc_url=None if settings.is_production else "/api/redoc",
+    openapi_url=None if settings.is_production else "/openapi.json",
 )
 
 # Request ID + security headers middlewares

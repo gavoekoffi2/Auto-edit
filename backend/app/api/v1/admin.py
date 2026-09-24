@@ -105,6 +105,30 @@ class GrantSubscriptionResponse(BaseModel):
     temporary_password: str | None = None
 
 
+def _is_super_admin(user: User) -> bool:
+    from app.config import settings
+    return bool(getattr(user, "is_super_admin", False)) or (
+        (user.email or "").lower() in settings.admin_email_set
+    )
+
+
+def _require_super_admin(admin: User, action: str) -> None:
+    if not _is_super_admin(admin):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Seul le super-administrateur peut {action}.",
+        )
+
+
+def _guard_target(admin: User, target: User) -> None:
+    """Un admin simple ne peut pas modifier un super-admin (ni lui retirer l'accès)."""
+    if _is_super_admin(target) and not _is_super_admin(admin):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Ce compte ne peut être modifié que par le super-administrateur.",
+        )
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -231,10 +255,15 @@ async def list_users(
 async def grant_subscription(
     data: GrantSubscriptionRequest,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    admin: User = Depends(get_current_admin),
 ):
     result = await db.execute(select(User).where(User.email == data.email))
     user = result.scalar_one_or_none()
+    if user is not None:
+        _guard_target(admin, user)
+    current_is_admin = bool(user.is_admin) if user is not None else False
+    if data.is_admin is not None and bool(data.is_admin) != current_is_admin:
+        _require_super_admin(admin, "attribuer ou retirer le rôle administrateur")
     account_created = False
     temporary_password = None
     if not user:
@@ -285,6 +314,9 @@ async def update_user(
     admin: User = Depends(get_current_admin),
 ):
     user = await _get_user_or_404(db, user_id)
+    _guard_target(admin, user)
+    if data.is_admin is not None and bool(data.is_admin) != bool(user.is_admin):
+        _require_super_admin(admin, "attribuer ou retirer le rôle administrateur")
     if user.id == admin.id and data.is_active is False:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot deactivate yourself")
     if data.full_name is not None:
@@ -305,6 +337,7 @@ async def deactivate_user(
     admin: User = Depends(get_current_admin),
 ):
     user = await _get_user_or_404(db, user_id)
+    _guard_target(admin, user)
     if user.id == admin.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot deactivate yourself")
     user.is_active = False
@@ -317,9 +350,10 @@ async def deactivate_user(
 async def activate_user(
     user_id: UUID,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    admin: User = Depends(get_current_admin),
 ):
     user = await _get_user_or_404(db, user_id)
+    _guard_target(admin, user)
     user.is_active = True
     user.updated_at = _now()
     await db.flush()
@@ -332,9 +366,19 @@ async def delete_user(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_current_admin),
 ):
+    _require_super_admin(admin, "supprimer un compte")
     user = await _get_user_or_404(db, user_id)
     if user.id == admin.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete yourself")
+    target_id = str(user.id)
     await db.delete(user)
     await db.flush()
+    # Supprime aussi ses fichiers (sources, rendus): la cascade DB ne touche
+    # pas au disque — confidentialité et espace.
+    import os
+    import shutil
+    from app.config import settings
+    user_dir = os.path.join(os.path.abspath(settings.UPLOAD_DIR), target_id)
+    if os.path.isdir(user_dir):
+        shutil.rmtree(user_dir, ignore_errors=True)
     return None

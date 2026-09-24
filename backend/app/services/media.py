@@ -45,6 +45,16 @@ def _parse_range(header: str, file_size: int) -> Optional[tuple[int, int]]:
     return start, min(end, file_size - 1)
 
 
+def _content_disposition(filename: str) -> str:
+    """En-tête attachment sûr (pas d'injection de guillemets, UTF-8 RFC 5987)."""
+    from urllib.parse import quote
+
+    ascii_name = "".join(
+        c if 32 <= ord(c) < 127 and c not in '"\\' else "_" for c in filename
+    )
+    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename)}"
+
+
 async def _file_window(path: str, start: int, end: int) -> AsyncIterator[bytes]:
     remaining = end - start + 1
     async with aiofiles.open(path, "rb") as fh:
@@ -65,9 +75,7 @@ def ranged_file_response(
 ):
     """FileResponse drop-in that honours HTTP Range requests."""
     file_size = os.path.getsize(path)
-    disposition = (
-        {"Content-Disposition": f'attachment; filename="{filename}"'} if filename else {}
-    )
+    disposition = {"Content-Disposition": _content_disposition(filename)} if filename else {}
 
     range_header = request.headers.get("range")
     byte_range = _parse_range(range_header, file_size) if range_header else None

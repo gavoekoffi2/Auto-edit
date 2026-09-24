@@ -42,5 +42,9 @@ celery_app.conf.update(
             "task": "purge_expired_files",
             "schedule": 24 * 3600.0,
         },
+        "fail-stale-jobs": {
+            "task": "fail_stale_jobs",
+            "schedule": 3600.0,
+        },
     },
 )

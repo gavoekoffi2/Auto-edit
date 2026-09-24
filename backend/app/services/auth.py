@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -21,22 +23,69 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-def create_access_token(user_id: str) -> str:
+def password_fingerprint(password_hash: str | None) -> str:
+    """Empreinte courte du hash de mot de passe, embarquée dans les JWT.
+
+    Changer (ou réinitialiser) le mot de passe change le hash, donc
+    l'empreinte: tous les tokens émis avant deviennent invalides. C'est ce
+    qui déconnecte un voleur de session après un changement de mot de passe
+    et rend les liens de réinitialisation à usage unique — sans table de
+    sessions ni migration.
+    """
+    if not password_hash:
+        return ""
+    return hmac.new(
+        settings.SECRET_KEY.encode(), password_hash.encode(), hashlib.sha256
+    ).hexdigest()[:16]
+
+
+def token_matches_password(payload: dict, password_hash: str | None) -> bool:
+    """True si le token a été émis pour le mot de passe ACTUEL.
+
+    Les tokens émis avant l'ajout de l'empreinte (pas de claim `pwd`) restent
+    acceptés jusqu'à leur expiration naturelle.
+    """
+    claim = payload.get("pwd")
+    if claim is None:
+        return True
+    return hmac.compare_digest(str(claim), password_fingerprint(password_hash))
+
+
+def create_access_token(user_id: str, password_hash: str | None = None) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode = {"sub": user_id, "exp": expire, "type": "access"}
+    if password_hash:
+        to_encode["pwd"] = password_fingerprint(password_hash)
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-def create_refresh_token(user_id: str) -> str:
+def create_refresh_token(user_id: str, password_hash: str | None = None) -> str:
     expire = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     to_encode = {"sub": user_id, "exp": expire, "type": "refresh", "jti": str(uuid4())}
+    if password_hash:
+        to_encode["pwd"] = password_fingerprint(password_hash)
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-def _create_reset_token(user_id: str) -> str:
-    """Create a short-lived password reset token (15 minutes)."""
+def create_token_pair(user) -> tuple[str, str]:
+    """(access, refresh) liés au mot de passe courant de *user*."""
+    uid = str(user.id)
+    return (
+        create_access_token(uid, user.password_hash),
+        create_refresh_token(uid, user.password_hash),
+    )
+
+
+def _create_reset_token(user_id: str, password_hash: str | None = None) -> str:
+    """Create a short-lived password reset token (15 minutes).
+
+    Lié au hash du mot de passe courant: une fois le mot de passe changé, le
+    même lien ne peut plus resservir (usage unique).
+    """
     expire = datetime.now(timezone.utc) + timedelta(minutes=15)
     to_encode = {"sub": user_id, "exp": expire, "type": "reset", "jti": str(uuid4())}
+    if password_hash:
+        to_encode["pwd"] = password_fingerprint(password_hash)
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 

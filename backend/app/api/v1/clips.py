@@ -167,8 +167,9 @@ async def create_clips_job(
     await db.flush()
 
     from app.workers.tasks import process_clips_task
-    # task_id = id du job: c'est ce qui rend `POST /jobs/{id}/cancel` opérant.
-    process_clips_task.apply_async(args=[str(job.id)], task_id=str(job.id))
+    from app.services.job_dispatch import commit_and_dispatch
+    # Commit PUIS mise en file (task_id = id du job, cf. annulation).
+    await commit_and_dispatch(db, job, process_clips_task)
 
     logger.info(
         "Clips analyze job created: %s source=%s mode=%s user=%s",
@@ -252,8 +253,9 @@ async def render_selected_clips(
     await db.flush()
 
     from app.workers.tasks import process_clips_task
-    # task_id = id du job: c'est ce qui rend `POST /jobs/{id}/cancel` opérant.
-    process_clips_task.apply_async(args=[str(job.id)], task_id=str(job.id))
+    from app.services.job_dispatch import commit_and_dispatch
+    # Commit PUIS mise en file (task_id = id du job, cf. annulation).
+    await commit_and_dispatch(db, job, process_clips_task)
 
     logger.info(
         "Clips render job created: %s (%d clips, from analyze %s) user=%s",

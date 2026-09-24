@@ -394,7 +394,7 @@ def run_pipeline_v2(
     needed_gb = estimate_render_disk_gb(video_path)
     if free_gb < needed_gb:
         raise RuntimeError(
-            f"Espace disque insuffisant sur le serveur ({free_gb:.1f} Go libres, "
+            f"[DISK_FULL] Espace disque insuffisant sur le serveur ({free_gb:.1f} Go libres, "
             f"~{needed_gb:.0f} Go requis pour ce rendu). Réessaie dans quelques "
             "minutes ou contacte le support."
         )
@@ -525,7 +525,7 @@ def run_pipeline_v2(
         if "transcription" not in results["steps_completed"]:
             results["steps_completed"].append("transcription")
         if len(transcript.words) < 3:
-            raise RuntimeError("Transcription quasi vide — pas de parole exploitable pour le montage.")
+            raise RuntimeError("[NO_SPEECH] Transcription quasi vide — pas de parole exploitable pour le montage.")
 
     # ---- 2. Auto Edit engine render ---------------------------------------
     progress(10, "Montage Auto Edit…")
