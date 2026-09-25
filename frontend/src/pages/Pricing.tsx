@@ -1,64 +1,75 @@
-import { useState } from 'react'
-import { Check, Zap } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Check, Loader2, Zap } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import Footer from '../components/layout/Footer'
+import { createCheckout, getPlans, type PlanDescriptor } from '../api/payments'
+import { getErrorMessage } from '../api/client'
+import { useAuthStore } from '../store/authStore'
+import { toast } from '../components/ui/Toast'
 
-const plans = [
-  {
-    id: 'free',
-    name: 'Free',
-    price: { XOF: 0, USD: 0 },
-    description: 'Découvre CutForge gratuitement',
-    features: [
-      '2 vidéos / mois',
-      '5 min max par vidéo',
-      'Pipeline V1 (silences + sous-titres)',
-      'Export 720p',
-      'Support communauté',
-    ],
-    cta: 'Commencer gratuitement',
-    popular: false,
-  },
-  {
-    id: 'pro',
-    name: 'Pro',
-    price: { XOF: 5000, USD: 10 },
-    description: 'Pour créateurs & entrepreneurs africains',
-    features: [
-      'Vidéos illimitées',
-      '30 min max par vidéo',
-      'Pipeline V2 IA (B-roll africain)',
-      'Tous les modes (TikTok viral, Business premium…)',
-      'Sous-titres dynamiques',
-      'Musique + SFX',
-      'Export 1080p 9:16',
-      'Support prioritaire',
-    ],
-    cta: 'Passer Pro',
-    popular: true,
-  },
-  {
-    id: 'enterprise',
-    name: 'Enterprise',
-    price: { XOF: 15000, USD: 30 },
-    description: 'Pour agences & équipes',
-    features: [
-      'Tout illimité',
-      'Aucune limite de durée',
-      'Tous les modes IA',
-      'Export 4K + 9:16 / 16:9 / 1:1',
-      'Branding personnalisé',
-      'Accès API',
-      'Traitement par batch',
-      'Support dédié',
-    ],
-    cta: 'Nous contacter',
-    popular: false,
-  },
+interface DisplayPlan extends PlanDescriptor {
+  description: string
+  cta: string
+  popular: boolean
+}
+
+const PLAN_COPY: Record<string, { description: string; cta: string; popular: boolean }> = {
+  free: { description: 'Découvre CutForge gratuitement', cta: 'Commencer gratuitement', popular: false },
+  pro: { description: 'Pour créateurs & entrepreneurs africains', cta: 'Passer Pro', popular: true },
+  enterprise: { description: 'Pour agences & équipes', cta: 'Passer Enterprise', popular: false },
+}
+
+// Repli si l'API est injoignable — la source de vérité est GET /payments/plans
+// (quotas réellement appliqués par le backend).
+const FALLBACK_PLANS: PlanDescriptor[] = [
+  { id: 'free', name: 'Free', price: { XOF: 0, USD: 0 }, features: ['2 vidéos / mois', '15 min max par vidéo', 'Tous les styles de montage'] },
+  { id: 'pro', name: 'Pro', price: { XOF: 5000, USD: 10 }, features: ['Vidéos illimitées', '60 min max par vidéo', 'Tous les styles + B-roll IA', 'Support prioritaire'] },
+  { id: 'enterprise', name: 'Enterprise', price: { XOF: 15000, USD: 30 }, features: ['Vidéos illimitées', 'Aucune limite de durée', 'Support dédié'] },
 ]
+
+function withCopy(list: PlanDescriptor[]): DisplayPlan[] {
+  return list.map((p) => ({ ...p, ...(PLAN_COPY[p.id] ?? PLAN_COPY.free) }))
+}
 
 export default function Pricing() {
   const [currency, setCurrency] = useState<'XOF' | 'USD'>('XOF')
+  const [plans, setPlans] = useState<DisplayPlan[]>(withCopy(FALLBACK_PLANS))
+  const [days, setDays] = useState(30)
+  const [paymentsEnabled, setPaymentsEnabled] = useState(true)
+  const [busyPlan, setBusyPlan] = useState<string | null>(null)
+  const token = useAuthStore((s) => s.accessToken)
+  const user = useAuthStore((s) => s.user)
+  const navigate = useNavigate()
+  const currentPlan = (user?.effective_plan || user?.plan || 'free').toLowerCase()
+
+  useEffect(() => {
+    getPlans()
+      .then((data) => {
+        if (data?.plans?.length) setPlans(withCopy(data.plans))
+        if (data?.subscription_days) setDays(data.subscription_days)
+        if (typeof data?.payments_enabled === 'boolean') setPaymentsEnabled(data.payments_enabled)
+      })
+      .catch(() => { /* repli statique */ })
+  }, [])
+
+  const handleChoose = async (planId: string) => {
+    if (planId === 'free') {
+      navigate(token ? '/dashboard' : '/signup')
+      return
+    }
+    if (!token) {
+      navigate(`/signup?plan=${planId}`)
+      return
+    }
+    setBusyPlan(planId)
+    try {
+      const { checkout_url } = await createCheckout(planId, currency)
+      window.location.assign(checkout_url)
+    } catch (err) {
+      toast('error', getErrorMessage(err, 'Impossible de démarrer le paiement. Réessaie.'))
+      setBusyPlan(null)
+    }
+  }
 
   return (
     <div>
@@ -69,8 +80,8 @@ export default function Pricing() {
             <span className="gradient-text"> orientés Afrique</span>
           </h1>
           <p className="text-dark-400 text-lg max-w-2xl mx-auto mb-8">
-            Démarre gratuitement. Passe Pro quand tu veux du B-roll IA et des
-            captions dynamiques. Paiement Mobile Money via FedaPay.
+            Démarre gratuitement. Passe Pro quand tu veux monter sans limite.
+            Paiement Mobile Money ou carte via FedaPay, sans engagement.
           </p>
 
           {/* Currency Toggle */}
@@ -120,7 +131,7 @@ export default function Pricing() {
                       : `$${plan.price.USD}`}
                   </span>
                   {plan.price.XOF > 0 && (
-                    <span className="text-dark-500 text-sm"> /mois</span>
+                    <span className="text-dark-500 text-sm"> / {days} jours</span>
                   )}
                 </div>
               </div>
@@ -134,30 +145,42 @@ export default function Pricing() {
                 ))}
               </ul>
 
-              <Link
-                to={plan.id === 'free' ? '/signup' : '/signup'}
-                className={`block text-center py-3 rounded-lg font-semibold transition-all ${
+              {token && plan.id === currentPlan && plan.id !== 'free' && user?.subscription_expires_at && (
+                <p className="mb-3 text-center text-xs text-emerald-300">
+                  Actif jusqu&apos;au {new Date(user.subscription_expires_at).toLocaleDateString('fr-FR')} — un paiement prolonge de {days} jours
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => handleChoose(plan.id)}
+                disabled={busyPlan !== null || (plan.id !== 'free' && token !== null && !paymentsEnabled)}
+                className={`w-full block text-center py-3 rounded-lg font-semibold transition-all disabled:opacity-60 ${
                   plan.popular
                     ? 'btn-primary'
                     : 'btn-secondary'
                 }`}
               >
                 {plan.id === 'free' ? (
-                  plan.cta
+                  token ? 'Aller au dashboard' : plan.cta
+                ) : busyPlan === plan.id ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Redirection vers le paiement…
+                  </span>
                 ) : (
                   <span className="flex items-center justify-center gap-2">
                     <Zap className="w-4 h-4" />
-                    {plan.cta}
+                    {token && !paymentsEnabled ? 'Paiement bientôt disponible' : plan.cta}
                   </span>
                 )}
-              </Link>
+              </button>
             </div>
           ))}
         </div>
 
         {/* Modes inclus */}
         <div className="mt-20">
-          <h2 className="text-2xl font-bold text-center mb-2">Modes inclus avec le plan Pro</h2>
+          <h2 className="text-2xl font-bold text-center mb-2">Styles de montage inclus dans tous les plans</h2>
           <p className="text-dark-400 text-center mb-8 text-sm max-w-xl mx-auto">
             Le moteur CutForge est pensé pour le marché africain francophone — Togo, Bénin, Côte d&apos;Ivoire, Sénégal, Cameroun, RDC.
           </p>

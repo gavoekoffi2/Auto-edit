@@ -18,6 +18,9 @@ const Clips = lazy(() => import('./pages/Clips'))
 const Pricing = lazy(() => import('./pages/Pricing'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
+const ResetPassword = lazy(() => import('./pages/ResetPassword'))
+const Account = lazy(() => import('./pages/Account'))
+const Legal = lazy(() => import('./pages/Legal'))
 
 function PageLoader() {
   return (
@@ -55,6 +58,17 @@ export default function App() {
             <Route path="/signup" element={<Signup />} />
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/terms" element={<Legal page="terms" />} />
+            <Route path="/privacy" element={<Legal page="privacy" />} />
+            <Route
+              path="/account"
+              element={
+                <ProtectedRoute>
+                  <Account />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/dashboard"
               element={

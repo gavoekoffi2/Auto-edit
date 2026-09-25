@@ -16,6 +16,7 @@ import {
 } from '../api/clips'
 import { uploadVideo, validateVideoFile, getStreamUrl } from '../api/videos'
 import { toast } from '../components/ui/Toast'
+import { getErrorMessage } from '../api/client'
 
 /** Styles proposés pour les clips (sous-ensemble des modes de montage v2).
  * Collage Premium vient en premier (défaut produit), les nouveaux styles
@@ -39,12 +40,7 @@ function formatDuration(s: number) {
 }
 
 function extractApiError(e: unknown): string | null {
-  const detail = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
-  if (typeof detail === 'string') return detail
-  if (detail && typeof detail === 'object' && 'message' in (detail as object)) {
-    return String((detail as { message?: string }).message)
-  }
-  return null
+  return getErrorMessage(e, '') || null
 }
 
 export default function Clips() {
@@ -121,7 +117,7 @@ export default function Clips() {
     }
     setUploadPct(0)
     try {
-      const video = await uploadVideo(file, (pct) => setUploadPct(pct))
+      const video = await uploadVideo(file, (pct) => setUploadPct(pct), 'clips')
       setUploadPct(null)
       await startAnalyze({ video_id: video.id })
     } catch (e) {

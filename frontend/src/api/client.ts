@@ -1,4 +1,5 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios'
+import { useAuthStore } from '../store/authStore'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api'
 
@@ -42,8 +43,8 @@ function resolvePending(token: string | null, err?: unknown) {
 }
 
 function clearAuthAndRedirect() {
-  localStorage.removeItem('access_token')
-  localStorage.removeItem('refresh_token')
+  // Vide aussi le store: sinon la navbar affiche encore « connecté ».
+  useAuthStore.getState().logout()
   // Si on est déjà sur /login on ne redirige pas pour éviter une boucle.
   if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
     window.location.href = '/login'
@@ -61,8 +62,8 @@ export async function refreshAuthTokens(): Promise<string> {
   const newRefresh = res.data?.refresh_token as string | undefined
   if (!newAccess || !newRefresh) throw new Error('Session expirée. Connecte-toi puis relance l’upload.')
 
-  localStorage.setItem('access_token', newAccess)
-  localStorage.setItem('refresh_token', newRefresh)
+  // Store + localStorage synchronisés (les URL de stream lisent le jeton courant).
+  useAuthStore.getState().setTokens(newAccess, newRefresh)
   return newAccess
 }
 
@@ -147,6 +148,40 @@ export async function downloadWithAuth(url: string, filename: string): Promise<v
   document.body.removeChild(link)
 
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
+}
+
+/**
+ * Message lisible pour n'importe quelle erreur d'API.
+ *
+ * FastAPI renvoie `detail` sous trois formes: une chaîne, une liste d'erreurs
+ * de validation (422) ou un objet `{code, message}` (erreurs produit). Rendre
+ * directement un objet/une liste dans un toast faisait planter React.
+ */
+export function getErrorMessage(err: unknown, fallback = 'Une erreur est survenue. Réessaie.'): string {
+  if (err && typeof err === 'object' && 'response' in err) {
+    const res = (err as { response?: { status?: number; data?: { detail?: unknown } } }).response
+    const detail = res?.data?.detail
+    if (typeof detail === 'string' && detail.trim()) return detail
+    if (Array.isArray(detail)) {
+      const msgs = detail
+        .map((d) => (d && typeof d === 'object' && 'msg' in d ? String((d as { msg: unknown }).msg) : ''))
+        .filter(Boolean)
+        .map((m) => m.replace(/^Value error, /, ''))
+      if (msgs.length) return msgs.join('. ')
+    }
+    if (detail && typeof detail === 'object' && 'message' in detail) {
+      return String((detail as { message: unknown }).message)
+    }
+    if (res?.status === 429) return 'Trop de tentatives. Patiente un peu puis réessaie.'
+    if (res?.status && res.status >= 500) return 'Le serveur rencontre un problème. Réessaie dans un instant.'
+  }
+  if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === 'ERR_NETWORK') {
+    return 'Connexion impossible. Vérifie ta connexion internet.'
+  }
+  if (err instanceof Error && err.message && !/^Request failed with status code/.test(err.message)) {
+    return err.message
+  }
+  return fallback
 }
 
 export default client

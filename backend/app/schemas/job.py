@@ -234,7 +234,24 @@ class JobResponse(BaseModel):
     pipeline_version: Optional[str] = None
     result: Optional[dict]
     error_message: Optional[str]
+    # Code stable ([CODE] du worker) pour le frontend / le support.
+    error_code: Optional[str] = None
     created_at: datetime
     completed_at: Optional[datetime]
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="after")
+    def _user_safe_error(self):
+        """Ne JAMAIS renvoyer au client le détail technique d'un échec
+        (chemins serveur, commandes ffmpeg, traces). Il reste en base et dans
+        les logs pour le support."""
+        import re
+        from app.services.errors import user_message
+
+        raw = self.error_message
+        if raw:
+            m = re.match(r"^\[([A-Z_]+)\]", raw)
+            self.error_code = m.group(1) if m else "RENDER_FAILED"
+            self.error_message = user_message(raw)
+        return self

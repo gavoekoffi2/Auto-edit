@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useDropzone, type FileRejection } from 'react-dropzone'
 import { Upload, Film, Loader2 } from 'lucide-react'
 import axios from 'axios'
@@ -9,6 +9,7 @@ import {
   validateVideoFile,
 } from '../../api/videos'
 import { toast } from '../ui/Toast'
+import { getErrorMessage } from '../../api/client'
 
 interface Props {
   onUploadComplete: (video: { id: string; title: string }) => void
@@ -31,6 +32,17 @@ export default function UploadZone({ onUploadComplete }: Props) {
   const [progress, setProgress] = useState(0)
   const [selectedFileSize, setSelectedFileSize] = useState<number | null>(null)
 
+  // Fermer/recharger l'onglet pendant l'envoi perd tout l'upload: on prévient.
+  useEffect(() => {
+    if (!uploading) return
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [uploading])
+
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0]
     if (!file) return
@@ -46,9 +58,9 @@ export default function UploadZone({ onUploadComplete }: Props) {
     } catch (err: unknown) {
       let msg = 'Upload échoué. Vérifie ta connexion puis réessaie.'
       if (axios.isAxiosError(err)) {
-        msg = err.response?.data?.detail || err.message || msg
+        msg = getErrorMessage(err, msg)
         if (err.code === 'ECONNABORTED' || msg.toLowerCase().includes('timeout')) {
-          msg = "La connexion a été trop lente. J'ai corrigé le timeout: recharge la page puis réessaie."
+          msg = 'La connexion a été trop lente. Réessaie avec un Wi‑Fi ou une 4G plus stable.'
         } else if (!err.response) {
           msg = 'Connexion interrompue pendant l’upload. Garde la page ouverte et réessaie avec un Wi‑Fi/4G stable.'
         }

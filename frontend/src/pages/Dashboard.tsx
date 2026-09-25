@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Film, Trash2, Clock, CheckCircle, AlertCircle, Loader2, ChevronLeft,
   ChevronRight, Download, Sparkles, Crown, Plus, Clapperboard,
@@ -11,6 +11,8 @@ import { listVideos, deleteVideo } from '../api/videos'
 import { listJobs, downloadJobResult } from '../api/jobs'
 import { useAuthStore } from '../store/authStore'
 import { getMe } from '../api/auth'
+import { verifyPayment } from '../api/payments'
+import { getErrorMessage } from '../api/client'
 import { toast } from '../components/ui/Toast'
 import { BRAND } from '../brand'
 
@@ -84,12 +86,15 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const { setUser, user } = useAuthStore()
 
-  const loadData = useCallback(async () => {
-    setLoading(true)
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  // `silent`: rafraîchissement en arrière-plan (pas de squelette qui clignote).
+  const loadData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const [videosData, userData] = await Promise.all([
         listVideos(page * PAGE_SIZE, PAGE_SIZE),
-        user ? Promise.resolve(null) : getMe(),
+        silent ? Promise.resolve(null) : getMe(),
       ])
       setVideos(videosData.videos)
       setTotal(videosData.total)
@@ -106,15 +111,77 @@ export default function Dashboard() {
       setLatestJobs(Object.fromEntries(jobEntries))
       if (userData) setUser(userData)
     } catch (err) {
-      toast('error', 'Impossible de charger le dashboard')
+      if (!silent) toast('error', getErrorMessage(err, 'Impossible de charger le dashboard'))
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
-  }, [page, user, setUser])
+  }, [page, setUser])
 
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  // Suivi automatique des montages en cours (avant: statut figé jusqu'au F5).
+  const hasBusyJobs = Object.values(latestJobs).some(
+    (j) => j?.status === 'processing' || j?.status === 'pending',
+  )
+  useEffect(() => {
+    if (!hasBusyJobs) return
+    const id = window.setInterval(() => loadData(true), 5000)
+    return () => window.clearInterval(id)
+  }, [hasBusyJobs, loadData])
+
+  // Retour du checkout FedaPay: /dashboard?payment=<id>. On fait vérifier le
+  // paiement par le backend (qui interroge FedaPay) — l'activation ne dépend
+  // donc pas uniquement du webhook.
+  const paymentId = searchParams.get('payment')
+  useEffect(() => {
+    if (!paymentId) return
+    let cancelled = false
+    let attempts = 0
+    const clearParam = () => {
+      const next = new URLSearchParams(searchParams)
+      next.delete('payment')
+      next.delete('id')
+      next.delete('status')
+      setSearchParams(next, { replace: true })
+    }
+    const check = async () => {
+      attempts += 1
+      try {
+        const payment = await verifyPayment(paymentId)
+        if (cancelled) return
+        if (payment.status === 'completed') {
+          toast('success', `Paiement confirmé — ton plan ${payment.plan.toUpperCase()} est actif !`)
+          getMe().then(setUser).catch(() => {})
+          clearParam()
+          return
+        }
+        if (payment.status === 'failed') {
+          toast('error', "Le paiement n'a pas abouti. Aucun montant n'a été validé.")
+          clearParam()
+          return
+        }
+      } catch (err) {
+        if (cancelled) return
+        if (attempts >= 6) {
+          toast('error', getErrorMessage(err, 'Vérification du paiement impossible.'))
+          clearParam()
+          return
+        }
+      }
+      if (attempts < 6) {
+        window.setTimeout(() => { if (!cancelled) check() }, 5000)
+      } else {
+        toast('info', 'Paiement en cours de confirmation. Ton plan sera activé dès réception (quelques minutes).')
+        clearParam()
+      }
+    }
+    toast('info', 'Vérification de ton paiement…')
+    check()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paymentId])
 
   const handleUploadComplete = (video: { id: string; title: string }) => {
     navigate(`/editor/${video.id}`)
@@ -130,8 +197,8 @@ export default function Dashboard() {
       await deleteVideo(id)
       toast('success', 'Vidéo supprimée')
       setTotal((t) => t - 1)
-    } catch {
-      toast('error', 'Suppression impossible')
+    } catch (err) {
+      toast('error', getErrorMessage(err, 'Suppression impossible'))
       loadData() // Reload on error
     }
   }
@@ -198,6 +265,16 @@ export default function Dashboard() {
                 {plan !== 'free' && <Crown className="h-3.5 w-3.5" />}
                 PLAN {plan.toUpperCase()}
               </span>
+              {plan !== 'free' && user?.subscription_expires_at && (
+                <span className="text-xs text-dark-400">
+                  jusqu&apos;au {new Date(user.subscription_expires_at).toLocaleDateString('fr-FR')}
+                </span>
+              )}
+              {plan === 'free' && (
+                <button onClick={() => navigate('/pricing')} className="text-xs font-semibold text-amber-300 hover:underline">
+                  Passer Pro
+                </button>
+              )}
               <a href="#upload" className="btn-accent flex items-center gap-2 text-sm">
                 <Plus className="h-4 w-4" />
                 Nouveau montage

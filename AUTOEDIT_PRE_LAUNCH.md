@@ -1,4 +1,53 @@
-# Audit pré-déploiement — AutoEdit
+# Audit pré-lancement v5 — septembre 2026
+
+> Revue complète backend + frontend avant l'ouverture aux premiers
+> utilisateurs. Les points ci-dessous étaient des **bloquants réels**.
+
+## Corrigé
+
+| # | Zone | Problème | Correction |
+| --- | --- | --- | --- |
+| 1 | Paiement | Aucun bouton ne lançait le paiement (« Passer Pro » menait à /signup) | Page Tarifs branchée sur `POST /payments/checkout` → redirection FedaPay |
+| 2 | Paiement | L'URL renvoyée était le **jeton** FedaPay, pas l'URL de paiement | Utilise `url` de la réponse `/token` |
+| 3 | Paiement | Un paiement de 5 000 FCFA donnait le Pro **à vie** (pas d'expiration) | +`SUBSCRIPTION_DAYS` (30 j) par paiement, cumulable, jamais de rétrogradation |
+| 4 | Paiement | Signature webhook au mauvais format (les vrais webhooks auraient été rejetés) | Format FedaPay `t=…,s=…` + `FEDAPAY_WEBHOOK_SECRET`; **statut toujours relu via l'API FedaPay**, montant vérifié |
+| 5 | Paiement | Aucun retour après paiement (`callback_url` vide) | Retour `/dashboard?payment=<id>` + `POST /payments/{id}/verify` (active même sans webhook) |
+| 6 | Auth | Lien « mot de passe oublié » → page `/reset-password` inexistante | Page créée; lien à usage unique (1 h) |
+| 7 | Auth | Login bloqué après 5 connexions **réussies** par IP (CGNAT mobile = des centaines d'utilisateurs bloqués) | Seuls les échecs comptent: 8 / email, 50 / IP, 15 min |
+| 8 | Auth | Changer/réinitialiser le mot de passe laissait les autres sessions ouvertes | Empreinte du mot de passe dans les JWT → sessions invalidées |
+| 9 | Auth | Le bouton de déconnexion ne révoquait pas le refresh token | Appel `POST /auth/logout` |
+| 10 | Auth | SMTP: port 465 non géré; identifiants envoyés **en clair** si STARTTLS échouait | SMTP_SSL sur 465, STARTTLS obligatoire sinon; envoi hors boucle async |
+| 11 | Quota | Quota Free contournable: supprimer une vidéo libérait un crédit | Soft delete (`videos.deleted_at`, migration 005) |
+| 12 | Quota | Un utilisateur au quota envoyait toute sa vidéo avant d'être refusé | `GET /videos/upload-check` + durée lue dans le navigateur **avant** l'envoi |
+| 13 | Quota | Clips annonçait 30 min mais l'upload refusait > 15 min; une vidéo Clips pouvait contourner la limite du montage | `purpose=clips` à l'upload + contrôle de durée à la création de job |
+| 14 | Jobs | Job bloqué (worker tué) = créneau de montage occupé à vie | Tâche `reap_stale_jobs` (beat, toutes les 30 min) |
+| 15 | Jobs | `OSError` relançait 2× des rendus de plusieurs heures voués à échouer | Relance uniquement sur erreur réseau |
+| 16 | Jobs | Supprimer une vidéo laissait son rendu tourner des heures | Révocation Celery + arrêt du worker au prochain point de contrôle |
+| 17 | Jobs | Messages d'erreur bruts (chemins serveur, commandes ffmpeg) affichés à l'utilisateur | `[CODE]` stable + message utilisateur; détail gardé en base/logs |
+| 18 | Disque | Vidéos sources uploadées **jamais** purgées; jobs annulés non plus | `RETENTION_UPLOAD_DAYS` (30 j) + purge des annulés |
+| 19 | Disque | Uploads spoolés dans `/tmp` du conteneur (couche système) | `TMPDIR` sur le volume d'uploads |
+| 20 | Redis | `allkeys-lru` pouvait évincer la **file Celery** (montages perdus) | `volatile-lru` + AOF + volume persistant |
+| 21 | UI | Barre « Lancer le montage » cachée sous la navbar; bouton bloqué après un échec | `top-16`; réactivation sur échec |
+| 22 | UI | Tarifs / landing incohérents avec le backend (5 min vs 15, « 4K », « API », « priorité ») | Tarifs alimentés par `GET /payments/plans`; promesses non tenues retirées |
+| 23 | UI | Erreurs 422 (liste) ou produit (objet) → toast illisible / crash | `getErrorMessage()` commun |
+| 24 | UI | Pages manquantes | `/account` (plan, paiements, mot de passe), `/terms`, `/privacy`, navbar mobile |
+
+Tests: +19 (dont 9 de bout en bout sur la vraie app FastAPI). Migration 005
+validée sur PostgreSQL 16 (upgrade / downgrade / upgrade).
+
+## À configurer AVANT d'ouvrir les paiements
+
+1. FedaPay (Dashboard → Webhooks): URL `https://<domaine>/api/v1/payments/webhook`,
+   copier le secret `wh_…` dans `FEDAPAY_WEBHOOK_SECRET`.
+2. `FEDAPAY_SECRET_KEY` **live** + `FEDAPAY_ENV=live`.
+3. `PUBLIC_APP_URL=https://<domaine>` (liens de reset + retour de paiement).
+4. Email: `EMAIL_PROVIDER=smtp` (port 465 ou 587) ou `sendgrid` — sinon le
+   « mot de passe oublié » ne part pas.
+5. Relire `/terms` et `/privacy` (identité de l'éditeur à compléter).
+
+---
+
+# Audit pré-déploiement — AutoEdit (historique)
 
 > Audit réalisé sur la branche `claude/sleepy-brown-Rtjt7`.
 > Objectif : passer la plateforme à un état déployable chez les premiers

@@ -19,6 +19,7 @@ import {
   type PipelineVersion,
 } from '../api/jobs'
 import { toast } from '../components/ui/Toast'
+import { getErrorMessage } from '../api/client'
 
 type EditMode = string
 
@@ -251,12 +252,7 @@ export default function Editor() {
       toast('info', `Montage lancé : ${modes.find((m) => m.id === selectedMode)?.name ?? selectedMode}`)
     } catch (err: unknown) {
       setProcessing(false)
-      let msg = 'Impossible de démarrer le traitement'
-      if (err && typeof err === 'object' && 'response' in err) {
-        msg =
-          (err as { response?: { data?: { detail?: string } } }).response?.data?.detail || msg
-      }
-      toast('error', msg)
+      toast('error', getErrorMessage(err, 'Impossible de démarrer le traitement'))
     }
   }, [videoId, selectedMode, options, ctaText, logoText, pipelineVersion, modes])
 
@@ -277,6 +273,12 @@ export default function Editor() {
 
   const handleJobCancelled = useCallback(() => {
     setActiveJobId(null)
+    setProcessing(false)
+  }, [])
+
+  // Échec: on réactive le bouton de lancement (avant, il restait bloqué sur
+  // « en cours » et il fallait recharger la page pour réessayer).
+  const handleJobFailed = useCallback(() => {
     setProcessing(false)
   }, [])
 
@@ -322,7 +324,7 @@ export default function Editor() {
       {/* permanence. Avant, il vivait au bas d'une colonne latérale et il   */}
       {/* fallait faire défiler tout l'écran pour lancer un montage.         */}
       {/* ---------------------------------------------------------------- */}
-      <div className="sticky top-0 z-30 border-b border-white/10 bg-dark-950/85 backdrop-blur-xl">
+      <div className="sticky top-16 z-30 border-b border-white/10 bg-dark-950/85 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-4 py-3 sm:gap-4 sm:px-6 lg:px-8">
           <button
             onClick={() => navigate('/dashboard')}
@@ -451,6 +453,7 @@ export default function Editor() {
                 onComplete={handleJobComplete}
                 onRetry={handleRetry}
                 onCancelled={handleJobCancelled}
+                onFailed={handleJobFailed}
               />
             )}
 

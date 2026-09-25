@@ -23,6 +23,11 @@ except Exception:
   done
 fi
 
+# Répertoire temporaire (spool des uploads) sur le volume d'uploads.
+if [ -n "${TMPDIR:-}" ]; then
+  mkdir -p "$TMPDIR" 2>/dev/null || export TMPDIR=/tmp
+fi
+
 # Migrations Alembic — FAIL FAST si elles plantent (pas de fallback silencieux)
 echo "[entrypoint] Running database migrations..."
 alembic upgrade head

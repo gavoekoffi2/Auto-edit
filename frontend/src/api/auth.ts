@@ -37,3 +37,8 @@ export async function confirmPasswordReset(token: string, new_password: string) 
   })
   return res.data
 }
+
+export async function changePassword(current_password: string, new_password: string) {
+  const res = await client.post('/auth/password-change', { current_password, new_password })
+  return res.data as { access_token: string; refresh_token: string }
+}

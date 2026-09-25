@@ -37,6 +37,8 @@ class Video(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utc_now, nullable=False
     )
+    # Soft delete: fichiers supprimés, ligne conservée pour le quota mensuel.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user = relationship("User", back_populates="videos")
     jobs = relationship("Job", back_populates="video", cascade="all, delete-orphan")

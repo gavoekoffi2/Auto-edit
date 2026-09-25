@@ -42,10 +42,87 @@ async function warmAuthSession() {
   await refreshAuthTokens()
 }
 
-export async function uploadVideo(file: File, onProgress?: (percent: number) => void) {
+export interface UploadCheck {
+  can_upload: boolean
+  reason: string | null
+  monthly_used: number
+  monthly_limit: number | null
+  max_duration_s: number | null
+  max_upload_mb: number
+}
+
+export type UploadPurpose = 'edit' | 'clips'
+
+export async function getUploadCheck(purpose: UploadPurpose = 'edit'): Promise<UploadCheck> {
+  const res = await client.get(`/videos/upload-check?purpose=${purpose}`, { timeout: 15000 })
+  return res.data
+}
+
+/** Durée de la vidéo lue localement (métadonnées), sans rien envoyer. */
+export function probeLocalDuration(file: File, timeoutMs = 8000): Promise<number | null> {
+  return new Promise((resolve) => {
+    let settled = false
+    const url = URL.createObjectURL(file)
+    const el = document.createElement('video')
+    const done = (value: number | null) => {
+      if (settled) return
+      settled = true
+      URL.revokeObjectURL(url)
+      el.removeAttribute('src')
+      resolve(value)
+    }
+    el.preload = 'metadata'
+    el.muted = true
+    el.onloadedmetadata = () => done(Number.isFinite(el.duration) && el.duration > 0 ? el.duration : null)
+    el.onerror = () => done(null)
+    window.setTimeout(() => done(null), timeoutMs)
+    el.src = url
+  })
+}
+
+function formatMinutes(seconds: number) {
+  const m = seconds / 60
+  return Number.isInteger(m) ? `${m} min` : `${m.toFixed(1)} min`
+}
+
+/**
+ * Contrôles AVANT l'envoi: quota mensuel et durée max du plan. Évite
+ * d'envoyer des centaines de Mo (souvent en 4G) pour un refus à l'arrivée.
+ * Les erreurs réseau du préflight ne bloquent pas: le serveur revérifie tout.
+ */
+export async function preflightUpload(file: File, purpose: UploadPurpose = 'edit') {
+  let check: UploadCheck | null = null
+  try {
+    check = await getUploadCheck(purpose)
+  } catch {
+    return
+  }
+  if (!check.can_upload) {
+    throw new Error(check.reason || 'Quota mensuel atteint. Passe Pro pour continuer.')
+  }
+  if (file.size > check.max_upload_mb * 1024 * 1024) {
+    throw new Error(`Fichier trop lourd. Maximum : ${check.max_upload_mb} Mo.`)
+  }
+  if (check.max_duration_s) {
+    const duration = await probeLocalDuration(file)
+    if (duration && duration > check.max_duration_s + 1) {
+      throw new Error(
+        `Cette vidéo dure ${formatMinutes(Math.round(duration))} : ton plan accepte ${formatMinutes(check.max_duration_s)} maximum. ` +
+          'Coupe-la ou passe à un plan supérieur.',
+      )
+    }
+  }
+}
+
+export async function uploadVideo(
+  file: File,
+  onProgress?: (percent: number) => void,
+  purpose: UploadPurpose = 'edit',
+) {
   validateVideoFile(file)
 
   await warmAuthSession()
+  await preflightUpload(file, purpose)
 
   const formData = new FormData()
   formData.append('file', file)
@@ -67,7 +144,7 @@ export async function uploadVideo(file: File, onProgress?: (percent: number) => 
     },
   } as any
 
-  const res = await client.post('/videos/upload', formData, uploadConfig)
+  const res = await client.post(`/videos/upload?purpose=${purpose}`, formData, uploadConfig)
   return res.data
 }
 

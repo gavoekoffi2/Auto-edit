@@ -8,6 +8,27 @@ from app.services.subscriptions import effective_plan
 from app.services.plans import effective_video_duration_limit_s
 
 
+def _is_configured_admin(obj) -> bool:
+    """Comptes listés dans ADMIN_EMAILS: mêmes droits que dans app.api.deps."""
+    from app.config import settings
+    return (getattr(obj, "email", "") or "").lower() in settings.admin_email_set
+
+
+_PASSWORD_MAX = 128
+
+
+def _check_password(v: str) -> str:
+    if len(v) < 8:
+        raise ValueError("Le mot de passe doit contenir au moins 8 caractères")
+    if len(v) > _PASSWORD_MAX:
+        raise ValueError("Mot de passe trop long (128 caractères max.)")
+    if not re.search(r"[A-Za-z]", v):
+        raise ValueError("Le mot de passe doit contenir au moins une lettre")
+    if not re.search(r"[0-9]", v):
+        raise ValueError("Le mot de passe doit contenir au moins un chiffre")
+    return v
+
+
 class UserCreate(BaseModel):
     email: str
     password: str
@@ -19,19 +40,13 @@ class UserCreate(BaseModel):
         v = v.strip().lower()
         pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
         if not re.match(pattern, v):
-            raise ValueError("Invalid email format")
+            raise ValueError("Adresse email invalide")
         return v
 
     @field_validator("password")
     @classmethod
     def validate_password(cls, v: str) -> str:
-        if len(v) < 8:
-            raise ValueError("Password must be at least 8 characters")
-        if not re.search(r"[A-Za-z]", v):
-            raise ValueError("Password must contain at least one letter")
-        if not re.search(r"[0-9]", v):
-            raise ValueError("Password must contain at least one number")
-        return v
+        return _check_password(v)
 
     @field_validator("full_name")
     @classmethod
@@ -39,7 +54,7 @@ class UserCreate(BaseModel):
         if v is not None:
             v = v.strip()
             if len(v) > 200:
-                raise ValueError("Name too long")
+                raise ValueError("Nom trop long")
         return v
 
 
@@ -76,8 +91,8 @@ class UserResponse(BaseModel):
                 "plan": obj.plan,
                 "effective_plan": effective_plan(obj),
                 "subscription_expires_at": obj.subscription_expires_at,
-                "is_admin": bool(getattr(obj, "is_admin", False)),
-                "is_super_admin": bool(getattr(obj, "is_super_admin", False)),
+                "is_admin": bool(getattr(obj, "is_admin", False)) or _is_configured_admin(obj),
+                "is_super_admin": bool(getattr(obj, "is_super_admin", False)) or _is_configured_admin(obj),
                 "video_duration_limit_s": getattr(obj, "video_duration_limit_s", None),
                 "effective_video_duration_limit_s": effective_video_duration_limit_s(obj),
                 "created_at": obj.created_at,
@@ -114,13 +129,7 @@ class PasswordChange(BaseModel):
     @field_validator("new_password")
     @classmethod
     def validate_password(cls, v: str) -> str:
-        if len(v) < 8:
-            raise ValueError("Password must be at least 8 characters")
-        if not re.search(r"[A-Za-z]", v):
-            raise ValueError("Password must contain at least one letter")
-        if not re.search(r"[0-9]", v):
-            raise ValueError("Password must contain at least one number")
-        return v
+        return _check_password(v)
 
 
 class PasswordResetConfirm(BaseModel):
@@ -130,10 +139,4 @@ class PasswordResetConfirm(BaseModel):
     @field_validator("new_password")
     @classmethod
     def validate_password(cls, v: str) -> str:
-        if len(v) < 8:
-            raise ValueError("Password must be at least 8 characters")
-        if not re.search(r"[A-Za-z]", v):
-            raise ValueError("Password must contain at least one letter")
-        if not re.search(r"[0-9]", v):
-            raise ValueError("Password must contain at least one number")
-        return v
+        return _check_password(v)

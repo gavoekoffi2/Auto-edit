@@ -5,6 +5,7 @@ import Logo from '../components/ui/Logo'
 import { login } from '../api/auth'
 import { useAuthStore } from '../store/authStore'
 import { toast } from '../components/ui/Toast'
+import { getErrorMessage } from '../api/client'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -25,15 +26,7 @@ export default function Login() {
       toast('success', 'Bon retour sur CutForge !')
       navigate('/dashboard')
     } catch (err: unknown) {
-      let msg = 'Login failed'
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { detail?: string }, status?: number } }
-        msg = axiosErr.response?.data?.detail || msg
-        if (axiosErr.response?.status === 429) {
-          msg = 'Too many login attempts. Please wait and try again.'
-        }
-      }
-      setError(msg)
+      setError(getErrorMessage(err, 'Connexion impossible. Réessaie.'))
     } finally {
       setLoading(false)
     }
@@ -68,7 +61,7 @@ export default function Login() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="input-field"
-              placeholder="you@example.com"
+              placeholder="toi@exemple.com"
               required
               autoComplete="email"
             />

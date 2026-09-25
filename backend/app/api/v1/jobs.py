@@ -17,7 +17,7 @@ from app.models.job import Job
 from app.schemas.job import JobCreate, JobResponse
 from app.api.v1.modes import FAMILIES, MODE_DEFINITIONS, DEFAULT_MODE
 from app.api.deps import get_current_user
-from app.services.auth import decode_token
+from app.services.auth import decode_token, token_matches_password
 from app.services.storage import get_absolute_path
 
 logger = logging.getLogger(__name__)
@@ -50,8 +50,8 @@ async def get_media_user(
 
     result = await db.execute(select(User).where(User.id == user_uuid))
     user = result.scalar_one_or_none()
-    if user is None or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    if user is None or not user.is_active or not token_matches_password(payload, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
     return user
 
 
@@ -78,18 +78,31 @@ async def create_job(
 ):
     # Verify video belongs to user
     result = await db.execute(
-        select(Video).where(Video.id == data.video_id, Video.user_id == current_user.id)
+        select(Video).where(Video.id == data.video_id, Video.user_id == current_user.id,
+                            Video.deleted_at.is_(None))
     )
     video = result.scalar_one_or_none()
     if not video:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vidéo introuvable")
+
+    # Durée autorisée par le plan (une vidéo importée pour Clips, dont la
+    # limite est plus longue, ne doit pas servir à contourner celle du montage).
+    from app.services.plans import effective_video_duration_limit_s
+    limit_s = effective_video_duration_limit_s(current_user, clips=False)
+    if limit_s is not None and (video.duration_s or 0) > limit_s + 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(f"Ton plan permet de monter des vidéos de {limit_s / 60:g} min maximum "
+                    f"(celle-ci dure {(video.duration_s or 0) / 60:.1f} min). "
+                    "Utilise la fonction Clips ou passe à un plan supérieur."),
+        )
 
     # Verify video file exists on disk
     video_file = get_absolute_path(video.original_path)
     if not os.path.exists(video_file):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Video file not found on disk. Please re-upload.",
+            detail="Le fichier de cette vidéo a expiré. Réimporte-la.",
         )
 
     # Limite de jobs simultanés — via les règles CENTRALES (`app.services.plans`).
@@ -172,7 +185,7 @@ async def get_job(
     )
     job = result.scalar_one_or_none()
     if not job:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Traitement introuvable")
     return job
 
 
@@ -205,12 +218,12 @@ async def cancel_job(
     )
     job = result.scalar_one_or_none()
     if not job:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Traitement introuvable")
 
     if job.status not in ("pending", "processing"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot cancel job with status '{job.status}'",
+            detail="Ce traitement est déjà terminé.",
         )
 
     # Révoque la tâche Celery — en file d'attente ET en cours d'exécution.
@@ -247,7 +260,7 @@ async def delete_job(
     )
     job = result.scalar_one_or_none()
     if not job:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Traitement introuvable")
     if job.status in ("pending", "processing"):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -280,12 +293,12 @@ async def download_result(
     )
     job = result.scalar_one_or_none()
     if not job:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Traitement introuvable")
 
     if job.status != "completed" or not job.result:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Job not completed yet",
+            detail="Le montage n'est pas encore terminé.",
         )
 
     output_path = job.result.get("output_path")
@@ -329,11 +342,11 @@ async def download_clip(
     )
     job = result.scalar_one_or_none()
     if not job:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Traitement introuvable")
     if job.status != "completed" or not job.result:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Job not completed yet",
+            detail="Le montage n'est pas encore terminé.",
         )
 
     clips = job.result.get("clips") or []

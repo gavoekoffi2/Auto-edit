@@ -13,6 +13,10 @@ x-backend-env: &backend-env
   ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-120}
   CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost}
   UPLOAD_DIR: /app/uploads
+  # Les corps multipart (vidéos de plusieurs Go) sont d'abord spoolés dans
+  # TMPDIR par Starlette: sur le volume d'uploads, pas dans la couche du
+  # conteneur (qui saturait le disque système).
+  TMPDIR: /app/uploads/.tmp
   MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-5120}
   MAX_VIDEO_DURATION_FREE: ${MAX_VIDEO_DURATION_FREE:-900}
   MAX_VIDEO_DURATION_PRO: ${MAX_VIDEO_DURATION_PRO:-3600}
@@ -30,6 +34,9 @@ x-backend-env: &backend-env
   RETENTION_OUTPUT_DAYS: ${RETENTION_OUTPUT_DAYS:-14}
   RETENTION_SOURCE_DAYS: ${RETENTION_SOURCE_DAYS:-7}
   RETENTION_FAILED_JOB_DAYS: ${RETENTION_FAILED_JOB_DAYS:-2}
+  RETENTION_UPLOAD_DAYS: ${RETENTION_UPLOAD_DAYS:-30}
+  STALE_PENDING_HOURS: ${STALE_PENDING_HOURS:-6}
+  STALE_PROCESSING_HOURS: ${STALE_PROCESSING_HOURS:-8}
   # Recadrage vertical intelligent + nettoyage IA
   SMART_CROP_MODE: ${SMART_CROP_MODE:-auto}
   ENGINE_LLM_CLEANUP: ${ENGINE_LLM_CLEANUP:-1}
@@ -48,6 +55,8 @@ x-backend-env: &backend-env
   FEDAPAY_ENV: ${FEDAPAY_ENV:-sandbox}
   FEDAPAY_SECRET_KEY: ${FEDAPAY_SECRET_KEY:-}
   FEDAPAY_PUBLIC_KEY: ${FEDAPAY_PUBLIC_KEY:-}
+  FEDAPAY_WEBHOOK_SECRET: ${FEDAPAY_WEBHOOK_SECRET:-}
+  SUBSCRIPTION_DAYS: ${SUBSCRIPTION_DAYS:-30}
   # Pipeline V2 / B-roll IA
   PIPELINE_VERSION: ${PIPELINE_VERSION:-v1}
   IMAGE_GENERATION_PROVIDER: ${IMAGE_GENERATION_PROVIDER:-openrouter}
@@ -110,7 +119,13 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    # volatile-lru: sous pression mémoire, Redis n'évince QUE des clés à TTL
+    # (rate-limits, résultats Celery). Avec allkeys-lru, il pouvait supprimer
+    # la file Celery elle-même -> montages perdus, jobs « en attente » à vie.
+    # --appendonly: la file survit à un redémarrage du conteneur.
+    command: redis-server --maxmemory 256mb --maxmemory-policy volatile-lru --appendonly yes
+    volumes:
+      - redis_data:/data
     ports:
       - "${REDIS_PORT:-6379}:6379"
     healthcheck:
@@ -220,3 +235,4 @@ services:
 volumes:
   postgres_data:
   uploads_data:
+  redis_data:

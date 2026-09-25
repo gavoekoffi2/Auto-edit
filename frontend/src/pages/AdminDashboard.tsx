@@ -25,6 +25,7 @@ import {
   type AdminUser,
 } from '../api/admin'
 import { toast } from '../components/ui/Toast'
+import { getErrorMessage } from '../api/client'
 import { useAuthStore } from '../store/authStore'
 
 const quickDurations = [
@@ -147,8 +148,7 @@ export default function AdminDashboard() {
       setFullName('')
       setInitialPassword('')
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || 'Impossible de modifier cet abonnement'
-      toast('error', String(detail))
+      toast('error', getErrorMessage(err, 'Impossible de modifier cet abonnement'))
     } finally {
       setSaving(false)
     }
@@ -175,7 +175,7 @@ export default function AdminDashboard() {
       setStats(await getAdminStats())
       toast('success', updated.is_active ? 'Compte réactivé' : 'Compte bloqué')
     } catch (err: any) {
-      toast('error', err?.response?.data?.detail || 'Action impossible')
+      toast('error', getErrorMessage(err, 'Action impossible'))
     }
   }
 
@@ -187,7 +187,7 @@ export default function AdminDashboard() {
       setStats(await getAdminStats())
       toast('success', 'Compte supprimé')
     } catch (err: any) {
-      toast('error', err?.response?.data?.detail || 'Suppression impossible')
+      toast('error', getErrorMessage(err, 'Suppression impossible'))
     }
   }
 

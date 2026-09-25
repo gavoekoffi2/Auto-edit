@@ -126,7 +126,8 @@ async def create_clips_job(
     else:
         result = await db.execute(
             select(Video).where(Video.id == data.video_id,
-                                Video.user_id == current_user.id)
+                                Video.user_id == current_user.id,
+                                Video.deleted_at.is_(None))
         )
         video = result.scalar_one_or_none()
         if not video:
@@ -200,7 +201,8 @@ async def render_selected_clips(
 
     video_result = await db.execute(
         select(Video).where(Video.id == analyze_job.video_id,
-                            Video.user_id == current_user.id)
+                            Video.user_id == current_user.id,
+                            Video.deleted_at.is_(None))
     )
     video = video_result.scalar_one_or_none()
     if not video:

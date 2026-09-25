@@ -82,3 +82,52 @@ def tag(code: str, technical: str = "") -> str:
     if technical:
         base += f" ({technical[:300]})"
     return base
+
+
+def classify_exception(exc: BaseException) -> str:
+    """Message ``[CODE] détail`` stocké sur un job échoué.
+
+    Les exceptions déjà taguées (``[CODE] …``) sont conservées; les autres sont
+    rangées dans la catégorie produit la plus probable. Le détail technique
+    reste disponible pour le support/admin, mais :func:`user_message` ne montre
+    jamais que le message utilisateur.
+    """
+    import errno as _errno
+    import re as _re
+
+    text = str(exc) or exc.__class__.__name__
+    if _re.match(r"^\[[A-Z_]+\]", text):
+        return text[:1900]
+    low = text.lower()
+    if isinstance(exc, OSError) and getattr(exc, "errno", None) == _errno.ENOSPC \
+            or "no space left" in low:
+        return tag("DISK_FULL", text)[:1900]
+    if "transcription quasi vide" in low or "pas de parole" in low or "no speech" in low:
+        return tag("NO_SPEECH", text)[:1900]
+    if "transcri" in low or "scribe" in low or "whisper" in low:
+        return tag("TRANSCRIPTION_FAILED", text)[:1900]
+    if "not found on disk" in low or "input video file is empty" in low:
+        return tag("FILE_EXPIRED", text)[:1900]
+    return tag("RENDER_FAILED", text)[:1900]
+
+
+
+def user_message(error_message: str | None) -> str | None:
+    """Version affichable à l'utilisateur d'un ``error_message`` de job.
+
+    ``[CODE] message (détail technique)`` -> message utilisateur du code.
+    Les anciens messages non tagués sont remplacés par un message générique
+    (ils peuvent contenir des chemins, commandes ffmpeg, traces…).
+    """
+    import re as _re
+
+    if not error_message:
+        return error_message
+    m = _re.match(r"^\[([A-Z_]+)\]\s*(.*)$", error_message, _re.S)
+    if m:
+        err = ERRORS.get(m.group(1))
+        if err:
+            return err.user_message
+        # Code inconnu: garde le texte sans la parenthèse technique finale.
+        return _re.sub(r"\s*\(.*\)\s*$", "", m.group(2), flags=_re.S) or ERRORS["RENDER_FAILED"].user_message
+    return ERRORS["RENDER_FAILED"].user_message

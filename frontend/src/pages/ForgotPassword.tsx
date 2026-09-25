@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Zap, Loader2 } from 'lucide-react'
-import client from '../api/client'
+import { Loader2 } from 'lucide-react'
+import Logo from '../components/ui/Logo'
+import client, { getErrorMessage } from '../api/client'
 import { toast } from '../components/ui/Toast'
 
 export default function ForgotPassword() {
@@ -16,9 +17,9 @@ export default function ForgotPassword() {
     try {
       await client.post('/auth/password-reset/request', { email })
       setSent(true)
-      toast('success', 'If that email is registered, a reset link has been sent.')
-    } catch {
-      toast('error', 'Something went wrong. Please try again.')
+      toast('success', 'Si cet email correspond à un compte, un lien vient d’être envoyé.')
+    } catch (err) {
+      toast('error', getErrorMessage(err, 'Une erreur est survenue. Réessaie.'))
     } finally {
       setLoading(false)
     }
@@ -28,20 +29,20 @@ export default function ForgotPassword() {
     <div className="min-h-[80vh] flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <Zap className="w-12 h-12 text-accent-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold">Reset your password</h1>
+          <div className="mx-auto mb-4 w-fit"><Logo size={48} /></div>
+          <h1 className="text-2xl font-bold">Mot de passe oublié</h1>
           <p className="text-dark-400 mt-2">
-            Enter your email and we'll send you a reset link
+            Entre ton email : nous t’envoyons un lien pour choisir un nouveau mot de passe
           </p>
         </div>
 
         {sent ? (
           <div className="card text-center space-y-4">
             <p className="text-dark-300">
-              Check your email for a password reset link. It will expire in 15 minutes.
+              Vérifie ta boîte mail (et les spams) : le lien est valable 1 heure.
             </p>
             <Link to="/login" className="btn-primary inline-block">
-              Back to Login
+              Retour à la connexion
             </Link>
           </div>
         ) : (
@@ -56,7 +57,7 @@ export default function ForgotPassword() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="input-field"
-                placeholder="you@example.com"
+                placeholder="toi@exemple.com"
                 required
                 autoComplete="email"
               />
@@ -67,13 +68,13 @@ export default function ForgotPassword() {
               className="btn-primary w-full flex items-center justify-center gap-2"
               disabled={loading}
             >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Send Reset Link'}
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Envoyer le lien'}
             </button>
 
             <p className="text-center text-dark-400 text-sm">
-              Remember your password?{' '}
+              Tu te souviens de ton mot de passe ?{' '}
               <Link to="/login" className="text-primary-400 hover:underline">
-                Log in
+                Se connecter
               </Link>
             </p>
           </form>

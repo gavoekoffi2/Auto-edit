@@ -44,7 +44,7 @@ async def check_rate_limit(
             ttl = await r.ttl(redis_key)
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=f"Too many attempts. Try again in {ttl} seconds.",
+                detail=f"Trop de tentatives. Réessaie dans {max(1, int(ttl or 60) // 60)} min.",
             )
 
         pipe = r.pipeline()
@@ -61,7 +61,61 @@ async def check_rate_limit(
             )
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Rate limiter temporarily unavailable. Please retry in a moment.",
+                detail="Service momentanément indisponible. Réessaie dans un instant.",
             )
         # dev/staging: don't block iteration
         logger.warning("[dev] Rate limiter error (allowing request): %s", e)
+
+
+def _rate_limit_unavailable(e: Exception) -> None:
+    if settings.is_production:
+        logger.error("Rate limiter unavailable in production — failing closed: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service momentanément indisponible. Réessaie dans un instant.",
+        )
+    logger.warning("[dev] Rate limiter error (allowing request): %s", e)
+
+
+async def ensure_not_limited(key: str, max_attempts: int) -> None:
+    """Lève 429 si *key* a déjà atteint *max_attempts* — SANS compter la requête.
+
+    À combiner avec :func:`record_failure` pour ne pénaliser que les ÉCHECS
+    (ex. login): derrière un NAT d'opérateur mobile (CGNAT, très courant en
+    Afrique), des centaines d'utilisateurs légitimes partagent une IP et ne
+    doivent pas se bloquer mutuellement en se connectant normalement.
+    """
+    try:
+        r = await _get_redis()
+        current = await r.get(f"rate_limit:{key}")
+        if current is not None and int(current) >= max_attempts:
+            ttl = await r.ttl(f"rate_limit:{key}")
+            minutes = max(1, int(ttl or 60) // 60 + (1 if (ttl or 0) % 60 else 0))
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Trop de tentatives. Réessaie dans {minutes} min.",
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        _rate_limit_unavailable(e)
+
+
+async def record_failure(key: str, window_seconds: int) -> None:
+    """Compte un échec pour *key* (fenêtre glissante simple)."""
+    try:
+        r = await _get_redis()
+        pipe = r.pipeline()
+        pipe.incr(f"rate_limit:{key}")
+        pipe.expire(f"rate_limit:{key}", window_seconds)
+        await pipe.execute()
+    except Exception as e:  # l'échec d'écriture ne doit pas masquer la vraie réponse
+        logger.warning("Rate limiter: could not record failure for %s: %s", key, e)
+
+
+async def reset_counter(key: str) -> None:
+    try:
+        r = await _get_redis()
+        await r.delete(f"rate_limit:{key}")
+    except Exception:
+        pass

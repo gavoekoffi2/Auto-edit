@@ -2,15 +2,17 @@ import { useEffect, useState, useCallback } from 'react'
 import { getJob, downloadJobResult, cancelJob } from '../../api/jobs'
 import { Loader2, CheckCircle, XCircle, Download, RefreshCw, Ban } from 'lucide-react'
 import { toast } from '../ui/Toast'
+import { getErrorMessage } from '../../api/client'
 
 interface Props {
   jobId: string
   onComplete?: (result: Record<string, unknown>) => void
   onRetry?: () => void
   onCancelled?: () => void
+  onFailed?: () => void
 }
 
-export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }: Props) {
+export default function JobProgress({ jobId, onComplete, onRetry, onCancelled, onFailed }: Props) {
   const [job, setJob] = useState<{
     status: string
     progress: number
@@ -53,6 +55,7 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
           toast('success', 'Montage terminé !')
         } else if (data.status === 'failed') {
           stop()
+          onFailed?.()
           toast('error', data.error_message || 'Le traitement a échoué')
         } else if (data.status === 'cancelled') {
           stop()
@@ -86,7 +89,7 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
       window.removeEventListener('focus', resumePolling)
       document.removeEventListener('visibilitychange', resumePolling)
     }
-  }, [jobId, onComplete, onCancelled])
+  }, [jobId, onComplete, onCancelled, onFailed])
 
   const handleDownload = useCallback(async () => {
     setDownloading(true)
@@ -108,8 +111,8 @@ export default function JobProgress({ jobId, onComplete, onRetry, onCancelled }:
       setJob(data)
       onCancelled?.()
       toast('info', 'Traitement annulé')
-    } catch {
-      toast('error', "Impossible d'annuler le traitement")
+    } catch (err) {
+      toast('error', getErrorMessage(err, "Impossible d'annuler le traitement"))
     } finally {
       setCancelling(false)
     }

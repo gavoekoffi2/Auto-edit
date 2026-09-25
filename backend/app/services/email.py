@@ -56,13 +56,22 @@ class SMTPEmailProvider:
 
         port = settings.EMAIL_SMTP_PORT
         try:
-            with smtplib.SMTP(host, port, timeout=15) as server:
+            if int(port) == 465:
+                # SMTPS (TLS implicite) — Hostinger, Gmail SSL, OVH…
+                server_cm = smtplib.SMTP_SSL(host, port, timeout=15)
+            else:
+                server_cm = smtplib.SMTP(host, port, timeout=15)
+            with server_cm as server:
                 server.ehlo()
-                try:
-                    server.starttls()
-                    server.ehlo()
-                except Exception:
-                    pass
+                if int(port) != 465:
+                    local = host in ("localhost", "127.0.0.1", "mailhog", "mailpit")
+                    try:
+                        server.starttls()
+                        server.ehlo()
+                    except Exception:
+                        # Jamais d'identifiants en clair sur le réseau.
+                        if not local:
+                            raise RuntimeError("STARTTLS indisponible sur le serveur SMTP")
                 if settings.EMAIL_SMTP_USER and settings.EMAIL_SMTP_PASSWORD:
                     server.login(
                         settings.EMAIL_SMTP_USER, settings.EMAIL_SMTP_PASSWORD
@@ -130,15 +139,15 @@ def send_password_reset_email(*, to_email: str, reset_url: str) -> bool:
     text = (
         f"Tu as demande une reinitialisation de mot de passe.\n\n"
         f"Clique sur ce lien pour creer un nouveau mot de passe "
-        f"(valable 15 minutes):\n{reset_url}\n\n"
+        f"(valable 1 heure):\n{reset_url}\n\n"
         f"Si tu n'as rien demande, ignore ce message."
     )
     html = f"""<!doctype html><html><body style="font-family:Inter,system-ui,sans-serif;background:#0a0a0f;color:#fff;padding:32px">
   <div style="max-width:520px;margin:auto;background:#16171f;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:32px">
     <h1 style="margin:0 0 16px;font-size:22px">Reinitialise ton mot de passe</h1>
-    <p style="color:rgba(255,255,255,.7);line-height:1.6">Tu as demande une reinitialisation. Clique sur le bouton ci-dessous (valable 15 minutes).</p>
+    <p style="color:rgba(255,255,255,.7);line-height:1.6">Tu as demande une reinitialisation. Clique sur le bouton ci-dessous (valable 1 heure).</p>
     <p style="margin:24px 0"><a href="{reset_url}" style="display:inline-block;padding:12px 24px;background:#2a55f5;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Choisir un nouveau mot de passe</a></p>
-    <p style="color:rgba(255,255,255,.45);font-size:12px">Si tu n'as rien demande, ignore ce message. Le lien expire dans 15 minutes.</p>
+    <p style="color:rgba(255,255,255,.45);font-size:12px">Si tu n'as rien demande, ignore ce message. Le lien expire dans 1 heure.</p>
   </div></body></html>"""
     try:
         return get_email_provider().send(to=to_email, subject=subject, html=html, text=text)

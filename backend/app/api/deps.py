@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from app.db.session import get_db
 from app.models.user import User
-from app.services.auth import decode_token
+from app.services.auth import decode_token, token_matches_password
 from app.config import settings
 
 security = HTTPBearer()
@@ -51,16 +51,17 @@ async def get_current_user(
     result = await db.execute(select(User).where(User.id == user_uuid))
     user = result.scalar_one_or_none()
 
-    if user is None:
+    if user is None or not token_matches_password(payload, user.password_hash):
+        # Compte supprimé, ou jeton émis avant un changement de mot de passe.
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
+            detail="Session expirée. Reconnecte-toi.",
         )
 
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account is deactivated",
+            detail="Ce compte est désactivé. Contacte le support.",
         )
 
     return user

@@ -47,6 +47,10 @@ class Job(Base):
         DateTime(timezone=True), default=_utc_now, nullable=False
     )
     completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Dernière progression connue: sert à détecter les jobs bloqués (worker mort).
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=_utc_now, onupdate=_utc_now
+    )
 
     video = relationship("Video", back_populates="jobs")
     user = relationship("User", back_populates="jobs")

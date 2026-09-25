@@ -8,4 +8,5 @@ export const BRAND = {
   description:
     "CutForge transforme une vidéo parlée brute en montage viral : découpe intelligente, " +
     "motion design illustré, B-roll IA, sous-titres karaoké et sound design professionnel.",
+  supportEmail: (import.meta.env.VITE_SUPPORT_EMAIL as string | undefined) || 'support@cutforge.app',
 } as const

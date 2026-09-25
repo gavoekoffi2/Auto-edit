@@ -42,5 +42,12 @@ celery_app.conf.update(
             "task": "purge_expired_files",
             "schedule": 24 * 3600.0,
         },
+        "reap-stale-jobs": {
+            "task": "reap_stale_jobs",
+            "schedule": 30 * 60.0,
+        },
     },
+    # Les résultats Celery ne servent qu'au suivi temps réel (la vérité est
+    # en base): on ne les garde pas 24 h dans Redis.
+    result_expires=3600,
 )

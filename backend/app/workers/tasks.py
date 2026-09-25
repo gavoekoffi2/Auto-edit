@@ -32,11 +32,19 @@ class JobCancelled(Exception):
     """L'utilisateur a annulé le job pendant son exécution."""
 
 
+_JOB_MISSING = "__missing__"
+
+
 def _job_status(job_id: str) -> str | None:
-    """Statut courant du job en base (None si introuvable)."""
+    """Statut courant du job en base.
+
+    ``_JOB_MISSING`` si la ligne n'existe plus (vidéo/job supprimés par
+    l'utilisateur), ``None`` si la base est momentanément illisible.
+    """
     session = SyncSessionLocal()
     try:
-        return session.query(Job.status).filter(Job.id == job_id).scalar()
+        status = session.query(Job.status).filter(Job.id == job_id).scalar()
+        return _JOB_MISSING if status is None else status
     except Exception as e:  # noqa: BLE001 - la lecture ne doit jamais tuer le rendu
         logger.warning(f"Could not read status of job {job_id}: {e}")
         return None
@@ -51,7 +59,7 @@ def _raise_if_cancelled(job_id: str) -> None:
     « completed » par-dessus « cancelled »: l'annulation semblait fonctionner
     puis le job « ressuscitait » à la fin du rendu.
     """
-    if _job_status(job_id) == "cancelled":
+    if _job_status(job_id) in ("cancelled", _JOB_MISSING):
         raise JobCancelled(job_id)
 
 
@@ -73,7 +81,10 @@ def _update_video_status(video_id: str, new_status: str):
 @celery_app.task(
     bind=True,
     name="process_video",
-    autoretry_for=(ConnectionError, OSError),
+    # Uniquement les erreurs RÉSEAU transitoires. OSError (disque plein,
+    # fichier absent, échec ffmpeg…) relançait 2 fois des rendus de plusieurs
+    # heures voués à échouer de nouveau.
+    autoretry_for=(ConnectionError,),
     retry_kwargs={"max_retries": 2, "countdown": 30},
     retry_backoff=True,
 )
@@ -95,7 +106,7 @@ def process_video_task(self, job_id: str):
         video = session.query(Video).filter(Video.id == job.video_id).first()
         if not video:
             logger.error(f"Video not found for job: {job_id}")
-            _update_job(job_id, status="failed", error_message="Video not found")
+            _update_job(job_id, status="failed", error_message="[VIDEO_NOT_FOUND] Video not found")
             return
 
         video_path = get_absolute_path(video.original_path)
@@ -106,14 +117,15 @@ def process_video_task(self, job_id: str):
             _update_job(
                 job_id,
                 status="failed",
-                error_message="Video file not found on disk. Please re-upload.",
+                error_message="[FILE_EXPIRED] Video file not found on disk.",
             )
             _update_video_status(str(video.id), "error")
             return
 
-        # Un job annulé avant même d'être dépilé ne doit pas démarrer.
-        if job.status == "cancelled":
-            logger.info(f"Job {job_id} cancelled before start — skipped")
+        # Un job annulé avant même d'être dépilé ne doit pas démarrer; un job
+        # déjà terminé (message redélivré après un crash post-rendu) non plus.
+        if job.status in ("cancelled", "completed"):
+            logger.info(f"Job {job_id} already {job.status} — skipped")
             return
 
         # Mark as processing and clear any stale failure state when a job is retried.
@@ -199,7 +211,8 @@ def process_video_task(self, job_id: str):
 
     except Exception as e:
         logger.error(f"Job {job_id} failed: {e}", exc_info=True)
-        error_msg = str(e)[:1900]  # Truncate to fit DB column
+        from app.services.errors import classify_exception
+        error_msg = classify_exception(e)  # « [CODE] message (détail) », tronqué
         # Un job échoué ne doit pas laisser ses Go d'intermédiaires sur le
         # disque (c'est ce qui finissait par tuer les rendus suivants).
         if output_dir:
@@ -261,10 +274,10 @@ def process_clips_task(self, job_id: str):
             return
         video = session.query(Video).filter(Video.id == job.video_id).first()
         if not video:
-            _update_job(job_id, status="failed", error_message="Video not found")
+            _update_job(job_id, status="failed", error_message="[VIDEO_NOT_FOUND] Video not found")
             return
-        if job.status == "cancelled":
-            logger.info(f"Clips job {job_id} cancelled before start — skipped")
+        if job.status in ("cancelled", "completed"):
+            logger.info(f"Clips job {job_id} already {job.status} — skipped")
             return
 
         _update_job(
@@ -336,7 +349,7 @@ def process_clips_task(self, job_id: str):
 
         if not os.path.exists(video_path):
             _update_job(job_id, status="failed",
-                        error_message="Source video not found on disk.")
+                        error_message="[FILE_EXPIRED] Source video not found on disk.")
             _update_video_status(str(video.id), "error")
             return
 
@@ -399,10 +412,11 @@ def process_clips_task(self, job_id: str):
                 cleanup_intermediates(output_dir)
             except Exception as cleanup_err:  # noqa: BLE001 - best effort
                 logger.warning(f"Cleanup after failure skipped: {cleanup_err}")
+        from app.services.errors import classify_exception
         _update_job(
             job_id,
             status="failed",
-            error_message=str(e)[:1900],
+            error_message=classify_exception(e),
             completed_at=datetime.now(timezone.utc),
         )
         try:
@@ -458,7 +472,10 @@ def purge_expired_files_task():
         if settings.RETENTION_OUTPUT_DAYS > 0:
             rules.append(("completed", now - timedelta(days=settings.RETENTION_OUTPUT_DAYS)))
         if settings.RETENTION_FAILED_JOB_DAYS > 0:
-            rules.append(("failed", now - timedelta(days=settings.RETENTION_FAILED_JOB_DAYS)))
+            cutoff_failed = now - timedelta(days=settings.RETENTION_FAILED_JOB_DAYS)
+            rules.append(("failed", cutoff_failed))
+            # Les jobs annulés laissaient leurs fichiers partiels à vie.
+            rules.append(("cancelled", cutoff_failed))
         for status_name, cutoff in rules:
             jobs = (
                 session.query(Job)
@@ -494,9 +511,83 @@ def purge_expired_files_task():
                             purged["sources"] += 1
                     except OSError:
                         pass
+        # --- Vidéos SOURCES uploadées -----------------------------------------
+        # Sans cette règle, chaque vidéo importée restait sur le disque à vie
+        # (le disque du VPS finissait plein). Une vidéo expirée est retirée du
+        # dashboard (soft delete) — jamais pendant qu'un traitement tourne.
+        if settings.RETENTION_UPLOAD_DAYS > 0:
+            cutoff = now - timedelta(days=settings.RETENTION_UPLOAD_DAYS)
+            old_videos = (
+                session.query(Video)
+                .filter(Video.created_at < cutoff, Video.deleted_at.is_(None))
+                .all()
+            )
+            for video in old_videos:
+                busy = session.query(Job.id).filter(
+                    Job.video_id == video.id,
+                    Job.status.in_(["pending", "processing"]),
+                ).first()
+                if busy:
+                    continue
+                try:
+                    path = get_absolute_path(video.original_path)
+                    if os.path.isfile(path):
+                        purged["bytes"] += os.path.getsize(path)
+                        os.unlink(path)
+                        purged["sources"] += 1
+                except (OSError, ValueError):
+                    pass
+                video.deleted_at = now
+                session.commit()
     finally:
         session.close()
 
     logger.info("purge_expired_files: %s output dirs, %s sources, %.1f MB freed",
                 purged["outputs"], purged["sources"], purged["bytes"] / 1e6)
     return purged
+
+
+@celery_app.task(name="reap_stale_jobs")
+def reap_stale_jobs_task():
+    """Marque en échec les jobs bloqués (worker tué, message perdu…).
+
+    Sans ça, un job resté « pending/processing » à vie occupe définitivement
+    un des créneaux de montages simultanés du plan: l'utilisateur ne peut plus
+    rien lancer. Seuils configurables (heures sans aucune progression).
+    """
+    from datetime import timedelta
+    from sqlalchemy import func as sa_func
+    from app.config import settings
+
+    now = datetime.now(timezone.utc)
+    reaped = 0
+    session = SyncSessionLocal()
+    try:
+        pending_cutoff = now - timedelta(hours=settings.STALE_PENDING_HOURS)
+        processing_cutoff = now - timedelta(hours=settings.STALE_PROCESSING_HOURS)
+        stale = (
+            session.query(Job)
+            .filter(
+                ((Job.status == "pending") & (Job.created_at < pending_cutoff))
+                | ((Job.status == "processing")
+                   & (sa_func.coalesce(Job.updated_at, Job.created_at) < processing_cutoff))
+            )
+            .all()
+        )
+        for job in stale:
+            logger.warning("Reaping stale job %s (status=%s, created=%s, updated=%s)",
+                           job.id, job.status, job.created_at, job.updated_at)
+            try:
+                celery_app.control.revoke(str(job.id), terminate=True, signal="SIGTERM")
+            except Exception as e:  # noqa: BLE001 - best effort
+                logger.warning("revoke failed for stale job %s: %s", job.id, e)
+            job.status = "failed"
+            job.error_message = "[RENDER_FAILED] stale job reaped (no progress)"
+            job.completed_at = now
+            reaped += 1
+        session.commit()
+    finally:
+        session.close()
+    if reaped:
+        logger.info("reap_stale_jobs: %s job(s) marked failed", reaped)
+    return {"reaped": reaped}

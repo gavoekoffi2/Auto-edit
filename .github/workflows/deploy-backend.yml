@@ -57,7 +57,7 @@ jobs:
       - name: Install Python deps (skip heavy ML/video libs not needed by tests)
         working-directory: backend
         run: |
-          grep -vE '^(openai-whisper|moviepy|scenedetect|auto-editor|psycopg2-binary)' requirements.txt > /tmp/requirements-ci.txt
+          grep -vE '^(openai-whisper|moviepy|scenedetect|auto-editor)' requirements.txt > /tmp/requirements-ci.txt
           pip install -r /tmp/requirements-ci.txt aiosqlite
 
       - name: Run test suite
