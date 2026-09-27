@@ -24,8 +24,8 @@ from .conf import setting
 LLM_MODEL = setting("EXPLAINER_LLM_MODEL", "google/gemini-2.5-flash") or "google/gemini-2.5-flash"
 
 _ICON_HINTS = [
-    (r"m[ée]decin|docteur|sant[ée]|clinique|infirmi", "stethoscope"), (r"avocat|juri|droit|notaire", "scale"),
-    (r"entrepr|patron|chef|dirigeant|business|pme", "briefcase"), (r"[ée]v[ée]nement|f[êe]te|mariage|anniversaire|organisat", "star"), (r"boutique|commer|magasin|vend", "store"),
+    (r"m[ée]decin|docteur|sant[ée]|clinic|infirmi|pharmac", "stethoscope"), (r"avocat|juri|droit|notaire", "scale"),
+    (r"entrepr|patron|chef|dirigeant|business|pme", "briefcase"), (r"agence|bureau|soci[ée]t[ée]|cabinet", "building"), (r"[ée]v[ée]nement|f[êe]te|mariage|anniversaire|organisat", "star"), (r"boutique|commer|magasin|vend", "store"),
     (r"famille|enfant|parent|maman|papa|m[èe]re", "family"), (r"maison|immobil|logement|loyer", "home"), (r"voiture|auto|transport", "car"),
     (r"livr|colis|exp[ée]di", "truck"), (r"formation|cours|apprend|[ée]tudi|[ée]cole", "graduation"),
     (r"argent|revenu|salaire|profit|gain|[ée]pargn", "coin"), (r"imp[ôo]t|tax|frais", "percent"),

@@ -103,6 +103,7 @@
   // Instant où un mot (ou le début d'un mot) est prononcé dans le plan.
   function wordTime(shot, token, frac) {
     const fallback = shot.start + (shot.speechEnd - shot.start) * (frac == null ? 0.5 : frac);
+    if (typeof token === 'number' && isFinite(token)) return token; // instant absolu fourni par le planificateur
     if (!token) return fallback;
     const parts = String(token).split(/\s+/).map(norm).filter(Boolean);
     if (!parts.length) return fallback;
@@ -633,6 +634,10 @@
   // ================================================================== RUNTIME
   const FLASHES = [];
   const stage = $('stage'), cam = $('cam');
+  // Mode incrustation (face caméra): fond transparent, chaque plan entre ET sort
+  // par-dessus la vidéo de la personne.
+  const OVERLAY = !!STORY.overlay;
+  if (OVERLAY) { document.documentElement.style.background = 'transparent'; document.body.style.background = 'transparent'; stage.style.background = 'transparent'; }
   const shots = STORY.shots;
   const T = STORY.duration;
   const built = [];
@@ -652,7 +657,8 @@
       try { upd = fn(el, shot, shot.scene); } catch (e) { console.error('scene', shot.scene.type, e); el.innerHTML = ''; upd = SC.title_slam(el, shot, { title: shot.text }); }
       el.style.display = 'none';
       built.push({ el, shot, upd });
-      if (i > 0) ev(shot.start - 0.28, TPL.transition === 'zoom' ? 'whoosh_deep' : 'whoosh', 0.7);
+      if (i > 0 || OVERLAY) ev(shot.start - 0.28, TPL.transition === 'zoom' ? 'whoosh_deep' : 'whoosh', 0.7);
+      if (OVERLAY) ev(shot.end - 0.2, 'whoosh', 0.45);
     });
     // grain animé déterministe
     const g = $('grain'); const x = g.getContext('2d'); const im = x.createImageData(600, 1040);
@@ -663,7 +669,7 @@
   function transition(el, t, a, b, last) {
     const D = 0.3; let tr = '', bl = 0; const sc = 1 + (TPL.pushIn == null ? 0.04 : TPL.pushIn) * clamp((t - a) / Math.max(0.1, b - a));
     const kind = TPL.transition || 'whip';
-    if (a > 0 && t < a + D / 2) {
+    if ((a > 0 || OVERLAY) && t < a + D / 2) {
       const u = eo((t - (a - D / 2)) / D);
       if (kind === 'zoom') { tr = `scale(${(0.7 + 0.3 * u).toFixed(4)})`; bl = (1 - u) * 20; el.style.opacity = u.toFixed(3); }
       else if (kind === 'slide') { tr = `translateX(${((1 - u) * 1080).toFixed(1)}px)`; bl = (1 - u) * 18; }
@@ -679,12 +685,14 @@
   function seek(t) {
     let sx = 0, sy = 0;
     IMPACTS.forEach((k, i) => { const d = t - k; if (d > 0 && d < 0.35) { const a = (1 - d / 0.35) * 13 * (TPL.shake == null ? 1 : TPL.shake); sx += a * Math.sin(d * 90 + i); sy += a * Math.cos(d * 77 + i * 2); } });
-    tf(cam, `translate(${sx.toFixed(1)}px,${sy.toFixed(1)}px)`);
+    // en incrustation, un léger zoom pendant la secousse évite de découvrir le visage sur les bords
+    tf(cam, `translate(${sx.toFixed(1)}px,${sy.toFixed(1)}px)${OVERLAY && (sx || sy) ? ' scale(1.03)' : ''}`);
     const g = $('grain'); tf(g, `translate(${-Math.floor(rnd(Math.floor(t * 12)) * 60)}px,${-Math.floor(rnd(Math.floor(t * 12) + 5) * 60)}px)`);
+    if (OVERLAY) g.style.display = built.some(({ shot }) => t >= shot.start + 0.15 && t <= shot.end - 0.15) ? '' : 'none';
     let fl = 0; FLASHES.forEach((k) => { if (t > k) fl = Math.max(fl, Math.max(0, 1 - (t - k) / 0.25) * 0.55); });
     $('flash').style.opacity = fl.toFixed(3);
     built.forEach(({ el, shot, upd }, i) => {
-      const a = shot.start, b = shot.end, D = 0.3, last = i === built.length - 1;
+      const a = shot.start, b = shot.end, D = 0.3, last = !OVERLAY && i === built.length - 1;
       if (t < a - D / 2 || (!last && t > b + D / 2)) { el.style.display = 'none'; return; }
       el.style.display = 'block'; transition(el, t, a, b, last);
       try { upd(t); } catch (e) { console.error(e); }

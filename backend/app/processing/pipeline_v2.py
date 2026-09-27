@@ -364,6 +364,39 @@ def _transcript_to_vu(transcript, output_dir: str, video_path: str) -> str:
     return vu_path
 
 
+def _run_motion_pro(video_path: str, output_dir: str, mode: str, options: dict,
+                    progress_callback: Optional[ProgressFn]) -> dict:
+    """Délègue au moteur Motion Pro; contrat de retour compatible V1/V2."""
+    from app.explainer.facecam import run_facecam
+    from app.explainer.templates import TEMPLATES
+
+    tpl = options.get("motion_template") or mode.replace("motion_pro_", "", 1)
+    if tpl not in TEMPLATES:
+        tpl = "prestige"
+    res = run_facecam(
+        video_path, output_dir, template=tpl,
+        density=options.get("motion_density") or "medium",
+        captions=options.get("dynamic_captions", True) is not False,
+        music=options.get("music", True) is not False,
+        brand_color=options.get("brand_color"),
+        progress=(lambda p, m: progress_callback(p, m)) if progress_callback else None,
+    )
+    out = res["output_path"]
+    if not os.path.exists(out) or os.path.getsize(out) == 0:
+        raise RuntimeError("Le moteur Motion Pro n'a pas produit de vidéo de sortie.")
+    return {
+        "pipeline_version": "v2", "engine": "motion_pro", "mode": mode, "options": options,
+        "aspect_ratio": "9:16", "motion_template": tpl, "visual_mode": "credit_saver",
+        "visualModeUsed": "credit_saver", "aiImagesSkipped": True, "fallbackReason": None,
+        "steps_completed": res.get("steps_completed", []), "steps_failed": res.get("steps_failed", []),
+        "motion_design": {"enabled": True, "scenes": res.get("cutaways", []), "planner": res.get("planner")},
+        "montage": {"motion_scenes_rendered": len(res.get("cutaways", [])), "cut": res.get("cut"),
+                    "render_seconds": res.get("render_seconds")},
+        "duration": res.get("duration"), "source_duration": res.get("source_duration"),
+        "output_path": out, "output_size_bytes": os.path.getsize(out),
+    }
+
+
 def run_pipeline_v2(
     video_path: str,
     output_dir: str,
@@ -414,6 +447,10 @@ def run_pipeline_v2(
     settings_key = getattr(settings, "OPENROUTER_API_KEY", "") or ""
     if settings_key and not os.environ.get("OPENROUTER_API_KEY"):
         os.environ["OPENROUTER_API_KEY"] = settings_key
+
+    # Moteur Motion Pro (face caméra + animations plein écran): moteur dédié.
+    if (mode or "").startswith("motion_pro"):
+        return _run_motion_pro(video_path, output_dir, mode or "", options, progress_callback)
 
     # Collage Premium: le moteur lit sa configuration dans os.environ (comme le
     # reste du moteur Auto Edit). On la dérive des réglages produit + options du

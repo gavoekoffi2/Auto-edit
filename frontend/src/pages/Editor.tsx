@@ -540,6 +540,43 @@ export default function Editor() {
                 </p>
               )}
 
+              {options.motion_template && (
+                <div className="mt-3 space-y-3">
+                  <div>
+                    <p className="mb-1 text-xs text-dark-400">Quantité d'animations plein écran</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {([
+                        ['light', 'Léger'],
+                        ['medium', 'Équilibré'],
+                        ['heavy', 'Intense'],
+                      ] as const).map(([id, label]) => (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => setOptions((prev) => ({ ...prev, motion_density: id }))}
+                          className={`rounded-lg border px-2 py-2 text-xs font-medium transition ${
+                            (options.motion_density || 'medium') === id
+                              ? 'border-primary-500 bg-primary-500/15 text-white'
+                              : 'border-dark-700 bg-dark-800 text-dark-300 hover:border-dark-500'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <label className="flex items-center justify-between gap-3 text-xs text-dark-400">
+                    Couleur de ta marque (optionnel)
+                    <input
+                      type="color"
+                      value={options.brand_color || '#000000'}
+                      onChange={(e) => setOptions((prev) => ({ ...prev, brand_color: e.target.value }))}
+                      className="h-8 w-12 cursor-pointer rounded border border-dark-700 bg-dark-800"
+                    />
+                  </label>
+                </div>
+              )}
+
               {options.ai_broll && options.visual_mode !== 'credit_saver' && (
                 <div className="mt-3">
                   <label className="mb-1 block text-xs text-dark-400" htmlFor="demographic">

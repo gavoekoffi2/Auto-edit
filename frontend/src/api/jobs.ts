@@ -44,6 +44,12 @@ export interface JobOptions {
   max_clips?: number
   /** Supprime les sous-titres déjà incrustés dans la source (défaut: activé). */
   remove_source_subtitles?: boolean
+  /** Moteur Motion Pro: template d'animation (prestige, neon, editorial, minimal, solaire). */
+  motion_template?: string
+  /** Moteur Motion Pro: part des animations plein écran. */
+  motion_density?: 'light' | 'medium' | 'heavy'
+  /** Couleur de marque (#RRGGBB) qui remplace l'accent du template. */
+  brand_color?: string
   cta_text?: string
   logo_text?: string
 }

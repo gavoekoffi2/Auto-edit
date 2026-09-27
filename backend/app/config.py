@@ -47,6 +47,13 @@ VALID_MODES = {
     # la variante `collage_ugc_motion`).
     "collage_ugc_product",
     "collage_ugc_motion",
+    # Moteur « Motion Pro » (app.explainer.facecam): animations plein écran
+    # calées sur la voix, une déclinaison par template.
+    "motion_pro_prestige",
+    "motion_pro_neon",
+    "motion_pro_editorial",
+    "motion_pro_minimal",
+    "motion_pro_solaire",
 }
 VALID_PIPELINE_VERSIONS = {"v1", "v2"}
 VALID_IMAGE_PROVIDERS = {"openrouter", "replicate", "stability", "noop"}

@@ -60,3 +60,47 @@ linéairement avec le nombre de cœurs.
 
 > ⚠️ edge-tts (voix sans clé) est un service non officiel : pas de garantie ni de
 > licence commerciale. Configurer ElevenLabs avant d'ouvrir la fonction aux clients payants.
+
+---
+
+# Moteur « Motion Pro » (vidéo face caméra + animations plein écran)
+
+Le client dépose sa vidéo face caméra et choisit un template. CutForge la monte
+seul, comme un monteur motion designer :
+
+```
+Transcription mot à mot ─► Coupes (silences, faux départs, répétitions, bégaiements)
+   faster-whisper            autoedit_engine.build_edl (+ nettoyage IA si clé)
+        │
+        ▼
+Base 9:16, zoom alterné 1.0/1.1 à chaque coupe (masque les jump cuts)
+        │
+Plan des animations ─► Page HTML en mode incrustation (fond transparent)
+ IA (OpenRouter)          même moteur web/engine.js que la Pub explicative
+ ou règles locales        │
+        ▼                 ▼
+Animations ProRes 4444 avec alpha, entrée/sortie « whip/zoom/slide » par-dessus le visage
+        │
+Composition ffmpeg + sous-titres karaoké (hors animations) + SFX calés + musique −22 dB ─► MP4
+```
+
+| Fichier | Rôle |
+| --- | --- |
+| `backend/app/explainer/facecam.py` | Orchestration `run_facecam()` : transcription, coupes, base, rendu des animations, sous-titres, mixage, export. |
+| `backend/app/explainer/facecam_planner.py` | Choix des passages à illustrer. **Règles locales sans clé** : listes (« avocats, médecins… » → cartes icônes), argent perdu / impôt → pièces aspirées, solution nommée (« grâce à… », « à travers… ») → emblème 3D, comparaison (« différence entre vous et un salarié ») → écran partagé, durée prononcée (« trente minutes ») → minuteur, exclusivité → foule, appel à l'action → bouton cliqué. Avec `OPENROUTER_API_KEY` : plan IA validé (aucun chiffre non prononcé). |
+| `backend/app/processing/pipeline_v2.py` | `_run_motion_pro()` : les modes `motion_pro_*` y sont délégués. |
+| `backend/app/api/v1/modes.py` | Famille « Motion Pro », 5 modes = 5 templates. |
+
+Règles de montage : visage gardé sur l'accroche (1re seconde), au moins 1,4 s de
+visage entre deux animations (ou enchaînement bord à bord), jamais plus de ~11 s
+d'animations sans revenir au visage, pas deux fois la même scène coup sur coup.
+
+Options du job : `motion_template` (prestige, neon, editorial, minimal, solaire),
+`motion_density` (`light` ≈ 30 %, `medium` ≈ 50 %, `heavy` ≈ 68 % de la durée),
+`brand_color` (#RRGGBB), `dynamic_captions`, `music`.
+
+Test en ligne de commande :
+
+```bash
+python -c "from app.explainer.facecam import run_facecam; print(run_facecam('video.mp4', 'sortie', template='neon', density='medium'))"
+```

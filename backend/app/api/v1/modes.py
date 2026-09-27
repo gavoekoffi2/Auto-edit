@@ -344,6 +344,111 @@ MODE_DEFINITIONS: list[dict] = [
         },
     },
     {
+        "id": "motion_pro_prestige",
+        "name": "Motion Pro · Prestige",
+        "icon": "🏆",
+        "family": "motion_pro",
+        "badge": "0 crédit image",
+        "description": (
+            "Montage pro de ta vidéo face caméra : coupes des silences et répétitions, "
+            "puis des animations PLEIN ÉCRAN qui démontrent ce que tu dis (listes, "
+            "chiffres, solution, appel à l'action), calées au mot près, avec effets "
+            "sonores. Bleu nuit et or, titres Anton, transitions « whip ». Pour l'assurance, la finance, le conseil, les offres haut de gamme."
+        ),
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": False,
+            "motion_design": True,
+            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": False,
+            "visual_mode": "credit_saver",
+            "motion_template": "prestige", "motion_density": "medium",
+        },
+    },
+    {
+        "id": "motion_pro_neon",
+        "name": "Motion Pro · Néon",
+        "icon": "⚡",
+        "family": "motion_pro",
+        "badge": "0 crédit image",
+        "description": (
+            "Montage pro de ta vidéo face caméra : coupes des silences et répétitions, "
+            "puis des animations PLEIN ÉCRAN qui démontrent ce que tu dis (listes, "
+            "chiffres, solution, appel à l'action), calées au mot près, avec effets "
+            "sonores. Fond sombre, accent néon, rythme rapide et secousses. Pour la tech, les formations en ligne, le e-commerce."
+        ),
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": False,
+            "motion_design": True,
+            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": False,
+            "visual_mode": "credit_saver",
+            "motion_template": "neon", "motion_density": "medium",
+        },
+    },
+    {
+        "id": "motion_pro_editorial",
+        "name": "Motion Pro · Éditorial",
+        "icon": "📰",
+        "family": "motion_pro",
+        "badge": "0 crédit image",
+        "description": (
+            "Montage pro de ta vidéo face caméra : coupes des silences et répétitions, "
+            "puis des animations PLEIN ÉCRAN qui démontrent ce que tu dis (listes, "
+            "chiffres, solution, appel à l'action), calées au mot près, avec effets "
+            "sonores. Papier crème, titres à empattement, transitions posées. Pour l'expertise, le coaching, les marques élégantes."
+        ),
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": False,
+            "motion_design": True,
+            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": False,
+            "visual_mode": "credit_saver",
+            "motion_template": "editorial", "motion_density": "medium",
+        },
+    },
+    {
+        "id": "motion_pro_minimal",
+        "name": "Motion Pro · Minimal",
+        "icon": "◻️",
+        "family": "motion_pro",
+        "badge": "0 crédit image",
+        "description": (
+            "Montage pro de ta vidéo face caméra : coupes des silences et répétitions, "
+            "puis des animations PLEIN ÉCRAN qui démontrent ce que tu dis (listes, "
+            "chiffres, solution, appel à l'action), calées au mot près, avec effets "
+            "sonores. Blanc et bleu franc, glissements doux, peu de grain. Pour la santé, le B2B, les services sérieux."
+        ),
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": False,
+            "motion_design": True,
+            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": False,
+            "visual_mode": "credit_saver",
+            "motion_template": "minimal", "motion_density": "medium",
+        },
+    },
+    {
+        "id": "motion_pro_solaire",
+        "name": "Motion Pro · Solaire",
+        "icon": "🌅",
+        "family": "motion_pro",
+        "badge": "0 crédit image",
+        "description": (
+            "Montage pro de ta vidéo face caméra : coupes des silences et répétitions, "
+            "puis des animations PLEIN ÉCRAN qui démontrent ce que tu dis (listes, "
+            "chiffres, solution, appel à l'action), calées au mot près, avec effets "
+            "sonores. Orange chaud, titres Bebas, énergie maximale. Pour la restauration, la beauté, les commerces locaux."
+        ),
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": False,
+            "motion_design": True,
+            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": False,
+            "visual_mode": "credit_saver",
+            "motion_template": "solaire", "motion_density": "medium",
+        },
+    },
+    {
         "id": "tiktok",
         "name": "TikTok (legacy)",
         "icon": "📱",
@@ -386,6 +491,7 @@ DEFAULT_MODE: str = next(
 # --------------------------------------------------------------------------- #
 FAMILIES: list[dict] = [
     {"id": "collage", "label": "Collage papier", "hint": "Assemblage éditorial animé"},
+    {"id": "motion_pro", "label": "Motion Pro", "hint": "Animations plein écran calées sur la voix"},
     {"id": "viral", "label": "Styles viraux", "hint": "Sous-titres et motion design"},
     {"id": "classic", "label": "Classiques", "hint": "Publicité, formation, podcast"},
     {"id": "legacy", "label": "Ancien moteur", "hint": "Pipeline v1, sans motion design"},

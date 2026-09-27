@@ -65,6 +65,10 @@ class JobOptions(BaseModel):
     # Supprime les sous-titres DÉJÀ incrustés dans la source (défaut: activé)
     # pour éviter le double sous-titrage avec les captions du montage.
     remove_source_subtitles: Optional[bool] = None
+    # Moteur Motion Pro: template d'animation et densité des animations plein écran.
+    motion_template: Optional[str] = None
+    motion_density: Optional[str] = None
+    brand_color: Optional[str] = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
     cta_text: Optional[str] = Field(default=None, max_length=120)
     logo_text: Optional[str] = Field(default=None, max_length=60)
 
@@ -101,6 +105,22 @@ class JobOptions(BaseModel):
         allowed = {"auto", "center", "left", "right"}
         if v is not None and v not in allowed:
             raise ValueError(f"smart_crop_mode must be one of: {', '.join(sorted(allowed))}")
+        return v
+
+    @field_validator("motion_template")
+    @classmethod
+    def validate_motion_template(cls, v: Optional[str]) -> Optional[str]:
+        from app.explainer.templates import TEMPLATES
+
+        if v is not None and v not in TEMPLATES:
+            raise ValueError(f"motion_template must be one of: {', '.join(sorted(TEMPLATES))}")
+        return v
+
+    @field_validator("motion_density")
+    @classmethod
+    def validate_motion_density(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in ("light", "medium", "heavy"):
+            raise ValueError("motion_density must be one of: heavy, light, medium")
         return v
 
     @field_validator("cleanup_level")
