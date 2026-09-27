@@ -42,6 +42,10 @@ svglib>=1.5
 
 # Fonctionnalité Clips — téléchargement des vidéos sources depuis une URL
 yt-dlp>=2025.1.15
+
+# Moteur « Pub explicative » — voix off neuronale sans clé (repli quand
+# ELEVENLABS_API_KEY est absent). Service non officiel: ElevenLabs conseillé en production.
+edge-tts>=7.0
 # Recadrage vertical intelligent (détection de visage, CPU uniquement)
 opencv-python-headless>=4.9,<5   # 5.x retire cv2.CascadeClassifier (Haar)
 

@@ -1,0 +1,27 @@
+<!doctype html><html><head><meta charset="utf-8"><title>CutForge — pub explicative</title>
+<style>
+@font-face{font-family:'Anton';src:url(data:font/woff2;base64,__FONT_Anton__) format('woff2')}
+@font-face{font-family:'Bebas';src:url(data:font/woff2;base64,__FONT_Bebas__) format('woff2')}
+@font-face{font-family:'DMSerif';src:url(data:font/woff2;base64,__FONT_DMSerif__) format('woff2')}
+@font-face{font-family:'Poppins';font-weight:500;src:url(data:font/woff2;base64,__FONT_Poppins-500__) format('woff2')}
+@font-face{font-family:'Poppins';font-weight:600 700;src:url(data:font/woff2;base64,__FONT_Poppins-700__) format('woff2')}
+@font-face{font-family:'Poppins';font-weight:800 900;src:url(data:font/woff2;base64,__FONT_Poppins-800__) format('woff2')}
+html,body{margin:0;background:#000;overflow:hidden}
+#stage{position:relative;width:1080px;height:1920px;overflow:hidden;font-family:'Poppins',sans-serif;color:#fff;background:#000}
+#cam{position:absolute;inset:0;transform-origin:540px 960px}
+.sc{position:absolute;inset:0;display:none;transform-origin:540px 960px;overflow:hidden}
+.a{position:absolute}
+.anton{font-family:__HEAD_FONT__,'Anton',sans-serif;letter-spacing:.01em;line-height:1}
+.ctr{left:0;width:1080px;text-align:center}
+.ch{display:inline-block;transform-origin:50% 80%}
+.wd{display:inline-block;white-space:nowrap}
+.wd.hl{color:__ACCENT__}
+.pill{display:inline-block;padding:14px 34px;border-radius:999px}
+.card{position:absolute;border-radius:__RADIUS__px;box-sizing:border-box}
+#grain{position:absolute;left:-60px;top:-60px;width:1200px;height:2080px;pointer-events:none;mix-blend-mode:overlay}
+#flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+</style></head><body>
+<div id="stage"><div id="cam"></div><canvas id="grain" width="600" height="1040"></canvas><div id="flash"></div></div>
+<script>window.STORY=__STORY__;</script>
+<script>__ENGINE__</script>
+</body></html>

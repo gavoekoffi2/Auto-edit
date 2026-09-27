@@ -591,3 +591,81 @@ def reap_stale_jobs_task():
     if reaped:
         logger.info("reap_stale_jobs: %s job(s) marked failed", reaped)
     return {"reaped": reaped}
+
+
+# --------------------------------------------------------------------------- #
+# Moteur « Pub explicative »
+# --------------------------------------------------------------------------- #
+def _update_ad(project_id: str, **kwargs):
+    from app.models.ad_project import AdProject
+    session = SyncSessionLocal()
+    try:
+        p = session.query(AdProject).filter(AdProject.id == project_id).first()
+        if p:
+            for k, v in kwargs.items():
+                setattr(p, k, v)
+            session.commit()
+    except Exception as e:  # noqa: BLE001
+        session.rollback()
+        logger.error(f"Failed to update ad project {project_id}: {e}")
+    finally:
+        session.close()
+
+
+def _ad_status(project_id: str) -> str | None:
+    from app.models.ad_project import AdProject
+    session = SyncSessionLocal()
+    try:
+        return session.query(AdProject.status).filter(AdProject.id == project_id).scalar()
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        session.close()
+
+
+@celery_app.task(bind=True, name="process_ad_project", autoretry_for=(ConnectionError,),
+                 retry_kwargs={"max_retries": 1, "countdown": 60})
+def process_ad_project_task(self, project_id: str):
+    """Brief → pub motion design (script, voix, animation, sons, MP4)."""
+    from app.config import settings
+    from app.explainer.pipeline import run_explainer
+    from app.models.ad_project import AdProject
+
+    session = SyncSessionLocal()
+    try:
+        proj = session.query(AdProject).filter(AdProject.id == project_id).first()
+        if not proj:
+            logger.error(f"Ad project not found: {project_id}")
+            return
+        if proj.status in ("cancelled", "completed"):
+            return
+        brief, storyboard, user_id = dict(proj.brief or {}), proj.storyboard, str(proj.user_id)
+    finally:
+        session.close()
+
+    _update_ad(project_id, status="processing", progress=1, stage="Démarrage", error_message=None)
+    workdir = get_output_dir(user_id, f"ad_{project_id}")
+
+    def progress(pct: int, msg: str):
+        if _ad_status(project_id) == "cancelled":
+            raise JobCancelled()
+        _update_ad(project_id, progress=int(pct), stage=msg)
+        self.update_state(state="PROGRESS", meta={"progress": pct, "message": msg})
+
+    try:
+        res = run_explainer(brief, workdir, storyboard=storyboard, progress=progress,
+                            workers=settings.EXPLAINER_RENDER_WORKERS or None)
+        root = os.path.abspath(settings.UPLOAD_DIR)
+        rel = lambda p: os.path.relpath(p, root) if p else None  # noqa: E731
+        _update_ad(project_id, status="completed", progress=100, stage="Terminé",
+                   storyboard=res.get("storyboard"),
+                   result={"video_path": rel(res["video_path"]), "thumbnail_path": rel(res.get("thumbnail_path")),
+                           "duration": res.get("duration"), "script": res.get("script"),
+                           "voice_provider": res.get("voice_provider"), "notes": res.get("notes"),
+                           "render_seconds": res.get("render_seconds")},
+                   completed_at=datetime.now(timezone.utc))
+    except JobCancelled:
+        logger.info(f"Ad project {project_id} cancelled")
+    except Exception as e:  # noqa: BLE001
+        logger.exception(f"Ad project {project_id} failed")
+        _update_ad(project_id, status="failed", error_message=f"[AD_RENDER_FAILED] {str(e)[:400]}")

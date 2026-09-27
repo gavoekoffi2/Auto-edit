@@ -40,6 +40,9 @@ export default function Navbar() {
                 <Link to="/clips" className="text-dark-300 hover:text-white transition-colors">
                   Clips
                 </Link>
+                <Link to="/pub" className="text-dark-300 hover:text-white transition-colors">
+                  Pub IA
+                </Link>
                 {user?.is_admin && (
                   <Link to="/admin" className="text-dark-300 hover:text-white transition-colors flex items-center gap-1">
                     <Shield className="w-4 h-4" />

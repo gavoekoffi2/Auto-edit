@@ -92,6 +92,13 @@ class Settings(BaseSettings):
     MAX_VIDEOS_PER_MONTH_FREE: int = 2
 
     # ---------------------------------------------------------------------
+    # Moteur « Pub explicative » (motion design sans vidéo source).
+    # ---------------------------------------------------------------------
+    ADS_MAX_PER_MONTH_FREE: int = 2
+    EXPLAINER_LLM_MODEL: str = "google/gemini-2.5-flash"
+    EXPLAINER_RENDER_WORKERS: int = 0   # 0 = nombre de CPU
+
+    # ---------------------------------------------------------------------
     # Fonctionnalité Clips (vidéo longue -> shorts) — limites par plan.
     # Source de vérité consommée par app/services/plans.py UNIQUEMENT.
     # ---------------------------------------------------------------------
