@@ -115,6 +115,43 @@ def stamp(amp=0.85):
     return a + b
 
 
+def pencil(d=0.3, amp=0.35):
+    """Crayon sur papier: souffle aigu, grain irrégulier."""
+    n = int(d * SR); t = np.arange(n) / SR
+    x = _noise_band(n, 1800, 7000)
+    grain = 0.55 + 0.45 * np.abs(np.sin(2 * np.pi * _rng.uniform(18, 30) * t + _rng.uniform(0, 3)))
+    env = np.sin(np.pi * np.clip(t / d, 0, 1)) ** 0.6
+    return _norm(x * grain * env, amp)
+
+
+def paper(d=0.5, amp=0.3):
+    n = int(d * SR); u = np.arange(n) / n
+    return _norm(_noise_band(n, 300, 3500) * np.sin(np.pi * u) ** 1.2, amp)
+
+
+def tear(d=0.7, amp=0.6):
+    n = int(d * SR); t = np.arange(n) / SR; y = _noise_band(n, 600, 6000) * np.exp(-t * 3) * 0.5
+    for _ in range(70):
+        s = int(_rng.uniform(0, d * 0.85) * SR); m = int(0.006 * SR)
+        y[s:s + m] += _rng.standard_normal(min(m, n - s)) * _rng.uniform(0.4, 1.0)
+    return _norm(y, amp)
+
+
+def glitch(d=0.35, amp=0.3):
+    n = int(d * SR); y = np.zeros(n); k = 0
+    while k < n:
+        m = int(_rng.uniform(0.012, 0.04) * SR); f = _rng.uniform(200, 3000); tt = np.arange(min(m, n - k)) / SR
+        y[k:k + len(tt)] = np.sign(np.sin(2 * np.pi * f * tt)) * _rng.uniform(0.2, 1.0) * (_rng.uniform() > 0.25)
+        k += m
+    return _norm(_lp(y, 6000), amp)
+
+
+def scan(d=0.9, amp=0.22):
+    t = _t(d); u = t / d; f = 700 + 1900 * u
+    y = np.sin(2 * np.pi * np.cumsum(f) / SR) * (0.6 + 0.4 * np.sin(2 * np.pi * 18 * t)) * np.sin(np.pi * u)
+    return _norm(y, amp)
+
+
 # nom -> fabrique (appelée à chaque occurrence: petites variations naturelles)
 LIB: dict[str, Callable[[], np.ndarray]] = {
     "tick": lambda: tick(0.14, _rng.uniform(2900, 3500)),
@@ -138,6 +175,11 @@ LIB: dict[str, Callable[[], np.ndarray]] = {
     "thud": lambda: thud(0.4),
     "click": lambda: click(0.55),
     "heartbeat": lambda: heartbeat(0.6),
+    "pencil": lambda: pencil(_rng.uniform(0.22, 0.4), 0.35),
+    "paper": lambda: paper(0.5, 0.3),
+    "tear": lambda: tear(0.7, 0.6),
+    "glitch": lambda: glitch(0.35, 0.3),
+    "scan": lambda: scan(0.9, 0.22),
 }
 
 
