@@ -233,6 +233,8 @@ SCENE_CATALOG: dict[str, dict[str, Any]] = {
                      "params": {"contact": "nom affiché", "messages": [{"from": "them|me", "text": "court", "at": "mot"}]}},
     "stat_number": {"tone": "dark", "desc": "Chiffre clé animé — UNIQUEMENT si le chiffre est fourni par le client.",
                     "params": {"value": "ex: 80%", "label": "ce que mesure le chiffre", "source": "source"}},
+    "plan_to_3d": {"tone": "dark", "desc": "Plan 2D dessiné trait par trait, scanné par l'IA, qui bascule en maquette 3D (murs qui sortent du sol). Architecture, immobilier, construction, aménagement, décoration.",
+                   "params": {"title": "ex: DU PLAN 2D À LA 3D", "title_at": "mot", "at": "mot où le plan commence", "to3d_at": "mot où ça passe en 3D", "label_2d": "ex: PLAN 2D", "label_3d": "ex: MODÈLE 3D", "ai_label": "ex: IA"}},
     "end_card": {"tone": "dark", "desc": "Carte de fin: emblème, slogan, bouton pulsant, mention légale.",
                  "params": {"brand": "nom", "slogan": "2-4 mots", "button": "texte du bouton", "disclaimer": "mention courte", "emblem": "shield"}},
 }

@@ -573,7 +573,7 @@
     let y = 200;
     const bubbles = msgs.map((m) => {
       const me = m.from === 'me';
-      const b = mk(phone, 'a', esc(m.text), `${me ? 'right' : 'left'}:30px;top:${y}px;max-width:560px;padding:26px 32px;border-radius:36px;${me ? 'border-bottom-right-radius:10px' : 'border-bottom-left-radius:10px'};font-size:40px;font-weight:600;line-height:1.3;background:${me ? C.accent : (shot.tone === 'light' ? '#eef1f6' : '#23304d')};color:${me ? C.onAccent : (shot.tone === 'light' ? C.ink : '#fff')}`);
+      const b = mk(phone, 'a', esc(m.text).replace(/ ([?!:;»])/g, '\u00a0$1'), `${me ? 'right' : 'left'}:30px;top:${y}px;max-width:560px;padding:26px 32px;border-radius:36px;${me ? 'border-bottom-right-radius:10px' : 'border-bottom-left-radius:10px'};font-size:40px;font-weight:600;line-height:1.3;background:${me ? C.accent : (shot.tone === 'light' ? '#eef1f6' : '#23304d')};color:${me ? C.onAccent : (shot.tone === 'light' ? C.ink : '#fff')}`);
       y += b.offsetHeight + 28; return b;
     });
     const ts = itemTimes(shot, msgs);
@@ -588,7 +588,7 @@
   SC.stat_number = function (root, shot, p) {
     const raw = String(p.value || '').trim(); const m = raw.match(/^([^0-9]*)([0-9]+(?:[.,][0-9]+)?)(.*)$/);
     const pre = m ? m[1] : '', num = m ? parseFloat(m[2].replace(',', '.')) : 0, post = m ? m[3] : raw, dec = m && /[.,]/.test(m[2]) ? 1 : 0;
-    const big = mk(root, 'a anton ctr', '', `top:520px;left:40px;width:1000px;font-size:330px;color:${C.accent};line-height:1`);
+    const big = mk(root, 'a anton ctr', '', `top:520px;left:40px;width:1000px;font-size:330px;color:${C.accent};line-height:1;white-space:nowrap`);
     const lab = mk(root, 'a anton ctr', esc(up(p.label || '')), `top:900px;left:60px;width:960px;color:${inkFor(shot.tone)};line-height:1.05`); fit(lab, 960, 110, 56, 260);
     const src = p.source ? mk(root, 'a ctr', esc(p.source), `top:1700px;font-size:26px;color:${subFor(shot.tone)}`) : null;
     const svg = mk(root, 'a', '<svg width="1080" height="1920"></svg>', 'left:0;top:0').firstElementChild;
@@ -625,6 +625,99 @@
       const b = pop(t, tB, 14, 0.5); vis(btn, clamp((t - tB) * 6)); tf(btn, `scale(${((0.4 + 0.6 * b) * (1 + 0.04 * Math.max(0, Math.sin((t - tB) * 7)))).toFixed(3)})`);
       chs.forEach((e, i) => { e.style.opacity = (clamp((t - tB - 0.3 - i * 0.1) * 5) * (0.4 + 0.6 * Math.max(0, Math.sin((t - tB) * 6 - i * 0.9)))).toFixed(2); });
       if (disc) vis(disc, clamp((t - tB - 0.3) / 0.4) * 0.9);
+    };
+  };
+
+
+  // 16. Plan 2D → maquette 3D (architecture, immobilier, construction, aménagement)
+  //     Le plan se dessine trait par trait, l'IA le scanne, puis il bascule en
+  //     perspective et les murs sortent du sol.
+  SC.plan_to_3d = function (root, shot, p) {
+    const PW = 700, PH = 520, WH = 150; // plan en unités px, hauteur des murs
+    const walls = [[0, 0, 700, 0], [700, 0, 700, 520], [700, 520, 0, 520], [0, 520, 0, 0],
+      [300, 0, 300, 210], [0, 300, 190, 300], [280, 300, 700, 300], [480, 380, 480, 520]];
+    const rooms = [[0, 0, 300, 300, 'SÉJOUR'], [300, 0, 400, 300, 'CUISINE'], [0, 300, 480, 220, 'CHAMBRE'], [480, 300, 220, 220, 'BAIN']];
+    const ink = inkFor(shot.tone), line = shot.tone === 'light' ? C.ink : '#EAF2FF';
+    // grille « papier calque »
+    const grid = mk(root, 'a', '', `left:0;top:0;width:1080px;height:1920px;background-image:linear-gradient(rgba(${C.accentRGB},.10) 1px,transparent 1px),linear-gradient(90deg,rgba(${C.accentRGB},.10) 1px,transparent 1px);background-size:60px 60px`);
+    const t1 = mk(root, 'a anton ctr', '', `top:250px;left:60px;width:960px;color:${ink};line-height:1.02`); prepDrop(t1, up(p.title || 'DU PLAN 2D À LA 3D')); fit(t1, 960, 120, 64, 260);
+    const tag = mk(root, 'a ctr', '', 'top:1620px');
+    tag.innerHTML = `<span class="pill anton" style="font-size:64px;background:${C.accent};color:${C.onAccent};padding:10px 40px"><span class="l2">${esc(up(p.label_2d || 'PLAN 2D'))}</span><span class="l3" style="display:none">${esc(up(p.label_3d || 'MODÈLE 3D'))}</span></span>`;
+    const l2 = tag.querySelector('.l2'), l3 = tag.querySelector('.l3');
+    const wrap = mk(root, 'a', '', `left:${540 - PW / 2}px;top:${1010 - PH / 2}px;width:${PW}px;height:${PH}px;perspective:2400px;perspective-origin:50% 30%`);
+    const iso = mk(wrap, 'a', '', `left:0;top:0;width:${PW}px;height:${PH}px;transform-style:preserve-3d;transform-origin:50% 50%`);
+    // sols des pièces (apparaissent en 3D)
+    const floors = rooms.map(([x, y, w, h], i) => mk(iso, 'a', '', `left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:${['#C9A27A', '#E8E4DC', '#B98D63', '#DCE6EE'][i % 4]};opacity:0`));
+    // plan SVG (traits qui se dessinent)
+    let d = '';
+    walls.forEach(([x1, y1, x2, y2]) => { d += `<path d="M${x1} ${y1}L${x2} ${y2}" pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1" class="w"/>`; });
+    const doors = [[190, 300, 90, 0], [300, 210, 90, 1], [480, 300, 80, 0]];
+    doors.forEach(([x, y, r, v]) => { d += v ? `<path class="dr" d="M${x} ${y}A${r} ${r} 0 0 1 ${x - r} ${y + r}" pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1"/>` : `<path class="dr" d="M${x} ${y}A${r} ${r} 0 0 0 ${x + r} ${y - r}" pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1"/>`; });
+    [[80, 0, 160, 0], [420, 0, 560, 0], [700, 90, 700, 220], [0, 360, 0, 460], [560, 520, 650, 520]].forEach(([x1, y1, x2, y2]) => { d += `<path class="wi" d="M${x1} ${y1}L${x2} ${y2}"/>`; });
+    const svg = mk(iso, 'a', `<svg width="${PW + 40}" height="${PH + 40}" viewBox="-20 -20 ${PW + 40} ${PH + 40}" style="overflow:visible"><g fill="none" stroke-linecap="square">${d}</g>` +
+      rooms.map(([x, y, w, h, n]) => `<text class="rn" x="${x + w / 2}" y="${y + h / 2 + 10}" text-anchor="middle" font-family="Poppins" font-weight="700" font-size="26" letter-spacing="3" fill="${line}" opacity="0">${esc(n)}</text>`).join('') +
+      `<line class="dim" x1="0" y1="-14" x2="700" y2="-14" stroke="${C.accent}" stroke-width="2" opacity="0"/></svg>`, 'left:-20px;top:-20px');
+    svg.querySelectorAll('.w').forEach((e) => { e.setAttribute('stroke', line); e.setAttribute('stroke-width', '12'); });
+    svg.querySelectorAll('.dr').forEach((e) => { e.setAttribute('stroke', C.accent); e.setAttribute('stroke-width', '4'); });
+    svg.querySelectorAll('.wi').forEach((e) => { e.setAttribute('stroke', C.accent); e.setAttribute('stroke-width', '16'); e.setAttribute('opacity', '0'); });
+    const pw = [...svg.querySelectorAll('.w')], pd = [...svg.querySelectorAll('.dr')], pwi = [...svg.querySelectorAll('.wi')], rn = [...svg.querySelectorAll('.rn')];
+    // murs 3D
+    const w3 = walls.map(([x1, y1, x2, y2], i) => {
+      const len = Math.hypot(x2 - x1, y2 - y1), ang = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
+      const shade = Math.abs(Math.cos(ang * Math.PI / 180)) > 0.5 ? ['#FFFFFF', '#E7E1D6'] : ['#E4DDD0', '#C9C0B0'];
+      const el = mk(iso, 'a', '', `left:0;top:0;width:${len}px;height:${WH}px;transform-origin:0 0;background:linear-gradient(180deg,${shade[0]},${shade[1]});border-top:6px solid ${C.accent};box-sizing:border-box;backface-visibility:visible;opacity:0`);
+      el._base = `translate3d(${x1}px,${y1}px,0) rotateZ(${ang}deg) rotateX(-90deg)`;
+      return el;
+    });
+    // mobilier (volumes simples) + ombre portée: la maquette prend du corps
+    const shadow = mk(iso, 'a', '', `left:-10px;top:-10px;width:${PW + 20}px;height:${PH + 20}px;background:rgba(0,0,0,.45);filter:blur(22px);transform:translateZ(-2px);opacity:0`);
+    iso.insertBefore(shadow, iso.firstChild);
+    const FUR = [[40, 60, 190, 80, 45, '#3D4A66'], [380, 90, 140, 140, 70, '#8C6A4A'], [60, 360, 200, 150, 40, '#F2F2F2'], [520, 340, 150, 90, 45, '#DDE8F2'], [590, 30, 90, 200, 85, '#6B7280']];
+    const furn = FUR.map(([x, y, w, h, z, col]) => {
+      const g = mk(iso, 'a', '', `left:${x}px;top:${y}px;width:${w}px;height:${h}px;transform-style:preserve-3d;opacity:0`);
+      const face = (st) => mk(g, 'a', '', st + ';backface-visibility:visible;box-sizing:border-box');
+      face(`left:0;top:0;width:${w}px;height:${h}px;background:${col};border:3px solid rgba(255,255,255,.35);transform:translateZ(${z}px)`);
+      face(`left:0;top:${h}px;width:${w}px;height:${z}px;background:${col};filter:brightness(.72);transform-origin:0 0;transform:rotateX(90deg)`);
+      face(`left:${w}px;top:0;width:${z}px;height:${h}px;background:${col};filter:brightness(.55);transform-origin:0 0;transform:rotateY(-90deg)`);
+      face(`left:0;top:0;width:${w}px;height:${z}px;background:${col};filter:brightness(.8);transform-origin:0 0;transform:rotateX(90deg)`);
+      face(`left:0;top:0;width:${z}px;height:${h}px;background:${col};filter:brightness(.62);transform-origin:0 0;transform:rotateY(-90deg)`);
+      return g;
+    });
+    // barre de scan IA
+    const scan = mk(iso, 'a', '', `left:-30px;top:0;width:${PW + 60}px;height:10px;background:${C.accent};box-shadow:0 0 40px 14px rgba(${C.accentRGB},.55);opacity:0`);
+    const ai = mk(root, 'a', `<span class="pill" style="display:inline-flex;align-items:center;gap:14px;background:rgba(0,0,0,.55);border:2px solid ${C.accent};font-weight:800;font-size:40px;color:#fff">${icon('sparkle', 44, C.accent, 2)}${esc(p.ai_label || 'IA')}</span>`, 'left:0;width:1080px;text-align:center;top:1500px');
+    const tD = wordTime(shot, p.at, 0.02) + 0.05, t3 = wordTime(shot, p.to3d_at || '3d', 0.55), tS = t3 - 0.95;
+    dropEvents(t1, wordTime(shot, p.title_at, 0) );
+    walls.forEach((_, i) => ev(tD + i * 0.12, 'tick', 0.7)); ev(tD + 1.0, 'pop_low', 0.5);
+    ev(tS, 'riser', 0.8); ev(tS + 0.05, 'blip', 0.6); ev(t3, 'whoosh_deep', 0.9); ev(t3 + 0.35, 'impact_big', 1); ev(t3 + 0.4, 'shimmer', 0.9);
+    walls.forEach((_, i) => ev(t3 + 0.3 + i * 0.05, 'thud', 0.25));
+    FUR.forEach((_, i) => ev(t3 + 0.75 + i * 0.09, 'pop_low', 0.5));
+    IMPACTS.push(t3 + 0.35); FLASHES.push(t3 + 0.35);
+    return (t) => {
+      drop(t1, t, wordTime(shot, p.title_at, 0));
+      vis(grid, clamp((t - shot.start) / 0.4) * (1 - 0.5 * clamp((t - t3) / 0.6)));
+      pw.forEach((e, i) => e.setAttribute('stroke-dashoffset', (1 - eo((t - tD - i * 0.12) / 0.35)).toFixed(3)));
+      pd.forEach((e, i) => e.setAttribute('stroke-dashoffset', (1 - eo((t - tD - 0.9 - i * 0.1) / 0.3)).toFixed(3)));
+      pwi.forEach((e, i) => e.setAttribute('opacity', clamp((t - tD - 1.0 - i * 0.06) / 0.2).toFixed(2)));
+      const u = eio((t - t3) / 0.75); // bascule 2D → 3D
+      rn.forEach((e, i) => e.setAttribute('opacity', (clamp((t - tD - 1.1 - i * 0.08) / 0.25) * (1 - u)).toFixed(2)));
+      svg.querySelector('.dim').setAttribute('opacity', (clamp((t - tD - 1.3) / 0.3) * (1 - u)).toFixed(2));
+      const spin = t > t3 ? (t - t3) * 5 : 0;
+      tf(iso, `translate(${(u * 30).toFixed(1)}px,${(u * 20).toFixed(1)}px) rotateX(${(56 * u).toFixed(2)}deg) rotateZ(${(-38 * u - spin).toFixed(2)}deg) scale(${(1.25 - 0.12 * u).toFixed(3)})`);
+      const draw = clamp((t - tD) / 0.3);
+      vis(wrap, draw);
+      floors.forEach((f, i) => { f.style.opacity = (0.95 * clamp((t - t3 - 0.2 - i * 0.05) / 0.3)).toFixed(2); });
+      shadow.style.opacity = (0.9 * u).toFixed(2);
+      furn.forEach((g, i) => { const r = pop(t, t3 + 0.75 + i * 0.09, 15, 0.55); g.style.opacity = t > t3 + 0.72 + i * 0.09 ? '1' : '0'; g.style.transform = `translateZ(${((1 - r) * 260).toFixed(1)}px)`; });
+      w3.forEach((e, i) => {
+        const r = pop(t, t3 + 0.3 + i * 0.05, 13, 0.6);
+        e.style.opacity = t > t3 + 0.25 + i * 0.05 ? '1' : '0';
+        e.style.transform = `${e._base} scaleY(${Math.max(0.001, r).toFixed(3)})`;
+      });
+      const sc = clamp((t - tS) / 0.9); vis(scan, sc > 0 && sc < 1 ? 1 : 0); scan.style.top = (sc * PH - 5).toFixed(0) + 'px';
+      vis(ai, clamp((t - tS) * 5) * (1 - clamp((t - t3 - 0.6) * 3)));
+      const q = pop(t, tD, 14, 0.55); vis(tag, clamp((t - tD) * 5)); tf(tag, `scale(${((0.5 + 0.5 * q) * (1 + 0.12 * Math.max(0, 1 - Math.abs(t - t3 - 0.35) / 0.2))).toFixed(3)})`);
+      l2.style.display = t < t3 + 0.35 ? '' : 'none'; l3.style.display = t < t3 + 0.35 ? 'none' : '';
     };
   };
 
