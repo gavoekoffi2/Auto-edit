@@ -168,6 +168,12 @@ def bubble(amp=0.25):
     return amp * np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-t * 30)
 
 
+def buzz(d=1.0, amp=0.25):
+    t = _t(d); f = 560 + 60 * np.sin(2 * np.pi * 7 * t) + 40 * np.sin(2 * np.pi * 13 * t)
+    ph = np.cumsum(f) / SR; y = 2 * (ph % 1) - 1
+    return _norm(_lp(y, 3000) * np.minimum(1, t / 0.05) * np.minimum(1, (d - t) / 0.2), amp)
+
+
 def splash(d=0.7, amp=0.4):
     n = int(d * SR); t = np.arange(n) / SR; y = _noise_band(n, 250, 4500) * np.exp(-t * 6)
     for _ in range(6):
@@ -207,6 +213,7 @@ LIB: dict[str, Callable[[], np.ndarray]] = {
     "spray": lambda: spray(0.5, 0.3),
     "bubble": lambda: bubble(0.25),
     "splash": lambda: splash(0.7, 0.4),
+    "buzz": lambda: buzz(1.0, 0.25),
 }
 
 
