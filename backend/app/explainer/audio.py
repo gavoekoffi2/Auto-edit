@@ -152,6 +152,29 @@ def scan(d=0.9, amp=0.22):
     return _norm(y, amp)
 
 
+def squeak(d=0.35, amp=0.25):
+    t = _t(d); f = 2100 + 450 * np.sin(2 * np.pi * 9 * t) + 250 * _rng.standard_normal(len(t)).cumsum() / np.sqrt(len(t))
+    y = np.sin(2 * np.pi * np.cumsum(f) / SR) * np.sin(np.pi * t / d) ** 0.7 * (0.7 + 0.3 * np.sin(2 * np.pi * 43 * t))
+    return _norm(y, amp)
+
+
+def spray(d=0.5, amp=0.3):
+    n = int(d * SR); u = np.arange(n) / n
+    return _norm(_noise_band(n, 3000, 9500) * np.minimum(1, u * 12) * (1 - u) ** 0.6, amp)
+
+
+def bubble(amp=0.25):
+    t = _t(0.09); f = 300 + 900 * t / 0.09
+    return amp * np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-t * 30)
+
+
+def splash(d=0.7, amp=0.4):
+    n = int(d * SR); t = np.arange(n) / SR; y = _noise_band(n, 250, 4500) * np.exp(-t * 6)
+    for _ in range(6):
+        b = bubble(0.3); s = int(_rng.uniform(0.05, d * 0.7) * SR); m = min(len(b), n - s); y[s:s + m] += b[:m]
+    return _norm(y, amp)
+
+
 # nom -> fabrique (appelée à chaque occurrence: petites variations naturelles)
 LIB: dict[str, Callable[[], np.ndarray]] = {
     "tick": lambda: tick(0.14, _rng.uniform(2900, 3500)),
@@ -180,6 +203,10 @@ LIB: dict[str, Callable[[], np.ndarray]] = {
     "tear": lambda: tear(0.7, 0.6),
     "glitch": lambda: glitch(0.35, 0.3),
     "scan": lambda: scan(0.9, 0.22),
+    "squeak": lambda: squeak(_rng.uniform(0.28, 0.42), 0.25),
+    "spray": lambda: spray(0.5, 0.3),
+    "bubble": lambda: bubble(0.25),
+    "splash": lambda: splash(0.7, 0.4),
 }
 
 
