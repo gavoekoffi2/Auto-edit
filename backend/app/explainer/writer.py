@@ -195,28 +195,65 @@ def _extract_json(text: str) -> dict[str, Any]:
     return json.loads(m.group(0) if m else t)
 
 
-def chat(prompt: str, api_key: str, model: str = LLM_MODEL, timeout: int = 90, temperature: float = 0.8) -> str:
+def llm_endpoints(api_key: Optional[str] = None) -> list[dict[str, Any]]:
+    """Passerelles LLM disponibles, dans l'ordre d'essai.
+
+    1. Passerelle compatible OpenAI (LLM_BASE_URL — ex. FreeLLMAPI: niveaux gratuits
+       officiels de ~30 fournisseurs, bascule automatique entre eux).
+    2. OpenRouter (OPENROUTER_API_KEY).
+    Liste vide = aucune IA: les moteurs utilisent leurs règles locales.
+    """
+    out = []
+    base = (setting("LLM_BASE_URL", "") or "").rstrip("/")
+    if base:
+        out.append({"name": "passerelle", "url": base + "/chat/completions", "key": setting("LLM_API_KEY", "") or "",
+                    "model": setting("LLM_MODEL", "auto:smart") or "auto:smart", "headers": {}})
+    key = api_key or setting("OPENROUTER_API_KEY")
+    if key:
+        out.append({"name": "openrouter", "url": OPENROUTER_CHAT_URL, "key": key, "model": LLM_MODEL,
+                    "headers": {"HTTP-Referer": os.getenv("OPENROUTER_HTTP_REFERER", "https://cutforge.app"), "X-Title": "CutForge Pub"}})
+    return out
+
+
+def llm_available(api_key: Optional[str] = None) -> bool:
+    return bool(llm_endpoints(api_key))
+
+
+def chat(prompt: str, api_key: Optional[str] = None, model: Optional[str] = None, timeout: int = 90, temperature: float = 0.8) -> str:
+    """Un appel de chat; essaie chaque passerelle dans l'ordre, lève si toutes échouent."""
     import httpx
-    with httpx.Client(timeout=timeout) as cl:
-        r = cl.post(OPENROUTER_CHAT_URL, headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json",
-                                                  "HTTP-Referer": os.getenv("OPENROUTER_HTTP_REFERER", "https://cutforge.app"),
-                                                  "X-Title": "CutForge Pub"},
-                    json={"model": model, "temperature": temperature, "messages": [{"role": "user", "content": prompt}]})
-    if r.status_code >= 400:
-        raise RuntimeError(f"LLM HTTP {r.status_code}: {r.text[:200]}")
-    return ((r.json().get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+    errors = []
+    for ep in llm_endpoints(api_key):
+        try:
+            with httpx.Client(timeout=timeout) as cl:
+                headers = {"Content-Type": "application/json", **ep["headers"]}
+                if ep["key"]:
+                    headers["Authorization"] = f"Bearer {ep['key']}"
+                r = cl.post(ep["url"], headers=headers, json={"model": model if (model and ep["name"] == "openrouter") else ep["model"],
+                                                                "temperature": temperature,
+                                                                "messages": [{"role": "user", "content": prompt}]})
+            if r.status_code >= 400:
+                raise RuntimeError(f"HTTP {r.status_code}: {r.text[:200]}")
+            content = ((r.json().get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+            if content.strip():
+                logger.info("LLM via %s (%s)", ep["name"], r.headers.get("X-Routed-Via", ep["model"]))
+                return content
+            raise RuntimeError("réponse vide")
+        except Exception as e:  # passerelle suivante
+            errors.append(f"{ep['name']}: {e}")
+            logger.warning("LLM %s indisponible: %s", ep["name"], e)
+    raise RuntimeError("aucune passerelle LLM disponible — " + " | ".join(errors) if errors else "aucune passerelle LLM configurée")
 
 
 def write_storyboard(b: Brief, api_key: Optional[str] = None) -> Storyboard:
-    key = api_key or setting("OPENROUTER_API_KEY")
-    if key:
+    if llm_available(api_key):
         for attempt in range(2):
             try:
-                data = _extract_json(chat(build_prompt(b), key))
+                data = _extract_json(chat(build_prompt(b), api_key))
                 board = Storyboard.from_dict({"angle": b.angle, "template": b.template, **data})
                 board = sanitize(board, b)
                 if len(board.beats) >= 5:
-                    board.notes.append(f"Script IA ({LLM_MODEL}).")
+                    board.notes.append("Script écrit par l'IA.")
                     return board
             except Exception as e:  # repli
                 logger.warning("storyboard IA échoué (tentative %s): %s", attempt + 1, e)

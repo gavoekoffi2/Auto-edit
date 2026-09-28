@@ -89,8 +89,8 @@ def _summary(b: dict[str, Any]) -> str:
             "Clique sur « Créer ma pub » et je m'occupe du script, de la voix off, de l'animation et du son.")
 
 
-def _llm_turn(brief: dict[str, Any], history: list[dict[str, str]], answer: str, key: str) -> Optional[dict[str, Any]]:
-    from .writer import _extract_json, chat
+def _llm_turn(brief: dict[str, Any], history: list[dict[str, str]], answer: str, key: Optional[str]) -> Optional[dict[str, Any]]:
+    from .writer import _extract_json, chat, llm_available
     missing = [f for f in REQUIRED + ["benefits", "cta_detail"] if not brief.get(f)]
     prompt = f"""Tu es un motion designer publicitaire chaleureux qui interroge un client (francophone) pour écrire sa pub vidéo.
 Brief actuel (JSON): {json.dumps({k: v for k, v in brief.items() if not k.startswith('_')}, ensure_ascii=False)}
@@ -116,13 +116,16 @@ def interview_turn(brief: dict[str, Any] | None, answer: Optional[str] = None,
     b.setdefault("_asked", [])
     current = b.get("_current")
     from .conf import setting
-    key = api_key if api_key is not None else setting("OPENROUTER_API_KEY")
+    # api_key="" désactive l'IA (tests); None = passerelles configurées (FreeLLMAPI, OpenRouter)
+    from .writer import llm_available
+    use_llm = bool(api_key) if api_key is not None else llm_available()
+    key = api_key or None
     if answer is not None and current:
         _apply(b, current, answer)
         if current not in b["_asked"]:
             b["_asked"].append(current)
         # l'IA complète les autres champs à partir d'une réponse riche
-        if key and current in ("business", "offer", "audience", "problem", "promise") and len(answer) > 60:
+        if use_llm and current in ("business", "offer", "audience", "problem", "promise") and len(answer) > 60:
             res = _llm_turn(b, history or [], answer, key)
             if res and isinstance(res.get("patch"), dict):
                 for k, v in res["patch"].items():

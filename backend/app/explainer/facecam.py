@@ -255,7 +255,7 @@ def run_facecam(video_path: str, output_dir: str, *, template: str = "prestige",
     words = remap_words(vu, ranges)
 
     prog(30, "Plan des animations")
-    cutaways, planner = plan_cutaways(words, dur, density, setting("OPENROUTER_API_KEY"), (vu.get("language") or "fr"))
+    cutaways, planner = plan_cutaways(words, dur, density, None, (vu.get("language") or "fr"))
     (work / "cutaways.json").write_text(json.dumps(cutaways, ensure_ascii=False, indent=1))
     page = str(work / "overlay.html")
     Path(page).write_text(compose_overlay(cutaways, words, dur, template, brand_color), encoding="utf-8")

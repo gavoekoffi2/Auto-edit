@@ -49,7 +49,8 @@ et la couleur de marque du client remplace l'accent.
 
 | Variable | Défaut | Rôle |
 | --- | --- | --- |
-| `OPENROUTER_API_KEY` | — | Script + entretien IA. Sans clé : mode secours. |
+| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | — / — / `auto:smart` | Passerelle LLM compatible OpenAI, **essayée en premier** (ex: FreeLLMAPI). |
+| `OPENROUTER_API_KEY` | — | Script + entretien IA via OpenRouter (2e choix). Sans aucune IA : mode secours par règles. |
 | `EXPLAINER_LLM_MODEL` | `google/gemini-2.5-flash` | Modèle OpenRouter. |
 | `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID` | — | Voix sous licence commerciale (recommandé en production). |
 | `ADS_MAX_PER_MONTH_FREE` | 2 | Pubs par mois sur le plan Free. |
@@ -104,3 +105,31 @@ Test en ligne de commande :
 ```bash
 python -c "from app.explainer.facecam import run_facecam; print(run_facecam('video.mp4', 'sortie', template='neon', density='medium'))"
 ```
+
+
+## IA gratuite avec FreeLLMAPI
+
+[FreeLLMAPI](https://github.com/tashfeenahmed/freellmapi) (MIT) regroupe les niveaux **gratuits
+officiels** d'une trentaine de fournisseurs (Google AI Studio, Groq, Mistral, Cerebras,
+OpenRouter free, Cloudflare…) derrière une seule adresse compatible OpenAI, avec bascule
+automatique quand un fournisseur atteint sa limite.
+
+1. Sur le serveur : `curl -fsSL https://freellmapi.co/install.sh | bash` (port 3001).
+2. Dans son tableau de bord, ajouter ses propres clés gratuites (au moins Google AI Studio
+   et Groq), puis copier la clé unifiée `freellmapi-…`.
+3. Dans `.env` de CutForge :
+   ```
+   LLM_BASE_URL=http://host.docker.internal:3001/v1
+   LLM_API_KEY=freellmapi-…
+   LLM_MODEL=auto:smart
+   ```
+   (sous Linux, ajouter `extra_hosts: ["host.docker.internal:host-gateway"]` au backend et au worker,
+   ou mettre FreeLLMAPI dans le même réseau Docker et utiliser son nom de service).
+
+Ordre d'essai à chaque appel : passerelle → OpenRouter (si clé) → règles locales. Une pub ne
+tombe donc jamais en panne à cause de l'IA.
+
+À savoir : les niveaux gratuits n'ont pas de garantie de service, les quotas se remettent à zéro
+à minuit UTC, et certains fournisseurs gratuits (ex. Google AI Studio) peuvent utiliser les
+requêtes pour améliorer leurs modèles — ne pas y envoyer de données sensibles. Respecter les
+conditions de chaque fournisseur : une clé par compte, pas de multiplication de comptes.

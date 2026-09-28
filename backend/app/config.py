@@ -103,6 +103,12 @@ class Settings(BaseSettings):
     # ---------------------------------------------------------------------
     ADS_MAX_PER_MONTH_FREE: int = 2
     EXPLAINER_LLM_MODEL: str = "google/gemini-2.5-flash"
+    # Passerelle LLM compatible OpenAI (ex: FreeLLMAPI auto-hébergé, Ollama, vLLM).
+    # Si LLM_BASE_URL est défini, les moteurs Pub / Motion Pro l'utilisent en priorité,
+    # puis retombent sur OpenRouter si une clé OpenRouter existe, puis sur les règles locales.
+    LLM_BASE_URL: str = ""
+    LLM_API_KEY: str = ""
+    LLM_MODEL: str = "auto:smart"
     EXPLAINER_RENDER_WORKERS: int = 0   # 0 = nombre de CPU
 
     # ---------------------------------------------------------------------

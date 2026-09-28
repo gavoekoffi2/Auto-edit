@@ -16,7 +16,7 @@ import re
 from typing import Any, Optional
 
 from .templates import ICON_NAMES, SCENE_CATALOG
-from .writer import _extract_json, _short, chat, guess_icon
+from .writer import _extract_json, _short, chat, guess_icon, llm_available
 
 logger = logging.getLogger(__name__)
 
@@ -372,7 +372,7 @@ def plan_rules(words: list[dict[str, Any]], duration: float, density: str = "med
     return chosen
 
 
-def plan_llm(words: list[dict[str, Any]], duration: float, density: str, api_key: str, language: str = "fr") -> list[dict[str, Any]]:
+def plan_llm(words: list[dict[str, Any]], duration: float, density: str, api_key: Optional[str], language: str = "fr") -> list[dict[str, Any]]:
     words = merge_tokens(words)
     sents = sentences(words)
     listing = [{"i": s["i"], "t": [round(s["start"], 2), round(s["end"], 2)], "text": s["text"]} for s in sents]
@@ -422,7 +422,7 @@ Réponds en JSON: {{"cutaways": [{{"from": 0, "to": 1, "scene": {{"type": "...",
 
 def plan_cutaways(words: list[dict[str, Any]], duration: float, density: str = "medium",
                   api_key: Optional[str] = None, language: str = "fr") -> tuple[list[dict[str, Any]], str]:
-    if api_key:
+    if llm_available(api_key):
         try:
             plan = plan_llm(words, duration, density, api_key, language)
             if plan:
