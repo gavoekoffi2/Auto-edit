@@ -90,6 +90,74 @@ MODE_DEFINITIONS: list[dict] = [
             "broll_style": "tiktok_viral", "broll_demographic": "african",
         },
     },
+    # --- Moteur YouTube long (vidéos longues 16:9) ----------------------------
+    {
+        "id": "youtube_long",
+        "name": "YouTube long (recommandé)",
+        "icon": "🎬",
+        "family": "longform",
+        "badge": "0 crédit image",
+        "description": (
+            "Pour les vidéos YouTube longues (5 à 60 min). La voix est coupée "
+            "comme un monteur pro : la dernière prise gagne, répétitions, "
+            "faux départs, « euh » et silences retirés, image et son "
+            "parfaitement synchronisés. Chapitres YouTube prêts à coller, "
+            "sous-titres FR, zooms qui masquent les coupes, cartes chapitre "
+            "plein écran, effets sonores, −14 LUFS. Le style change d'une "
+            "vidéo à l'autre."
+        ),
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": False,
+            "motion_design": False, "music": True, "sfx": True,
+            "vertical_9_16": False, "final_cta": False,
+            "visual_mode": "credit_saver",
+            "longform_style": "auto", "keyword_popups": True,
+            "chapter_cards": True, "zoom_cuts": True, "llm_titles": True,
+        },
+    },
+    {
+        "id": "youtube_long_sobre",
+        "name": "YouTube long — Documentaire",
+        "icon": "🎞️",
+        "family": "longform",
+        "badge": "0 crédit image",
+        "description": (
+            "Même coupe pro, habillage sobre : sous-titres fins, titres serif, "
+            "zooms discrets, sons feutrés. Pour les formations, analyses et "
+            "interviews."
+        ),
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": False,
+            "motion_design": False, "music": True, "sfx": True,
+            "vertical_9_16": False, "final_cta": False,
+            "visual_mode": "credit_saver",
+            "longform_style": "documentaire", "keyword_popups": True,
+            "chapter_cards": True, "zoom_cuts": True, "llm_titles": True,
+        },
+    },
+    {
+        "id": "youtube_long_energie",
+        "name": "YouTube long — Énergie",
+        "icon": "⚡",
+        "family": "longform",
+        "badge": "0 crédit image",
+        "description": (
+            "Même coupe pro, habillage créateur : sous-titres MAJUSCULES, zooms "
+            "marqués, popups et impacts sonores. Pour le divertissement, le "
+            "business et la motivation."
+        ),
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": False,
+            "motion_design": False, "music": True, "sfx": True,
+            "vertical_9_16": False, "final_cta": False,
+            "visual_mode": "credit_saver",
+            "longform_style": "energie_createur", "keyword_popups": True,
+            "chapter_cards": True, "zoom_cuts": True, "llm_titles": True,
+        },
+    },
     {
         "id": "signature_3d",
         "name": "Signature 3D",
@@ -386,6 +454,7 @@ DEFAULT_MODE: str = next(
 # --------------------------------------------------------------------------- #
 FAMILIES: list[dict] = [
     {"id": "collage", "label": "Collage papier", "hint": "Assemblage éditorial animé"},
+    {"id": "longform", "label": "Vidéos longues YouTube", "hint": "16:9, coupe pro, chapitres"},
     {"id": "viral", "label": "Styles viraux", "hint": "Sous-titres et motion design"},
     {"id": "classic", "label": "Classiques", "hint": "Publicité, formation, podcast"},
     {"id": "legacy", "label": "Ancien moteur", "hint": "Pipeline v1, sans motion design"},

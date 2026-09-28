@@ -47,6 +47,11 @@ VALID_MODES = {
     # la variante `collage_ugc_motion`).
     "collage_ugc_product",
     "collage_ugc_motion",
+    # Moteur « YouTube long » (app/processing/longform): vidéos longues 16:9,
+    # coupe voix « dernière prise », synchro exacte, chapitres, habillage FR.
+    "youtube_long",
+    "youtube_long_sobre",
+    "youtube_long_energie",
 }
 VALID_PIPELINE_VERSIONS = {"v1", "v2"}
 VALID_IMAGE_PROVIDERS = {"openrouter", "replicate", "stability", "noop"}

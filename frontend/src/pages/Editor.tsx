@@ -7,6 +7,7 @@ import {
 import VideoPlayer from '../components/video/VideoPlayer'
 import Timeline from '../components/video/Timeline'
 import JobProgress from '../components/video/JobProgress'
+import LongformRecap from '../components/video/LongformRecap'
 import { getVideo, getStreamUrl } from '../api/videos'
 import {
   getJobDownloadUrl,
@@ -451,6 +452,13 @@ export default function Editor() {
                 onComplete={handleJobComplete}
                 onRetry={handleRetry}
                 onCancelled={handleJobCancelled}
+              />
+            )}
+
+            {!!completedResult?.longform && (
+              <LongformRecap
+                data={completedResult.longform as Record<string, unknown>}
+                style={(completedResult.style as { name?: string } | undefined)?.name}
               />
             )}
 
