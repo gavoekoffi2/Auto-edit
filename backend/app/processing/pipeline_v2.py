@@ -397,6 +397,46 @@ def _run_motion_pro(video_path: str, output_dir: str, mode: str, options: dict,
     }
 
 
+def _run_studio(video_path: str, output_dir: str, mode: str, options: dict, params: dict,
+                progress_callback: Optional[ProgressFn]) -> dict:
+    """Délègue au moteur Studio face caméra; contrat de retour compatible V1/V2."""
+    from app.explainer.studio import run_studio
+
+    logo_path = None
+    if options.get("logo_asset"):
+        from app.services.brand_assets import logo_path_for
+        logo_path = logo_path_for(str((params or {}).get("user_id") or ""), options["logo_asset"])
+    res = run_studio(
+        video_path, output_dir,
+        style=options.get("studio_style") or "auto",
+        history=(params or {}).get("style_history") or [],
+        density=options.get("motion_density") or "medium",
+        captions=options.get("dynamic_captions", True) is not False,
+        music=options.get("music", True) is not False,
+        brand_color=options.get("brand_color"),
+        logo_path=logo_path,
+        brand=options.get("brand_name") or options.get("logo_text") or "",
+        vocabulary=options.get("vocabulary") or "",
+        cleanup=options.get("cleanup_level") or "balanced",
+        progress=(lambda p, m: progress_callback(p, m)) if progress_callback else None,
+    )
+    out = res["output_path"]
+    if not os.path.exists(out) or os.path.getsize(out) == 0:
+        raise RuntimeError("Le moteur Studio n'a pas produit de vidéo de sortie.")
+    return {
+        "pipeline_version": "v2", "engine": "studio", "mode": mode, "options": options,
+        "aspect_ratio": "9:16", "visual_mode": "credit_saver", "visualModeUsed": "credit_saver",
+        "aiImagesSkipped": True, "fallbackReason": None,
+        "steps_completed": res.get("steps_completed", []), "steps_failed": res.get("steps_failed", []),
+        "style": res.get("style"), "plan": res.get("plan"), "planner": res.get("planner"),
+        "motion_design": {"enabled": True, "scenes": res.get("plan", []), "planner": res.get("planner")},
+        "montage": {"motion_scenes_rendered": len(res.get("plan", [])), "cut": res.get("cut"),
+                    "render_seconds": res.get("render_seconds"), "sfx": res.get("sfx_count")},
+        "duration": res.get("duration"), "source_duration": res.get("source_duration"),
+        "output_path": out, "output_size_bytes": os.path.getsize(out),
+    }
+
+
 def run_pipeline_v2(
     video_path: str,
     output_dir: str,
@@ -451,6 +491,8 @@ def run_pipeline_v2(
     # Moteur Motion Pro (face caméra + animations plein écran): moteur dédié.
     if (mode or "").startswith("motion_pro"):
         return _run_motion_pro(video_path, output_dir, mode or "", options, progress_callback)
+    if mode == "studio_facecam":
+        return _run_studio(video_path, output_dir, mode, options, params or {}, progress_callback)
 
     # Collage Premium: le moteur lit sa configuration dans os.environ (comme le
     # reste du moteur Auto Edit). On la dérive des réglages produit + options du

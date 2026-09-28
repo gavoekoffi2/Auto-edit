@@ -3,7 +3,7 @@ import logging
 from uuid import UUID
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from app.services.media import ranged_file_response
@@ -55,6 +55,68 @@ async def get_media_user(
     return user
 
 
+
+
+@router.get("/styles")
+async def list_styles(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Catalogue des styles du Studio + les derniers styles utilisés par l'utilisateur
+    (le moteur ne les réutilisera pas tout de suite) + son dernier logo."""
+    from app.explainer.styles import public_styles
+    from app.services.brand_assets import latest_logo
+
+    recent = await _style_history(db, current_user.id, limit=8)
+    return {"styles": public_styles(), "recent": recent, "logo_asset": latest_logo(str(current_user.id))}
+
+
+@router.post("/assets/logo", status_code=status.HTTP_201_CREATED)
+async def upload_logo(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    """Logo du client (PNG/JPG/WEBP, 5 Mo max): détouré et posé sur chaque montage Studio."""
+    from app.services.brand_assets import MAX_LOGO_BYTES, save_logo
+
+    data = await file.read(MAX_LOGO_BYTES + 1)
+    try:
+        aid = save_logo(str(current_user.id), data, file.content_type or "")
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return {"asset_id": aid}
+
+
+@router.get("/assets/logo/{asset_id}")
+async def get_logo(
+    asset_id: str,
+    request: Request,
+    access_token: Optional[str] = Query(default=None),
+    credentials: HTTPAuthorizationCredentials | None = Depends(optional_security),
+    db: AsyncSession = Depends(get_db),
+):
+    from fastapi.responses import FileResponse
+    from app.services.brand_assets import logo_path_for
+
+    user = await get_media_user(db, credentials, access_token)
+    path = logo_path_for(str(user.id), asset_id)
+    if not path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Logo introuvable")
+    return FileResponse(path)
+
+
+async def _style_history(db: AsyncSession, user_id, limit: int = 30) -> list[dict]:
+    """Empreintes des styles des derniers montages Studio (plus récent d'abord)."""
+    rows = await db.execute(
+        select(Job.result).where(Job.user_id == user_id, Job.mode == "studio_facecam",
+                                 Job.status == "completed").order_by(Job.created_at.desc()).limit(limit)
+    )
+    out = []
+    for (res,) in rows.all():
+        st = (res or {}).get("style") if isinstance(res, dict) else None
+        if isinstance(st, dict) and isinstance(st.get("fingerprint"), dict):
+            out.append({**st["fingerprint"], "name": st.get("name")})
+    return out
 
 
 @router.get("/modes")
@@ -142,8 +204,16 @@ async def create_job(
         if opts:
             merged_params["options"] = opts
 
+    # Studio: le moteur doit connaître les styles déjà utilisés pour ne pas se répéter,
+    # et l'utilisateur pour retrouver son logo.
+    if (data.mode or "") == "studio_facecam":
+        merged_params["style_history"] = await _style_history(db, current_user.id)
+        merged_params["user_id"] = str(current_user.id)
+
     from app.config import settings
     pipeline_version = data.pipeline_version or settings.PIPELINE_VERSION
+    if (data.mode or "") == "studio_facecam":
+        pipeline_version = "v2"  # moteur Studio = pipeline v2 uniquement
 
     # Même pour les clients API qui omettent `mode`, le moteur produit par
     # défaut doit être explicite et persistant dans le job.

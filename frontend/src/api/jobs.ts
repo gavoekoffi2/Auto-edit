@@ -52,6 +52,14 @@ export interface JobOptions {
   brand_color?: string
   cta_text?: string
   logo_text?: string
+  /** Studio face caméra: auto | invent | id d'un style écrit. */
+  studio_style?: string
+  /** Logo importé (identifiant renvoyé par /jobs/assets/logo). */
+  logo_asset?: string
+  brand_name?: string
+  /** Noms propres / mots-clés qui aident la transcription. */
+  vocabulary?: string
+  cleanup_level?: 'off' | 'light' | 'balanced' | 'aggressive'
 }
 
 export interface JobCreateData {

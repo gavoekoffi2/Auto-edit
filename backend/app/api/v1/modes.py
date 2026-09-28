@@ -344,6 +344,28 @@ MODE_DEFINITIONS: list[dict] = [
         },
     },
     {
+        "id": "studio_facecam",
+        "name": "Studio face caméra",
+        "icon": "🎬",
+        "family": "studio",
+        "badge": "style unique à chaque vidéo",
+        "description": (
+            "Le montage d'un monteur motion designer : coupes au ras de la voix "
+            "(hésitations, répétitions, silences), cartes animées posées sur ton image, "
+            "démonstrations plein écran, appel à commenter, carte de fin avec ton logo, "
+            "effets sonores et musique. Un style différent à chaque vidéo : 14 directions "
+            "artistiques + des styles inventés, jamais deux fois le même rendu."
+        ),
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": False,
+            "motion_design": True,
+            "music": True, "sfx": True, "vertical_9_16": True, "final_cta": False,
+            "visual_mode": "credit_saver",
+            "studio_style": "auto", "motion_density": "medium", "cleanup_level": "balanced",
+        },
+    },
+    {
         "id": "motion_pro_prestige",
         "name": "Motion Pro · Prestige",
         "icon": "🏆",
@@ -490,6 +512,7 @@ DEFAULT_MODE: str = next(
 # entrée (et de les laisser diverger côté TypeScript).
 # --------------------------------------------------------------------------- #
 FAMILIES: list[dict] = [
+    {"id": "studio", "label": "Studio face caméra", "hint": "Un style unique par vidéo, habillage complet"},
     {"id": "collage", "label": "Collage papier", "hint": "Assemblage éditorial animé"},
     {"id": "motion_pro", "label": "Motion Pro", "hint": "Animations plein écran calées sur la voix"},
     {"id": "viral", "label": "Styles viraux", "hint": "Sous-titres et motion design"},

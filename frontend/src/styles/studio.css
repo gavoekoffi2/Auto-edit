@@ -1,0 +1,192 @@
+/* ===========================================================================
+   STUDIO FACE CAMÉRA — aperçus animés des styles + interface du studio
+   Chaque aperçu est une mini-vidéo 9:16 en CSS pur (cycle 6 s). Les animations
+   sont suspendues hors survol / hors sélection et coupées si l'utilisateur
+   préfère réduire les animations.
+   ======================================================================== */
+@font-face { font-family: "Anton"; src: url("../assets/fonts/Anton.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Bebas Neue"; src: url("../assets/fonts/Bebas.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "DM Serif Display"; src: url("../assets/fonts/DMSerif.woff2") format("woff2"); font-display: swap; }
+
+.sp-root {
+  position: relative; aspect-ratio: 9 / 16; width: 100%; overflow: hidden;
+  border-radius: 14px; background: var(--d); isolation: isolate;
+  container-type: inline-size;
+}
+.sp-root * { position: absolute; box-sizing: border-box; }
+.sp-root:not(.is-playing) *, .sp-root:not(.is-playing) { animation-play-state: paused !important; }
+
+/* --- le « visage » : silhouette abstraite ---------------------------------- */
+.sp-face { overflow: hidden; }
+.sp-face-bg { inset: 0; background: linear-gradient(170deg, #cdd6df 0%, #9fb0c0 55%, #6d7b86 100%); }
+.sp-head { left: 32%; top: 22%; width: 36%; aspect-ratio: 1; border-radius: 50%; background: #5b3a29; }
+.sp-body { left: 12%; top: 50%; width: 76%; height: 70%; border-radius: 45% 45% 0 0; background: #c9b89a; }
+.sp-dim { inset: 0; background: #000; }
+
+/* --- décors ---------------------------------------------------------------- */
+.sp-back { inset: 0; background: radial-gradient(ellipse at 50% 35%, var(--d2), var(--d)); }
+.sp-back::after { content: ""; position: absolute; inset: 0; background-image: radial-gradient(rgba(255,255,255,.12) 1px, transparent 1.4px); background-size: 9px 9px; }
+.sp-back.paper { background: radial-gradient(ellipse at 50% 40%, var(--l), var(--l2)); }
+.sp-back.paper::after { background-image: radial-gradient(rgba(0,0,0,.07) 1px, transparent 1.4px); }
+.sp-caption { left: 22%; right: 22%; bottom: 13%; height: 5%; border-radius: 4px; background: #fff; box-shadow: 0 0 0 2px rgba(0,0,0,.2); }
+.sp-caption::after { content: ""; position: absolute; left: 30%; top: 0; bottom: 0; width: 34%; background: var(--a); border-radius: 3px; animation: spKaraoke 1.4s steps(3) infinite; }
+.sp-caption.mid { bottom: 30%; }
+
+/* plein cadre : carte habillée */
+.sp-card { left: 7%; right: 7%; bottom: 22%; height: 17%; background: var(--l); border-radius: 8px; box-shadow: 0 8px 18px rgba(0,0,0,.35); border-left: 5px solid var(--a); }
+.sp-card i { left: 8%; top: 16%; width: 30%; height: 12%; border-radius: 2px; background: var(--a); }
+.sp-card b, .sp-panel-title b, .sp-headline b, .sp-band b, .sp-cover b, .sp-l3 b { display: block; height: 16%; width: 80%; border-radius: 3px; background: var(--ink); }
+.sp-card b { left: 8%; top: 40%; height: 18%; }
+.sp-card b.short { top: 66%; width: 52%; opacity: .5; }
+
+/* présentateur */
+.sp-panel { inset: 0; background: radial-gradient(ellipse at 50% 40%, var(--d2), var(--d)); z-index: 1; }
+.sp-panel-title { left: 12%; right: 12%; top: 22%; height: 22%; z-index: 2; }
+.sp-panel-title b { position: relative; margin: 0 auto 10%; height: 34%; width: 90%; background: var(--a2); }
+.sp-panel-title b.short { width: 55%; background: var(--a); }
+.sp-bubble-face { z-index: 3; overflow: hidden; border: 3px solid var(--a); }
+
+/* fenêtre */
+.sp-window { left: 8%; right: 8%; top: 25%; height: 58%; border: 4px solid var(--l); border-radius: 10px; overflow: hidden; box-shadow: 0 14px 30px rgba(0,0,0,.45); }
+.sp-headline { left: 10%; right: 10%; top: 8%; height: 14%; }
+.sp-headline b { position: relative; margin: 0 auto 6%; height: 38%; width: 100%; background: var(--l); }
+.sp-headline b.short { width: 60%; background: var(--a); }
+
+/* téléphone */
+.sp-phone { left: 20%; top: 14%; width: 60%; height: 72%; border: 5px solid #0d0d10; border-radius: 18px; overflow: hidden; transform: rotate(-4deg); box-shadow: 0 16px 30px rgba(0,0,0,.5); }
+.sp-notch { left: 35%; top: 2%; width: 30%; height: 3%; border-radius: 9px; background: #0d0d10; }
+.sp-chat { left: 5%; top: 7%; width: 56%; height: 9%; border-radius: 12px 12px 12px 3px; background: #fff; box-shadow: 0 6px 14px rgba(0,0,0,.35); z-index: 2; }
+.sp-chat.me { left: auto; right: 5%; top: 20%; width: 48%; border-radius: 12px 12px 3px 12px; background: var(--a); }
+
+/* typo cinétique */
+.sp-kin { left: 0; right: 0; top: 28%; display: flex; flex-direction: column; align-items: center; }
+.sp-kin span { position: relative; font-family: var(--head); font-size: 24cqw; line-height: .95; color: #fff; text-shadow: 0 4px 14px rgba(0,0,0,.6); }
+.sp-kin span.hot { color: var(--a); font-size: 30cqw; }
+
+/* écran scindé */
+.sp-band { left: 0; right: 0; bottom: 0; height: 40%; background: var(--d); }
+.sp-band-rule { left: 0; right: 0; top: 0; height: 3%; background: var(--a); }
+.sp-band b { left: 8%; top: 16%; height: 14%; width: 76%; background: var(--l); }
+.sp-band b.short { top: 36%; width: 48%; background: var(--a2); }
+.sp-band i { left: 25%; right: 25%; bottom: 14%; height: 9%; border-radius: 3px; background: rgba(255,255,255,.85); }
+
+/* zoom rythmé */
+.sp-zoom { inset: 0; animation: spPunch 3s cubic-bezier(.2,.8,.2,1) infinite; transform-origin: 50% 40%; }
+.sp-zoom .sp-face { inset: 0; }
+.sp-bigword { left: 0; right: 0; top: 40%; text-align: center; font-family: var(--head); font-size: 30cqw; color: #fff; -webkit-text-stroke: 3px var(--d); paint-order: stroke fill; }
+
+/* polaroid */
+.sp-polaroid { left: 18%; top: 20%; width: 64%; height: 52%; background: #fff; transform: rotate(-3deg); box-shadow: 0 12px 24px rgba(0,0,0,.35); }
+.sp-note { right: 6%; top: 5%; width: 38%; aspect-ratio: 1; background: var(--a2); transform: rotate(5deg); box-shadow: 0 8px 14px rgba(0,0,0,.3); }
+.sp-note.two { right: auto; left: 6%; top: auto; bottom: 8%; background: #fff3a8; transform: rotate(-4deg); }
+
+/* journal TV */
+.sp-l3 { left: 4%; right: 8%; bottom: 20%; height: 9%; background: #fff; border-left: 6px solid var(--a); }
+.sp-l3 i { left: 0; top: -60%; width: 34%; height: 60%; background: var(--bad); }
+.sp-l3 b { left: 6%; top: 32%; height: 36%; width: 76%; }
+.sp-ticker { left: 0; right: 0; bottom: 0; height: 6%; background: var(--d); border-top: 2px solid var(--a); overflow: hidden; }
+.sp-ticker span { white-space: nowrap; top: 18%; left: 0; font: 800 6cqw/1 system-ui, sans-serif; color: #fff; animation: spTicker 6s linear infinite; }
+
+/* magazine */
+.sp-mast { left: 0; right: 0; top: 3%; text-align: center; font-family: var(--head); font-size: 19cqw; line-height: 1; color: #fff; text-shadow: 0 4px 12px rgba(0,0,0,.4); letter-spacing: .02em; white-space: nowrap; }
+.sp-cover { left: 7%; width: 64%; bottom: 14%; height: 20%; }
+.sp-cover b { position: relative; margin-bottom: 7%; height: 22%; width: 100%; background: #fff; }
+.sp-cover b.short { width: 70%; }
+.sp-cover i { position: relative; display: block; height: 7%; width: 34%; background: var(--a); }
+
+/* --- boucles (cycle 6 s) -------------------------------------------------- */
+.sp-anim-card   { animation: spCard 6s cubic-bezier(.2,.9,.25,1.15) infinite; }
+.sp-anim-panel  { animation: spPanel 6s ease-in-out infinite; }
+.sp-anim-bubble { animation: spBubble 6s cubic-bezier(.6,0,.2,1) infinite; overflow: hidden; }
+.sp-anim-type   { animation: spType 6s steps(12) infinite; clip-path: inset(0 100% 0 0); }
+.sp-anim-type2  { animation: spType 6s steps(12) .6s infinite; clip-path: inset(0 100% 0 0); }
+.sp-anim-breathe{ animation: spBreathe 6s ease-in-out infinite; }
+.sp-anim-pop1   { animation: spPop 6s cubic-bezier(.2,.9,.25,1.4) infinite; }
+.sp-anim-pop2   { animation: spPop 6s cubic-bezier(.2,.9,.25,1.4) .9s infinite; }
+.sp-anim-slam1  { animation: spSlam 6s cubic-bezier(.2,.9,.3,1.3) infinite; }
+.sp-anim-slam2  { animation: spSlam 6s cubic-bezier(.2,.9,.3,1.3) .35s infinite; }
+.sp-anim-slam3  { animation: spSlam 6s cubic-bezier(.2,.9,.3,1.3) .7s infinite; }
+.sp-anim-slide  { animation: spSlide 6s cubic-bezier(.2,.9,.25,1) infinite; }
+
+@keyframes spCard   { 0%,8% { transform: translateY(160%) rotate(4deg); opacity: 0 } 18%,78% { transform: none; opacity: 1 } 88%,100% { transform: translateY(20%) scale(.9); opacity: 0 } }
+@keyframes spPanel  { 0%,30% { opacity: 0 } 38%,82% { opacity: 1 } 90%,100% { opacity: 0 } }
+@keyframes spBubble { 0%,30% { left: 0; top: 0; width: 100%; height: 100%; border-radius: 0 } 40%,80% { left: 58%; top: 70%; width: 36%; height: 20.25%; border-radius: 50% } 90%,100% { left: 0; top: 0; width: 100%; height: 100%; border-radius: 0 } }
+@keyframes spType   { 0%,12% { clip-path: inset(0 100% 0 0) } 40%,85% { clip-path: inset(0 0 0 0) } 95%,100% { clip-path: inset(0 100% 0 0) } }
+@keyframes spBreathe{ 0%,100% { transform: scale(1) rotate(0) } 50% { transform: scale(1.03) rotate(-.6deg) } }
+@keyframes spPop    { 0%,10% { transform: scale(0); opacity: 0 } 20%,75% { transform: scale(1); opacity: 1 } 85%,100% { transform: scale(.6); opacity: 0 } }
+@keyframes spSlam   { 0%,10% { transform: scale(2.2); opacity: 0 } 16%,78% { transform: scale(1); opacity: 1 } 88%,100% { transform: scale(.9); opacity: 0 } }
+@keyframes spSlide  { 0%,10% { transform: translateX(-120%) } 22%,78% { transform: none } 90%,100% { transform: translateX(-120%) } }
+@keyframes spPunch  { 0%,20% { transform: scale(1) } 26%,52% { transform: scale(1.22) translateX(-4%) rotate(1.5deg) } 58%,82% { transform: scale(1.1) translateX(3%) rotate(-1deg) } 88%,100% { transform: scale(1) } }
+@keyframes spTicker { from { transform: translateX(0) } to { transform: translateX(-50%) } }
+@keyframes spKaraoke{ 0% { left: 0 } 100% { left: 66% } }
+
+
+/* --- nouvelles grammaires --------------------------------------------------- */
+.sp-igbars { left: 4%; right: 4%; top: 2%; height: 1.2%; display: flex; gap: 3%; }
+.sp-igbars i { position: relative; flex: 1; border-radius: 3px; background: rgba(255,255,255,.4); }
+.sp-igbars i.on { background: #fff; }
+.sp-igsticker { left: 16%; right: 16%; top: 30%; height: 18%; border-radius: 12px; background: #fff; box-shadow: 0 10px 20px rgba(0,0,0,.35); }
+.sp-igsticker b { left: 10%; right: 10%; top: 0; height: 38%; border-radius: 12px 12px 0 0; background: linear-gradient(90deg,#FEDA75,#D62976,#4F5BD5); width: auto; }
+.sp-igsticker i { left: 14%; right: 14%; top: 55%; height: 26%; border-radius: 8px; background: #eee; }
+.sp-igfield { left: 5%; right: 22%; bottom: 3%; height: 5%; border-radius: 99px; border: 2px solid rgba(255,255,255,.8); }
+.sp-hud { left: 5%; top: 4%; width: 45%; height: 8%; }
+.sp-hud i { position: relative; display: block; height: 30%; margin-bottom: 8%; border: 2px solid #fff; background: #34D399; }
+.sp-hud i.xp { background: #60A5FA; width: 60%; }
+.sp-dialog { left: 4%; right: 4%; bottom: 18%; height: 16%; background: #0C0A28; border: 3px solid #fff; box-shadow: 0 0 0 3px #0C0A28; }
+.sp-dialog b { left: 8%; top: 22%; height: 16%; width: 80%; background: #fff; border-radius: 2px; }
+.sp-dialog b.short { top: 55%; width: 50%; background: var(--a); }
+.sp-wave { left: 14%; top: 10%; width: 72%; aspect-ratio: 1; border-radius: 50%; background: repeating-conic-gradient(var(--a) 0 3deg, transparent 3deg 9deg); -webkit-mask: radial-gradient(circle, transparent 62%, #000 63%); mask: radial-gradient(circle, transparent 62%, #000 63%); }
+.sp-player { left: 6%; right: 6%; bottom: 8%; height: 6%; }
+.sp-player i { left: 0; top: 0; width: 16%; aspect-ratio: 1; border-radius: 50%; background: var(--a); }
+.sp-player b { left: 22%; right: 0; top: 40%; height: 16%; border-radius: 4px; background: rgba(255,255,255,.3); width: auto; }
+.sp-letter { left: 0; right: 0; height: 11%; background: #000; }
+.sp-letter.top { top: 0 } .sp-letter.bot { bottom: 0 }
+.sp-chapter { left: 15%; right: 15%; top: 40%; height: 12%; text-align: center; }
+.sp-chapter i { left: 30%; right: 30%; top: 0; height: 8%; background: #F4EFE6; }
+.sp-chapter b { left: 0; right: 0; top: 30%; height: 34%; border-radius: 3px; background: #F4EFE6; width: auto; }
+.sp-tile { border-radius: 10px; }
+.sp-tile.a { left: 4%; top: 61%; width: 44%; height: 18%; background: var(--a); }
+.sp-tile.b { left: 52%; top: 61%; width: 44%; height: 18%; background: var(--a2); }
+.sp-tile.c { left: 4%; top: 81%; width: 92%; height: 16%; background: rgba(255,255,255,.1); }
+.sp-map { left: -60%; top: -30%; width: 220%; height: 160%; background: var(--d); background-image: radial-gradient(rgba(255,255,255,.15) 1px, transparent 1.4px); background-size: 8px 8px; transform-origin: 30% 35%; }
+.sp-route { left: 26%; top: 34%; width: 50%; height: 40%; border: 3px dashed var(--a); border-radius: 50% 0 50% 0; border-left: none; border-bottom: none; }
+.sp-page { width: 22%; height: 26%; border-radius: 6px; background: var(--l); box-shadow: 0 8px 16px rgba(0,0,0,.5); }
+.sp-page.p1 { left: 20%; top: 22%; transform: rotate(-4deg); background: #fff; }
+.sp-page.p2 { left: 58%; top: 34%; transform: rotate(5deg); }
+.sp-page.p2 b { left: 12%; top: 30%; height: 10%; width: 76%; border-radius: 2px; background: var(--a); }
+.sp-page.p2 b.short { top: 48%; width: 50%; background: var(--ink); }
+.sp-page.p3 { left: 34%; top: 66%; transform: rotate(-6deg); }
+.sp-page.p3 i { left: 38%; top: 30%; width: 24%; aspect-ratio: 1; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: var(--bad); }
+.sp-anim-travel { animation: spTravel 6s cubic-bezier(.65,0,.35,1) infinite; }
+@keyframes spTravel {
+  0%,14%  { transform: translate(15%, 12%) scale(1.9) rotate(4deg) }
+  24%     { transform: translate(0, 0) scale(.9) rotate(0) }
+  34%,50% { transform: translate(-40%, -2%) scale(1.9) rotate(-5deg) }
+  62%     { transform: translate(0, 0) scale(.62) rotate(0) }
+  74%,94% { transform: translate(-6%, -46%) scale(1.9) rotate(6deg) }
+  100%    { transform: translate(15%, 12%) scale(1.9) rotate(4deg) }
+}
+
+/* --- interface du studio -------------------------------------------------- */
+.studio-step { counter-increment: step; }
+.studio-orbit { position: absolute; border-radius: 9999px; filter: blur(80px); opacity: .45; animation: cfAurora 18s ease-in-out infinite alternate; pointer-events: none; }
+.studio-dropzone { position: relative; border-radius: 24px; background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.01)); }
+.studio-dropzone::before {
+  content: ""; position: absolute; inset: 0; padding: 1.5px; border-radius: inherit;
+  background: conic-gradient(from var(--ang, 0deg), rgba(63,114,255,.0), rgba(63,114,255,.9), rgba(249,115,22,.8), rgba(63,114,255,.0) 40%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: studioSpin 6s linear infinite;
+}
+@property --ang { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@keyframes studioSpin { to { --ang: 360deg } }
+.style-card { transition: transform .35s var(--ease-out-expo), box-shadow .35s, border-color .35s; }
+.style-card:hover { transform: translateY(-6px); }
+.style-card[data-selected="true"] { border-color: rgba(101,147,255,.9); box-shadow: 0 0 0 1px rgba(101,147,255,.6), 0 24px 60px -20px rgba(63,114,255,.55); }
+.studio-progress-ring { transition: stroke-dashoffset .8s var(--ease-out-expo); }
+.studio-scan { background: linear-gradient(180deg, transparent, rgba(101,147,255,.35), transparent); animation: studioScan 2.4s ease-in-out infinite; }
+@keyframes studioScan { 0% { transform: translateY(-100%) } 100% { transform: translateY(400%) } }
+
+@media (prefers-reduced-motion: reduce) {
+  .sp-root *, .studio-dropzone::before, .studio-orbit, .studio-scan { animation: none !important; }
+  .sp-anim-type, .sp-anim-type2 { clip-path: none; }
+}

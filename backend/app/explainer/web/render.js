@@ -53,8 +53,8 @@ async function launch() {
     fs.mkdirSync(opt.outdir || '.', { recursive: true });
     const ts = opt.stills.split(',').map(Number);
     for (let i = 0; i < ts.length; i++) {
-      await p.evaluate((t) => window.seek(t), ts[i]);
-      await shot({ path: path.join(opt.outdir || '.', `still_${String(i).padStart(3, '0')}.png`) });
+      await p.evaluate((t) => window.seekAsync ? window.seekAsync(t) : window.seek(t), ts[i]);
+      await shot({ path: path.join(opt.outdir || '.', `still_${String(i).padStart(3, '0')}.png`), omitBackground: opt.alpha === '1' });
     }
   }
   if (opt.video) {
@@ -80,7 +80,7 @@ async function launch() {
     for (let f = f0; f < f1; f++) {
       for (let k = 0; k < K; k++) {
         const t = Math.max(0, f / FPS + (k - (K - 1) / 2) / (FPS * 2 * K));
-        await p.evaluate((tt) => window.seek(tt), t);
+        await p.evaluate((tt) => window.seekAsync ? window.seekAsync(tt) : window.seek(tt), t);
         const buf = ALPHA ? await grab() : await shot({ type: 'jpeg', quality: 92 });
         if (!ff.stdin.write(buf)) await new Promise((r) => ff.stdin.once('drain', r));
       }

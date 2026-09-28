@@ -71,6 +71,12 @@ class JobOptions(BaseModel):
     brand_color: Optional[str] = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
     cta_text: Optional[str] = Field(default=None, max_length=120)
     logo_text: Optional[str] = Field(default=None, max_length=60)
+    # Studio face caméra: style (auto | invent | id d'un style écrit), logo importé,
+    # nom de marque et vocabulaire (aide la transcription), niveau de nettoyage.
+    studio_style: Optional[str] = Field(default=None, max_length=40)
+    logo_asset: Optional[str] = Field(default=None, pattern=r"^[0-9a-f]{32}$")
+    brand_name: Optional[str] = Field(default=None, max_length=60)
+    vocabulary: Optional[str] = Field(default=None, max_length=300)
 
     @field_validator("broll_demographic")
     @classmethod
@@ -114,6 +120,15 @@ class JobOptions(BaseModel):
 
         if v is not None and v not in TEMPLATES:
             raise ValueError(f"motion_template must be one of: {', '.join(sorted(TEMPLATES))}")
+        return v
+
+    @field_validator("studio_style")
+    @classmethod
+    def validate_studio_style(cls, v: Optional[str]) -> Optional[str]:
+        from app.explainer.styles import STYLES
+
+        if v is not None and v not in STYLES and v not in ("auto", "invent"):
+            raise ValueError(f"studio_style must be auto, invent or one of: {', '.join(sorted(STYLES))}")
         return v
 
     @field_validator("motion_density")

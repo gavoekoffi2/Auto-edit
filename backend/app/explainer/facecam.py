@@ -56,8 +56,9 @@ def probe(path: str) -> dict[str, Any]:
 
 
 # ----------------------------------------------------------------- transcription
-def transcribe(video: str, workdir: str, language: Optional[str] = None) -> dict[str, Any]:
-    """Transcription mot à mot au format « vu » du moteur Auto Edit."""
+def transcribe(video: str, workdir: str, language: Optional[str] = None, prompt: Optional[str] = None) -> dict[str, Any]:
+    """Transcription mot à mot au format « vu » du moteur Auto Edit.
+    `prompt`: vocabulaire du client (marque, mots-clés) — Whisper les écrit juste."""
     cached = Path(workdir, "transcript_vu.json")
     if cached.exists() and cached.stat().st_mtime >= os.path.getmtime(video):
         return json.loads(cached.read_text())  # reprise d'un rendu interrompu
@@ -68,7 +69,7 @@ def transcribe(video: str, workdir: str, language: Optional[str] = None) -> dict
         from faster_whisper import WhisperModel  # type: ignore
         model = WhisperModel(setting("WHISPER_MODEL", "small") or "small", device="cpu", compute_type="int8")
         segs, info = model.transcribe(wav, language=lang, word_timestamps=True, beam_size=5,
-                                      condition_on_previous_text=False)
+                                      condition_on_previous_text=False, initial_prompt=prompt or None)
         segments = [{"start": s.start, "end": s.end, "text": s.text,
                      "words": [{"word": w.word.strip(), "start": w.start, "end": w.end} for w in (s.words or [])]}
                     for s in segs]

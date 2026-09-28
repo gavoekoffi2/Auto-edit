@@ -54,6 +54,8 @@ VALID_MODES = {
     "motion_pro_editorial",
     "motion_pro_minimal",
     "motion_pro_solaire",
+    # Studio face caméra: un style unique par vidéo (ADN de style, anti-répétition)
+    "studio_facecam",
 }
 VALID_PIPELINE_VERSIONS = {"v1", "v2"}
 VALID_IMAGE_PROVIDERS = {"openrouter", "replicate", "stability", "noop"}

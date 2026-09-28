@@ -28,7 +28,7 @@ export default function Navbar() {
           </Link>
 
           <div className="flex items-center gap-3 sm:gap-4 text-sm sm:text-base">
-            <Link to="/pricing" className="text-dark-300 hover:text-white transition-colors">
+            <Link to="/pricing" className={`text-dark-300 hover:text-white transition-colors ${accessToken ? 'hidden sm:inline' : ''}`}>
               Tarifs
             </Link>
 
@@ -37,10 +37,14 @@ export default function Navbar() {
                 <Link to="/dashboard" className="text-dark-300 hover:text-white transition-colors">
                   Dashboard
                 </Link>
+                <Link to="/studio" className="relative font-semibold text-white transition-colors hover:text-primary-200">
+                  Studio
+                  <span className="absolute -right-2 -top-1.5 h-1.5 w-1.5 rounded-full bg-accent-400 shadow-[0_0_10px_rgba(251,146,60,.9)]" />
+                </Link>
                 <Link to="/clips" className="text-dark-300 hover:text-white transition-colors">
                   Clips
                 </Link>
-                <Link to="/pub" className="text-dark-300 hover:text-white transition-colors">
+                <Link to="/pub" className="hidden sm:inline whitespace-nowrap text-dark-300 hover:text-white transition-colors">
                   Pub IA
                 </Link>
                 {user?.is_admin && (

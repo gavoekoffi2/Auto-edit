@@ -734,6 +734,13 @@
   const shots = STORY.shots;
   const T = STORY.duration;
   const built = [];
+  // Extension « Studio » (face caméra): ADN de style, scènes flottantes, sous-titres,
+  // logo, transitions. Chargée AVANT ce script; absente pour la pub explicative.
+  const EXT = typeof window.CF_STUDIO_INIT === 'function' ? window.CF_STUDIO_INIT({
+    SC, mk, vis, tf, clamp, lerp, eo, eio, S, pop, rnd, esc, norm, up, ev, IMPACTS, FLASHES, icon, IC, emblem,
+    prepDrop, drop, dropEvents, fit, wordTime, itemTimes, inkFor, subFor, rays, chevrons, person, HAND, CURSOR,
+    C, TPL, STORY, stage, cam, $,
+  }) : null;
   function bgFor(tone) {
     if (tone === 'light') return `radial-gradient(ellipse at 50% 40%,${C.light1} 0%,${C.light2} 55%,${C.light3} 100%)`;
     if (tone === 'alarm') return `radial-gradient(ellipse at 50% 55%,${C.alarm1} 0%,${C.alarm2} 60%,#080204 100%)`;
@@ -742,24 +749,28 @@
   }
   function build() {
     shots.forEach((shot, i) => {
-      const el = mk(cam, 'sc', '', `background:${bgFor(shot.tone)}`);
+      const el = mk(cam, 'sc', '', `background:${EXT && EXT.bgFor ? EXT.bgFor(shot) : bgFor(shot.tone)}`);
       const fn = SC[shot.scene.type] || SC.default;
       let upd;
       // visible pendant la construction: fit() a besoin des vraies mesures de mise en page
       el.style.display = 'block';
       try { upd = fn(el, shot, shot.scene); } catch (e) { console.error('scene', shot.scene.type, e); el.innerHTML = ''; upd = SC.title_slam(el, shot, { title: shot.text }); }
+      if (EXT && EXT.decorate) EXT.decorate(el, shot, i);
       el.style.display = 'none';
       built.push({ el, shot, upd });
+      if (EXT) return; // l'extension pose ses propres sons de transition
       if (i > 0 || OVERLAY) ev(shot.start - 0.28, TPL.transition === 'zoom' ? 'whoosh_deep' : 'whoosh', 0.7);
       if (OVERLAY) ev(shot.end - 0.2, 'whoosh', 0.45);
     });
+    if (EXT && EXT.build) EXT.build();
     // grain animé déterministe
     const g = $('grain'); const x = g.getContext('2d'); const im = x.createImageData(600, 1040);
     for (let i = 0; i < im.data.length; i += 4) { const v = Math.floor(rnd(i * 0.37) * 255); im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; }
     x.putImageData(im, 0, 0); g.style.opacity = String(TPL.grain == null ? 0.07 : TPL.grain);
     EVENTS.sort((a, b) => a.t - b.t);
   }
-  function transition(el, t, a, b, last) {
+  function transition(el, t, a, b, last, shot) {
+    if (EXT && EXT.transition) { EXT.transition(el, t, a, b, shot); return; }
     const D = 0.3; let tr = '', bl = 0; const sc = 1 + (TPL.pushIn == null ? 0.04 : TPL.pushIn) * clamp((t - a) / Math.max(0.1, b - a));
     const kind = TPL.transition || 'whip';
     if ((a > 0 || OVERLAY) && t < a + D / 2) {
@@ -781,21 +792,26 @@
     // en incrustation, un léger zoom pendant la secousse évite de découvrir le visage sur les bords
     tf(cam, `translate(${sx.toFixed(1)}px,${sy.toFixed(1)}px)${OVERLAY && (sx || sy) ? ' scale(1.03)' : ''}`);
     const g = $('grain'); tf(g, `translate(${-Math.floor(rnd(Math.floor(t * 12)) * 60)}px,${-Math.floor(rnd(Math.floor(t * 12) + 5) * 60)}px)`);
-    if (OVERLAY) g.style.display = built.some(({ shot }) => t >= shot.start + 0.15 && t <= shot.end - 0.15) ? '' : 'none';
+    if (EXT && EXT.grainOn) g.style.display = EXT.grainOn(t) ? '' : 'none';
+    else if (OVERLAY) g.style.display = built.some(({ shot }) => t >= shot.start + 0.15 && t <= shot.end - 0.15) ? '' : 'none';
     let fl = 0; FLASHES.forEach((k) => { if (t > k) fl = Math.max(fl, Math.max(0, 1 - (t - k) / 0.25) * 0.55); });
     $('flash').style.opacity = fl.toFixed(3);
     built.forEach(({ el, shot, upd }, i) => {
-      const a = shot.start, b = shot.end, D = 0.3, last = !OVERLAY && i === built.length - 1;
-      if (t < a - D / 2 || (!last && t > b + D / 2)) { el.style.display = 'none'; return; }
-      el.style.display = 'block'; transition(el, t, a, b, last);
+      const a = shot.start, b = shot.end, D = EXT ? 0.5 : 0.3, last = !OVERLAY && i === built.length - 1;
+      const kept = EXT && EXT.keep && EXT.keep(shot); // étapes d'un voyage: toujours présentes sur la carte
+      if (!kept && (t < a - D / 2 || (!last && t > b + D / 2))) { el.style.display = 'none'; return; }
+      el.style.display = 'block'; transition(el, t, a, b, last, shot);
       try { upd(t); } catch (e) { console.error(e); }
     });
+    if (EXT && EXT.update) EXT.update(t);
   }
   window.seek = seek; window.DURATION = T; window.EVENTS = EVENTS;
+  // Studio: le visage est une suite d'images; on attend leur décodage avant la capture.
+  window.seekAsync = (t) => { seek(t); return EXT && EXT.ready ? EXT.ready() : Promise.resolve(); };
   // Les polices ne se chargent qu'au premier usage: on force leur chargement AVANT
   // de construire (sinon fit() mesure une police de repli et réduit trop le texte).
   const FONT_LOADS = ['100px Anton', '100px Bebas', '100px DMSerif', '500 40px Poppins', '700 40px Poppins', '800 40px Poppins'];
-  window.READY = Promise.all(FONT_LOADS.map((f) => document.fonts.load(f).catch(() => null)))
+  window.READY = Promise.all(FONT_LOADS.map((f) => document.fonts.load(f).catch(() => null)).concat(EXT && EXT.preload ? [EXT.preload()] : []))
     .then(() => document.fonts.ready).then(() => { build(); seek(0); return true; });
   if (!/render/.test(location.search)) {
     window.READY.then(() => { const t0 = performance.now(); (function loop() { seek(((performance.now() - t0) / 1000) % T); requestAnimationFrame(loop); })(); });

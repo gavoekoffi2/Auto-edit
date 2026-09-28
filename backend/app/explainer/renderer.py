@@ -33,8 +33,8 @@ def events(page: str, out_json: str) -> dict:
     return json.loads(Path(out_json).read_text())
 
 
-def stills(page: str, times: list[float], outdir: str) -> list[str]:
-    _run([page, "--stills", ",".join(f"{t:.2f}" for t in times), "--outdir", outdir], timeout=600)
+def stills(page: str, times: list[float], outdir: str, alpha: bool = False) -> list[str]:
+    _run([page, "--stills", ",".join(f"{t:.2f}" for t in times), "--outdir", outdir] + (["--alpha", "1"] if alpha else []), timeout=600)
     return sorted(str(p) for p in Path(outdir).glob("still_*.png"))
 
 

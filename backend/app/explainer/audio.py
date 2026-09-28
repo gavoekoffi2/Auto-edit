@@ -236,11 +236,14 @@ def sfx_track(events: list[dict[str, Any]], duration: float) -> np.ndarray:
 _nf = lambda m: 440 * 2 ** ((m - 69) / 12)  # noqa: E731
 
 
-def music_track(duration: float, mood: str, bpm: float, turn: float) -> np.ndarray:
-    """Tension (mineur, pulsations) jusqu'à `turn`, puis progression positive."""
+def music_track(duration: float, mood: str, bpm: float, turn: float, transpose: int = 0) -> np.ndarray:
+    """Tension (mineur, pulsations) jusqu'à `turn`, puis progression positive.
+    `transpose` (demi-tons) change la tonalité: deux vidéos n'ont pas le même fond."""
     N = int(duration * SR); mus = np.zeros(N)
+    tr = 2 ** (float(transpose or 0) / 12)
 
     def note(f, s, d, amp, kind):
+        f = f * tr
         n = int(d * SR); tt = np.arange(n) / SR; s0 = int(s * SR)
         if s0 >= N or n <= 0:
             return
@@ -300,14 +303,14 @@ def _read(path: str) -> np.ndarray:
 
 def mix(voice_wav: str, events: list[dict[str, Any]], duration: float, out_wav: str, *,
         mood: str = "hopeful", bpm: float = 96, turn: float | None = None,
-        music_db: float = -16, sfx_db: float = -6) -> str:
+        music_db: float = -16, sfx_db: float = -6, transpose: int = 0) -> str:
     vo = _read(voice_wav); N = int(duration * SR)
     vo = np.pad(vo, (0, max(0, N - len(vo))))[:N]
     rms = lambda x: float(np.sqrt(np.mean(x[np.abs(x) > 1e-4] ** 2))) if np.any(np.abs(x) > 1e-4) else 1.0  # noqa: E731
     vo *= 0.25 / rms(vo)
     env = np.convolve(np.abs(vo), np.ones(int(0.08 * SR)) / int(0.08 * SR), "same"); env /= (env.max() or 1)
     duck = np.clip(env * 4, 0, 1)
-    mus = music_track(duration, mood, bpm, turn if turn is not None else duration * 0.3)
+    mus = music_track(duration, mood, bpm, turn if turn is not None else duration * 0.3, transpose)
     mus *= (0.25 / rms(mus)) * 10 ** (music_db / 20) * (1 - 0.55 * duck)
     sfx = sfx_track(events, duration)
     sfx = np.pad(sfx, (0, max(0, N - len(sfx))))[:N]
