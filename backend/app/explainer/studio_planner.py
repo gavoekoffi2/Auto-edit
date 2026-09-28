@@ -311,7 +311,8 @@ def float_candidates(s: dict[str, Any], ctx: dict[str, Any]) -> list[tuple[float
         if not cls:
             return out
         best = max(cls, key=lambda c: sum(len(_n(w["w"])) >= 5 for w in c) + (3 if re.search(r"rendez|consult|gratuit|ligne", _txt(c), re.I) else 0))
-        out.append((3.0, {"type": "float_card", "title": _cap(_short(_txt(best), 7)), "at": best[0]["s"], "pos": "low"}, whole))
+        out.append((3.0, {"type": "float_card", "title": _cap(_short(_txt(best), 7)), "at": best[0]["s"], "pos": "low"},
+                    (max(s["start"], best[0]["s"] - 0.35), s["end"])))
     return out
 
 

@@ -1872,12 +1872,15 @@ window.CF_STUDIO_INIT = function (A) {
       fit(b.firstElementChild, dir > 0 ? 560 : 480, size, 40);
       return b;
     };
+    const top = mk(root, 'a', `<div style="width:230px;height:230px;border-radius:50%;background:${P.light};border:12px solid ${P.accent};display:flex;align-items:center;justify-content:center;font-family:${HEAD};font-size:170px;line-height:1;color:${P.ink};box-shadow:0 16px 36px rgba(0,0,0,.4)">?</div>`, 'left:425px;top:250px');
+    ev(shot.start + 0.35, 'pop_low', 0.6);
     const b1 = board(p.title + ' ?', 520, 1, P.accent, on(P.accent), 150);
     const b2 = p.sub ? board(String(p.sub).replace(/ /g, ' '), 820, -1, P.light, P.ink, 96) : null;
     const tT = wordTime(shot, p.at, 0.05), tS = p.sub ? wordTime(shot, p.sub_at, 0.5) : 0;
     ev(shot.start, 'thud', 0.5); ev(tT, 'whoosh', 0.5); ev(tT + 0.12, 'impact', 0.6); IMPACTS.push(tT + 0.12); if (b2) { ev(tS, 'whoosh', 0.4); ev(tS + 0.12, 'thud', 0.5); }
     return (t) => {
       const g = spring(t, shot.start); post.style.transform = `scaleY(${clamp(g, 0, 1.05).toFixed(3)})`; post.style.transformOrigin = '50% 100%';
+      const q0 = spring(t, shot.start + 0.35); vis(top, clamp((t - shot.start - 0.3) * 6)); top.style.transform = `scale(${(0.3 + 0.7 * q0).toFixed(3)}) rotate(${(Math.sin(t * 2) * 6).toFixed(2)}deg)`;
       const s1 = pop(t, tT, 12, 0.35); vis(b1, clamp((t - tT) * 8)); b1.style.transform = `rotate(${((1 - s1) * 80).toFixed(1)}deg)`;
       if (b2) { const s2 = pop(t, tS, 12, 0.35); vis(b2, clamp((t - tS) * 8)); b2.style.transform = `rotate(${((1 - s2) * -80).toFixed(1)}deg)`; }
     };
