@@ -46,6 +46,12 @@ export interface JobOptions {
   remove_source_subtitles?: boolean
   cta_text?: string
   logo_text?: string
+  /** Moteur YouTube long : auto | studio_clean | energie_createur | documentaire | tech_minimal */
+  longform_style?: 'auto' | 'studio_clean' | 'energie_createur' | 'documentaire' | 'tech_minimal'
+  keyword_popups?: boolean
+  chapter_cards?: boolean
+  zoom_cuts?: boolean
+  llm_titles?: boolean
 }
 
 export interface JobCreateData {

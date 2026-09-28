@@ -137,6 +137,11 @@ def process_video_task(self, job_id: str):
 
         # Choisit le pipeline selon job.pipeline_version (défaut v1)
         pipeline_version = getattr(job, "pipeline_version", "v1") or "v1"
+        # Le moteur « YouTube long » vit dans le pipeline v2, quel que soit le
+        # défaut de déploiement (PIPELINE_VERSION peut valoir v1).
+        from app.processing.longform import LONGFORM_MODES
+        if job.mode in LONGFORM_MODES:
+            pipeline_version = "v2"
         if pipeline_version == "v2":
             from app.processing.pipeline_v2 import run_pipeline_v2
             result = run_pipeline_v2(

@@ -73,6 +73,7 @@ Upload → Whisper (word-level) → Silence detect → EDL (filler words FR/EN)
 | **Podcast propre** | Suppression silences uniquement |
 | **Formation / éducatif** | Captions lisibles + B-roll discret + horizontal |
 | **Collage Premium ✂️** | Métaphore visuelle + collage papier éditorial assemblé à l'écran ([doc](docs/COLLAGE_PREMIUM_BROLL.md)) |
+| **YouTube long 🎬** | Vidéos longues 16:9 : coupe « dernière prise », synchro image/son exacte, chapitres YouTube, sous-titres FR, cartes chapitre, SFX, −14 LUFS ([doc](docs/LONGFORM_YOUTUBE_ENGINE.md)) |
 
 Les modes V1 historiques (`tiktok`, `youtube`, `podcast`) restent supportés.
 
