@@ -2,6 +2,9 @@ import client from './client'
 
 export interface AdTemplate { id: string; name: string; description: string; accent: string; dark: string }
 export interface AdAngle { id: string; name: string; structure: string }
+export interface AdMontage { id: string; name: string; description: string; available: boolean; rhythm?: string }
+export interface AdVoice { id: string; name: string }
+export interface AdDomain { id: string; name: string; emoji: string }
 
 export interface InterviewTurn {
   reply: string
@@ -9,6 +12,8 @@ export interface InterviewTurn {
   done: boolean
   suggestions: string[]
   field: string | null
+  upload?: boolean
+  montage_picker?: boolean
 }
 
 export interface StoryBeat { text: string; scene: { type: string; [k: string]: unknown }; pause_after?: number }
@@ -29,7 +34,7 @@ export interface AdProject {
   completed_at?: string | null
 }
 
-export async function getAdCatalog(): Promise<{ templates: AdTemplate[]; angles: AdAngle[] }> {
+export async function getAdCatalog(): Promise<{ templates: AdTemplate[]; angles: AdAngle[]; montages?: AdMontage[]; voices?: AdVoice[]; domains?: AdDomain[] }> {
   return (await client.get('/ads/catalog')).data
 }
 

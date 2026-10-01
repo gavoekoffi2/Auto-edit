@@ -652,6 +652,11 @@ def process_ad_project_task(self, project_id: str):
         _update_ad(project_id, progress=int(pct), stage=msg)
         self.update_state(state="PROGRESS", meta={"progress": pct, "message": msg})
 
+    # photo produit / logo importés -> chemins absolus (jamais ceux d'un autre utilisateur)
+    from app.services.brand_assets import logo_path_for
+    for key, dest in (("product_asset", "product_image_path"), ("logo_asset", "logo_path")):
+        aid = brief.get(key)
+        brief[dest] = (logo_path_for(user_id, aid) or "") if aid else ""
     try:
         res = run_explainer(brief, workdir, storyboard=storyboard, progress=progress,
                             workers=settings.EXPLAINER_RENDER_WORKERS or None)

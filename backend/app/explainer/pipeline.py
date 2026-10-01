@@ -35,6 +35,11 @@ def run_explainer(brief: dict[str, Any] | Brief, workdir: str, *, storyboard: Op
     wd = Path(workdir); wd.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
 
+    from .montages import resolve_montage
+    mont = resolve_montage(b.montage)
+    if mont["engine"] == "impact":
+        return _run_impact(b, wd, mont, storyboard, prog, fps=fps, sub=sub, workers=workers, t0=t0)
+
     prog(3, "Écriture du script et du storyboard")
     board = sanitize(Storyboard.from_dict(storyboard), b) if storyboard else write_storyboard(b)
     (wd / "storyboard.json").write_text(json.dumps(board.to_dict(), ensure_ascii=False, indent=1))
@@ -80,6 +85,58 @@ def run_explainer(brief: dict[str, Any] | Brief, workdir: str, *, storyboard: Op
         "voice_provider": voice.provider,
         "notes": board.notes,
         "render_seconds": round(time.time() - t0, 1),
+    }
+    (wd / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=1))
+    prog(100, "Terminé")
+    return result
+
+
+def _run_impact(b: Brief, wd: Path, mont: dict[str, Any], storyboard: Optional[dict[str, Any]], prog: Progress, *,
+                fps: int, sub: int, workers: Optional[int], t0: float) -> dict[str, Any]:
+    """Montage « Impact » : problème → agitation → bascule → solution → action."""
+    from .composer import compose_impact
+    from .impact_writer import sanitize_impact, write_impact
+
+    prog(3, "Écriture du script (problème → solution)")
+    board = sanitize_impact(Storyboard.from_dict(storyboard), b) if storyboard else write_impact(b)
+    (wd / "storyboard.json").write_text(json.dumps(board.to_dict(), ensure_ascii=False, indent=1))
+
+    prog(12, "Enregistrement de la voix off")
+    voice = synthesize([x.text for x in board.beats], str(wd / "voice.wav"), voice=b.voice or "henri",
+                       rate=mont.get("voice_rate", "+6%"), pauses=[x.pause_after for x in board.beats],
+                       lead=0.25, tail=2.8, max_inner_pause=0.16)
+
+    prog(20, "Composition des scènes")
+    kw = [w for w in [b.business, b.offer] + list(b.benefits or []) for w in str(w).split() if len(w) > 3][:20]
+    html, story = compose_impact(board, voice, brand=b.business, product_name=b.offer or b.business,
+                                 product_image=b.product_image_path or None, logo_path=b.logo_path or None,
+                                 accent=b.brand_color, keywords=kw)
+    page = wd / "page.html"; page.write_text(html, encoding="utf-8")
+    ev = renderer.events(str(page), str(wd / "events.json"))
+    if ev.get("errors"):
+        logger.warning("erreurs page: %s", ev["errors"][:3])
+    # vignette = première image (WhatsApp / réseaux affichent l'image 0)
+    renderer.stills(str(page), [0.0], str(wd / "thumb"))
+
+    prog(25, "Rendu de l'animation")
+    renderer.video(str(page), story["duration"], str(wd / "video.mp4"), fps=fps, sub=sub, workers=workers,
+                   progress=lambda f: prog(25 + int(63 * f), "Rendu de l'animation"))
+
+    prog(90, "Sound design et mixage")
+    shots = story["shots"]
+    turn = next((s["start"] for s in shots if s["scene"]["type"] in ("pivot", "product_reveal")), story["duration"] * 0.4)
+    audio.mix(str(wd / "voice.wav"), ev.get("events", []), story["duration"], str(wd / "mix.wav"),
+              mood=mont.get("music", "energetic"), bpm=mont.get("bpm", 100), turn=turn, music_db=-17, sfx_db=-5)
+
+    prog(97, "Export final")
+    out = wd / "pub.mp4"
+    renderer.mux(str(wd / "video.mp4"), str(wd / "mix.wav"), str(out))
+    thumbs = sorted((wd / "thumb").glob("*.png"))
+    result = {
+        "video_path": str(out), "thumbnail_path": str(thumbs[0]) if thumbs else None,
+        "duration": round(story["duration"], 2), "script": [x.text for x in board.beats],
+        "storyboard": board.to_dict(), "template": b.template, "montage": mont["id"], "angle": board.angle,
+        "voice_provider": voice.provider, "notes": board.notes, "render_seconds": round(time.time() - t0, 1),
     }
     (wd / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=1))
     prog(100, "Terminé")

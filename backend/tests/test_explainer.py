@@ -15,7 +15,7 @@ BRIEF = {
     "audience": "Mamans actives, entreprises", "problem": "pas le temps de préparer un beau gâteau",
     "promise": "un gâteau magnifique livré à domicile",
     "benefits": ["Livraison gratuite à Lomé", "Personnalisé avec le prénom", "Commande en 2 minutes"],
-    "cta_detail": "Commande en 2 minutes sur WhatsApp", "tone": "tu", "template": "neon",
+    "cta_detail": "Commande en 2 minutes sur WhatsApp", "tone": "tu", "template": "neon", "montage": "classique",
 }
 
 
@@ -73,18 +73,98 @@ def test_template_accent_contrast_and_brand_color():
 
 def test_interview_without_key_reaches_complete_brief():
     r = interview_turn(None, api_key="")
-    answers = ["Délices de Lomé", "Des gâteaux sur commande", "Les mamans actives", "Pas le temps",
-               "Un beau gâteau livré", "Livraison gratuite\nPersonnalisé", "non", "WhatsApp pour commander",
-               "Tutoiement", "Néon énergie", "Choisis pour moi"]
+    assert r["field"] == "domain"
+    answers = ["🍲 Restauration & alimentation", "Délices de Lomé", "Des gâteaux sur commande",
+               "Gâteaux faits maison, décorés au prénom, livrés frais le jour même", "Les mamans actives",
+               "Elles n'ont jamais le temps de préparer un beau gâteau pour l'anniversaire", "Du stress, un gâteau de dernière minute raté, des invités déçus",
+               "Un beau gâteau livré à la maison sans aucun stress", "Livraison gratuite\nPersonnalisé", "non", "non", "non", "WhatsApp pour commander",
+               "Passer", "Passer", "Tutoiement", "Explicatif illustré", "Henri", "Néon énergie", "Choisis pour moi"]
     for a in answers:
-        assert not r["done"]
+        assert not r["done"], r
         r = interview_turn(r["brief"], a, api_key="")
     assert r["done"]
     b = brief_from_interview(r["brief"])
+    assert b.domain == "food" and b.montage == "classique" and b.voice == "henri"
     assert b.business == "Délices de Lomé" and b.tone == "tu" and b.template == "neon"
     assert b.benefits == ["Livraison gratuite", "Personnalisé"]
-    assert b.proof == "" and b.angle in ANGLES
+    assert b.proof == "" and b.price == "" and b.contact_phone == "" and b.angle in ANGLES
     assert "WhatsApp" in b.cta_action
+
+
+def test_interview_digs_vague_answers_once():
+    r = interview_turn(None, api_key="")
+    for a in ["Services", "Clean Pro", "Nettoyage de bureaux"]:
+        r = interview_turn(r["brief"], a, api_key="")
+    r = interview_turn(r["brief"], "Nettoyage", api_key="")          # trop vague -> l'agent creuse
+    assert r["field"] == "product_desc" and "plus" in r["reply"]
+    r = interview_turn(r["brief"], "Produits écologiques, équipe de nuit, contrat sans engagement", api_key="")
+    assert r["field"] == "audience"
+    assert "écologiques" in r["brief"]["product_desc"] and r["brief"]["product_desc"].startswith("Nettoyage")
+
+
+def test_interview_ignores_client_file_paths():
+    b = brief_from_interview({"business": "X", "offer": "Y", "product_image_path": "/etc/passwd", "logo_path": "/etc/shadow"})
+    assert b.product_image_path == "" and b.logo_path == ""
+
+
+def test_impact_fallback_follows_problem_to_action():
+    from app.explainer.impact_writer import IMPACT_SCENES, PHASES, write_impact
+    b = Brief.from_dict({**BRIEF, "montage": "impact", "domain": "food", "price": "5 000 FCFA", "contact_phone": "+22893708178",
+                         "consequences": "stress, gâteau raté, invités déçus"})
+    board = write_impact(b, api_key="")
+    types = _types(board)
+    assert all(t in IMPACT_SCENES for t in types)
+    phases = [IMPACT_SCENES[t]["phase"] for t in types if IMPACT_SCENES[t]["phase"] != "*"]
+    order = [PHASES.index(p) for p in phases]
+    assert order == sorted(order), phases                      # problème -> agitation -> bascule -> solution -> action
+    assert types[0] == "hook_question" and types[-1] == "cta" and "pivot" in types
+    assert board.beats[-1].scene["phone"] == "+228 93 70 81 78"
+    assert "quatre-vingt-un" in board.beats[-1].text           # numéro prononcé en lettres
+    assert any(t == "price_offer" for t in types)
+
+
+def test_impact_never_shows_price_not_given():
+    from app.explainer.impact_writer import sanitize_impact
+    b = Brief.from_dict({**BRIEF, "montage": "impact"})
+    board = Storyboard(angle="pas", template="x", beats=[Beat("Accroche.", {"type": "hook_question", "lines": ["Accroche"]}),
+                                                          Beat("Seulement 2000 F.", {"type": "price_offer", "price": "2000 F"})])
+    out = sanitize_impact(board, b)
+    assert "price_offer" not in _types(out) and _types(out)[-1] == "cta"
+
+
+def test_phone_formatting_and_speech():
+    from app.explainer.impact_writer import format_phone, fr_number, spoken_phone
+    assert format_phone("+228 93-70-81-78") == "+228 93 70 81 78"
+    assert format_phone("93708178") == "93 70 81 78"
+    assert [fr_number(n) for n in (21, 71, 80, 81, 93, 228)] == ["vingt-et-un", "soixante-et-onze", "quatre-vingts", "quatre-vingt-un", "quatre-vingt-treize", "deux-cent-vingt-huit"]
+    assert spoken_phone("+228 93 70 81 78").startswith("plus deux-cent-vingt-huit, quatre-vingt-treize")
+
+
+def test_compose_impact_page(tmp_path):
+    from app.explainer.composer import compose_impact
+    from app.explainer.impact_writer import fallback_impact
+    b = Brief.from_dict({**BRIEF, "montage": "impact", "contact_phone": "+22893708178"})
+    board = fallback_impact(b)
+    t = 0.3; lines = []; lw = []
+    for beat in board.beats:
+        ws = []
+        for w in beat.text.split():
+            ws.append(Word(w, t, t + .2)); t += .25
+        lines.append((ws[0].s, ws[-1].e)); lw.append(ws); t += .3
+    v = VoiceTrack(str(tmp_path / "v.wav"), t + 2, [w for x in lw for w in x], lines, lw)
+    html, story = compose_impact(board, v, brand=b.business, product_name=b.offer, accent="#22E3FF")
+    assert "window.STORY=" in html and "SCENES.hook_question" in html and "__" not in html.split("<script>")[0][-200:]
+    assert story["shots"][0]["start"] == 0.0 and story["shots"][-1]["scene"]["type"] == "cta"
+    assert "--acc:#22E3FF" in html
+
+
+def test_squeeze_shortens_long_inner_silence():
+    import numpy as np
+    from app.explainer.tts import SR, _squeeze
+    tone = (np.sin(np.linspace(0, 2000, SR // 2)) * .5).astype(np.float32)
+    a = np.concatenate([tone, np.zeros(SR, np.float32), tone])
+    out, ws = _squeeze(a, [Word("a", 0.0, .5), Word("b", 1.5, 2.0)], .16)
+    assert len(out) / SR < 1.3 and ws[1].s < 0.8
 
 
 def test_compose_merges_continue_beats_into_one_shot(tmp_path):
@@ -133,10 +213,16 @@ def test_ads_api_flow_and_free_quota(env, monkeypatch):
     cat = c.get("/api/v1/ads/catalog").json()
     assert {t["id"] for t in cat["templates"]} >= {"prestige", "neon", "editorial"}
 
+    assert {m["id"] for m in cat["montages"] if m["available"]} >= {"impact", "classique"} and len(cat["montages"]) >= 6
+    assert cat["domains"] and cat["voices"]
     r = c.post("/api/v1/ads/interview", json={}, headers=h).json()
-    assert not r["done"] and r["field"] == "business"
+    assert not r["done"] and r["field"] == "domain"
+    r = c.post("/api/v1/ads/interview", json={"brief": r["brief"], "answer": "Vente en ligne"}, headers=h).json()
+    assert r["field"] == "business"
     r = c.post("/api/v1/ads/interview", json={"brief": r["brief"], "answer": "Délices de Lomé"}, headers=h).json()
     assert r["field"] == "offer"
+    si = c.post("/api/v1/ads/script", json={"brief": {**BRIEF, "montage": "impact"}}, headers=h)
+    assert si.status_code == 200 and si.json()["storyboard"]["beats"][-1]["scene"]["type"] == "cta"
 
     s = c.post("/api/v1/ads/script", json={"brief": BRIEF}, headers=h)
     assert s.status_code == 200 and s.json()["storyboard"]["beats"][-1]["scene"]["type"] == "end_card"

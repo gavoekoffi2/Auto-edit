@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import {
-  Clapperboard, Send, Loader2, Sparkles, Download, Trash2, RotateCcw, Wand2, X, Film,
+  Clapperboard, Send, Loader2, Sparkles, Download, Trash2, RotateCcw, Wand2, X, Film, ImagePlus, Lock, Check,
 } from 'lucide-react'
 import {
   getAdCatalog, interviewTurn, previewScript, createAd, listAds, getAd, cancelAd, deleteAd,
-  adVideoUrl, adThumbUrl, type AdProject, type AdTemplate, type Storyboard,
+  adVideoUrl, adThumbUrl, type AdProject, type AdTemplate, type AdMontage, type Storyboard,
 } from '../api/ads'
+import { uploadLogo } from '../api/studio'
 import { toast } from '../components/ui/Toast'
 import { getErrorMessage } from '../api/client'
 
@@ -16,6 +17,35 @@ const SCENE_LABELS: Record<string, string> = {
   hero_reveal: 'Révélation 3D', split_compare: 'Écran partagé', bars_compare: 'Barres comparées', crowd_select: 'Foule / exclusivité',
   toggle_decision: 'Décision ON', choice_cards: 'Choix du profil', timer_ring: 'Minuteur', cta_button: 'Bouton d’action',
   chat_bubbles: 'Conversation', stat_number: 'Chiffre clé', end_card: 'Carte de fin', continue: '↳ suite',
+  hook_question: 'Accroche choc', pain_stack: 'Douleurs barrées', counter_rows: 'Compteurs', versus: 'Avant / après',
+  rival_split: 'Vous vs concurrent', punch: 'Coup de poing', pivot: 'Bascule', product_reveal: 'Révélation produit',
+  tiles: 'Catalogue', phone_checks: 'Téléphone + coches', pillars: '3 piliers', phone_ring: 'Téléphone qui sonne',
+  price_offer: 'Prix / offre', cta: 'Appel à l’action', title: 'Titre choc',
+}
+
+// mini-aperçu animé de chaque mode de montage (grammaire, pas couleurs)
+function MontageThumb({ id }: { id: string }) {
+  const base = 'relative w-full aspect-[9/16] rounded-lg overflow-hidden bg-[#0b0b10] border border-dark-700'
+  if (id === 'impact') return (
+    <div className={base}>
+      <div className="absolute inset-x-2 top-2 h-2 rounded bg-white/90" /><div className="absolute left-4 right-4 top-6 h-2 rounded bg-yellow-400" />
+      <div className="absolute left-1/2 -translate-x-1/2 bottom-6 w-7 h-7 bg-yellow-400 rotate-45 animate-pulse" />
+      <div className="absolute inset-x-3 bottom-2 h-2 rounded-full bg-dark-600" />
+      <div className="absolute right-1 top-12 w-5 h-2 bg-red-500 rotate-6" />
+    </div>)
+  if (id === 'classique') return (
+    <div className={base}>
+      <div className="absolute inset-x-3 top-3 h-2 rounded bg-white/80" />
+      {[0, 1, 2].map((i) => <div key={i} className="absolute left-3 right-3 h-3 rounded bg-white/15 border border-white/20" style={{ top: 22 + i * 14 }} />)}
+      <div className="absolute left-1/2 -translate-x-1/2 bottom-3 w-6 h-7 rounded-b-full bg-amber-400/80" />
+    </div>)
+  const deco: Record<string, JSX.Element> = {
+    cinema: <><div className="absolute inset-x-0 top-0 h-4 bg-black" /><div className="absolute inset-x-0 bottom-0 h-4 bg-black" /><div className="absolute inset-x-3 top-1/2 h-3 -mt-1.5 bg-white/70" /></>,
+    conversation: <>{[0, 1, 2].map((i) => <div key={i} className={`absolute h-3 w-2/3 rounded-full ${i % 2 ? 'right-2 bg-green-600/70' : 'left-2 bg-white/25'}`} style={{ top: 10 + i * 16 }} />)}</>,
+    magazine: <><div className="absolute left-2 top-2 w-1/2 h-1/2 bg-white/20" /><div className="absolute right-2 top-2 w-1/3 h-3 bg-white/60" /><div className="absolute right-2 top-7 w-1/3 h-1 bg-white/30" /></>,
+    kinetic: <><div className="absolute left-2 top-5 text-white/80 font-black text-xs rotate-[-8deg]">MOTS</div><div className="absolute right-2 bottom-6 text-yellow-400/80 font-black text-sm rotate-6">GÉANTS</div></>,
+  }
+  return <div className={`${base} opacity-50`}>{deco[id]}</div>
 }
 
 function Bubble({ m }: { m: Msg }) {
@@ -83,6 +113,11 @@ export default function AdStudio() {
   const [input, setInput] = useState('')
   const [thinking, setThinking] = useState(false)
   const [templates, setTemplates] = useState<AdTemplate[]>([])
+  const [montages, setMontages] = useState<AdMontage[]>([])
+  const [upload, setUpload] = useState(false)
+  const [picker, setPicker] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
   const [board, setBoard] = useState<Storyboard | null>(null)
   const [scripting, setScripting] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -96,10 +131,11 @@ export default function AdStudio() {
     try {
       const r = await interviewTurn({})
       setMessages([{ role: 'assistant', content: r.reply }]); setBrief(r.brief); setSuggestions(r.suggestions)
+      setUpload(!!r.upload); setPicker(!!r.montage_picker)
     } catch (e) { toast('error', getErrorMessage(e)) } finally { setThinking(false) }
   }, [])
 
-  useEffect(() => { start(); refresh(); getAdCatalog().then((c) => setTemplates(c.templates)).catch(() => {}) }, [start, refresh])
+  useEffect(() => { start(); refresh(); getAdCatalog().then((c) => { setTemplates(c.templates); setMontages(c.montages || []) }).catch(() => {}) }, [start, refresh])
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, board])
 
   // suivi des rendus en cours
@@ -114,15 +150,15 @@ export default function AdStudio() {
     return () => clearInterval(t)
   }, [ads])
 
-  const send = async (text: string) => {
+  const send = async (text: string, display?: string) => {
     const answer = text.trim()
     if (!answer || thinking) return
     if (done && answer === 'Créer ma pub') { await makeScript(); return }
-    const history = [...messages, { role: 'user' as const, content: answer }]
-    setMessages(history); setInput(''); setThinking(true); setSuggestions([])
+    const history = [...messages, { role: 'user' as const, content: display || answer }]
+    setMessages(history); setInput(''); setThinking(true); setSuggestions([]); setUpload(false); setPicker(false)
     try {
       const r = await interviewTurn(brief, answer, history.map((m) => ({ role: m.role, content: m.content })))
-      setBrief(r.brief); setDone(r.done); setSuggestions(r.suggestions)
+      setBrief(r.brief); setDone(r.done); setSuggestions(r.suggestions); setUpload(!!r.upload); setPicker(!!r.montage_picker)
       setMessages([...history, { role: 'assistant', content: r.reply }])
     } catch (e) { toast('error', getErrorMessage(e)) } finally { setThinking(false) }
   }
@@ -142,7 +178,15 @@ export default function AdStudio() {
     } catch (e) { toast('error', getErrorMessage(e)) } finally { setCreating(false) }
   }
 
-  const tpl = templates.find((t) => t.id === (brief.template as string))
+  const onFile = async (f?: File | null) => {
+    if (!f) return
+    setUploading(true)
+    try { const id = await uploadLogo(f); await send(id, `📸 ${f.name}`) }
+    catch (e) { toast('error', getErrorMessage(e)) } finally { setUploading(false); if (fileRef.current) fileRef.current.value = '' }
+  }
+
+  const tpl = brief.montage === 'classique' ? templates.find((t) => t.id === (brief.template as string)) : undefined
+  const mont = montages.find((m) => m.id === (brief.montage as string))
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -150,7 +194,7 @@ export default function AdStudio() {
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Clapperboard className="w-6 h-6 text-primary-400" /> Studio Pub motion design
         </h1>
-        <p className="text-dark-400 text-sm">Réponds à ton motion designer IA : il écrit le script, enregistre la voix off, anime chaque phrase et ajoute les sons. Aucune vidéo à filmer.</p>
+        <p className="text-dark-400 text-sm">Choisis ton domaine, réponds à ton motion designer IA : il creuse ton produit, écrit le script (problème → agitation → solution → appel à l’action), enregistre la voix off, monte chaque scène et ajoute les sons. Aucune vidéo à filmer.</p>
       </div>
 
       <div className="grid lg:grid-cols-[1fr_360px] gap-6">
@@ -181,7 +225,28 @@ export default function AdStudio() {
             )}
             <div ref={endRef} />
           </div>
-          {suggestions.length > 0 && !board && (
+          {picker && !board && montages.length > 0 && (
+            <div className="px-4 pb-3 grid grid-cols-3 sm:grid-cols-6 gap-2">
+              {montages.map((m) => (
+                <button key={m.id} disabled={!m.available || thinking} onClick={() => send(m.name)} title={m.description}
+                  className={`text-left rounded-xl p-1.5 border transition-colors min-w-0 ${m.available ? 'border-dark-600 hover:border-primary-500' : 'border-dark-800 cursor-not-allowed'}`}>
+                  <MontageThumb id={m.id} />
+                  <div className="mt-1 text-[11px] font-semibold truncate flex items-center gap-1">{!m.available && <Lock className="w-3 h-3 shrink-0" />}{m.name}</div>
+                  <div className="text-[10px] text-dark-400 truncate">{m.available ? m.rhythm : 'Bientôt'}</div>
+                </button>
+              ))}
+            </div>
+          )}
+          {upload && !board && (
+            <div className="px-4 pb-2">
+              <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
+              <button onClick={() => fileRef.current?.click()} disabled={uploading || thinking}
+                className="btn-primary text-sm flex items-center gap-2">
+                {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImagePlus className="w-4 h-4" />} Importer une image
+              </button>
+            </div>
+          )}
+          {suggestions.length > 0 && !board && !picker && (
             <div className="px-4 pb-2 flex flex-wrap gap-2">
               {suggestions.map((s) => (
                 <button key={s} onClick={() => (s === 'Créer ma pub' ? makeScript() : send(s))} disabled={thinking || scripting}
@@ -208,6 +273,14 @@ export default function AdStudio() {
         </div>
 
         <div className="space-y-4">
+          {mont && (
+            <div className="card p-4 flex gap-3 items-center">
+              <div className="w-14 shrink-0"><MontageThumb id={mont.id} /></div>
+              <div className="min-w-0"><div className="text-xs text-dark-400">Mode de montage</div>
+                <div className="font-semibold flex items-center gap-1"><Check className="w-4 h-4 text-primary-400" />{mont.name}</div>
+                <div className="text-xs text-dark-400">{mont.description}</div></div>
+            </div>
+          )}
           {tpl && (
             <div className="card p-4">
               <div className="text-xs text-dark-400 mb-1">Style choisi</div>

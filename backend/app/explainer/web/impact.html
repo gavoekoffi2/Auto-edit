@@ -1,0 +1,50 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>CutForge — montage Impact</title>
+<style>
+@font-face{font-family:'Anton';src:url(data:font/woff2;base64,__FONT_Anton__) format('woff2')}
+@font-face{font-family:'Poppins';font-weight:500;src:url(data:font/woff2;base64,__FONT_Poppins-500__) format('woff2')}
+@font-face{font-family:'Poppins';font-weight:600 700;src:url(data:font/woff2;base64,__FONT_Poppins-700__) format('woff2')}
+@font-face{font-family:'Poppins';font-weight:800 900;src:url(data:font/woff2;base64,__FONT_Poppins-800__) format('woff2')}
+:root{--acc:__ACCENT__;--accRGB:__ACCENT_RGB__;--onAcc:__ON_ACCENT__}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:1080px;height:1920px;overflow:hidden;background:#09090D}
+#stage{position:absolute;inset:0;overflow:hidden;background:#09090D;color:#fff;font-family:'Poppins','Noto Color Emoji',sans-serif}
+#cam{position:absolute;inset:0}
+#glow{position:absolute;inset:-200px}
+#grid{position:absolute;inset:-200px;background-image:linear-gradient(rgba(255,255,255,.045) 2px,transparent 2px),linear-gradient(90deg,rgba(255,255,255,.045) 2px,transparent 2px);background-size:90px 90px}
+.sc{position:absolute;inset:0;display:none;transform-origin:50% 45%}
+.a{position:absolute}
+.anton{font-family:'Anton',sans-serif;text-transform:uppercase;letter-spacing:.01em;line-height:1.07}
+.c{left:0;right:0;text-align:center;padding:0 60px}
+.acc{color:var(--acc)}.red{color:#FF3B30}.grn{color:#25D366}
+.emo{font-family:'Noto Color Emoji',sans-serif;line-height:1}
+.phone{position:absolute;border-radius:72px;background:#0f0f14;border:12px solid #26262e;box-shadow:0 40px 120px rgba(0,0,0,.7),inset 0 0 0 2px #3a3a44;overflow:hidden}
+.phone .notch{position:absolute;left:50%;top:18px;width:150px;height:34px;margin-left:-75px;border-radius:20px;background:#000;z-index:5}
+.stamp{position:absolute;border:12px solid #FF3B30;color:#FF3B30;font-family:'Anton';text-transform:uppercase;padding:10px 40px;border-radius:24px;background:rgba(10,0,0,.6);white-space:nowrap}
+.row{position:absolute;left:90px;right:90px;height:150px;border-radius:30px;background:#15151c;border:2px solid #26262f;display:flex;align-items:center;padding:0 44px;gap:20px}
+.row .lab{font:700 46px Poppins;flex:1;white-space:nowrap;overflow:hidden}
+.row .val{font:400 104px Anton;white-space:nowrap}
+.bub{position:absolute;padding:20px 32px;border-radius:34px 34px 34px 8px;background:#26262f;font:600 40px Poppins;box-shadow:0 12px 40px rgba(0,0,0,.4);white-space:nowrap}
+.bub.me{background:#1f8a4c;border-radius:34px 34px 8px 34px}
+.neg{position:absolute;left:70px;right:70px;height:190px;border-radius:30px;background:#16161d;border:3px solid #FF3B30;display:flex;align-items:center;padding:0 36px;overflow:hidden}
+.neg .t{font:400 64px Anton;text-transform:uppercase;flex:1;white-space:nowrap}
+.neg .ic{width:110px;height:110px;border-radius:50%;background:#FF3B30;display:flex;align-items:center;justify-content:center;margin-right:30px;flex:none;font-size:62px}
+.neg .bar{position:absolute;left:176px;right:36px;top:92px;height:10px;background:#FF3B30;transform-origin:left}
+.tile{position:absolute;width:440px;height:200px;border-radius:34px;background:#15151c;border:3px solid #2b2b35;display:flex;align-items:center;padding:0 28px;gap:22px}
+.tile .e{font-size:92px}
+.tile .n{font:800 40px Poppins;line-height:1.1}
+.pil{position:absolute;left:70px;right:70px;height:230px;border-radius:40px;background:#14141b;border:3px solid var(--acc);display:flex;align-items:center;padding:0 40px;gap:34px}
+.pil .e{font-size:110px}
+.pil .t{font:400 72px Anton;text-transform:uppercase;line-height:1.05}
+.chk{width:84px;height:84px;border-radius:50%;background:#25D366;display:flex;align-items:center;justify-content:center;flex:none}
+#caps{position:absolute;left:60px;right:60px;top:1450px;text-align:center;font:800 60px Poppins;line-height:1.15;text-shadow:0 4px 0 #000,0 0 30px rgba(0,0,0,.85)}
+#caps span{display:inline-block;white-space:pre}
+#wipe{position:absolute;left:0;top:0;width:1080px;height:1920px;background:var(--acc);display:none}
+#flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+#vig{position:absolute;inset:0;background:radial-gradient(ellipse 80% 65% at 50% 45%,rgba(0,0,0,0) 55%,rgba(0,0,0,.55) 100%)}
+#grain{position:absolute;inset:0;width:100%;height:100%;opacity:.06;mix-blend-mode:overlay}
+</style></head><body>
+<div id="stage"><div id="cam"><div id="bgl"><div id="glow"></div><div id="grid"></div></div><div id="scenes"></div></div>
+<div id="caps"></div><div id="wipe"></div><div id="flash"></div><div id="vig"></div><canvas id="grain" width="540" height="960"></canvas></div>
+<script>window.STORY=__STORY__;</script>
+<script>__ENGINE__</script>
+</body></html>

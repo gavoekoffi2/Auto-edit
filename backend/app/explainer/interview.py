@@ -18,28 +18,70 @@ from .templates import ANGLES, TEMPLATES
 
 logger = logging.getLogger(__name__)
 
+from .montages import (DOMAINS, MONTAGES, match_domain, match_montage, match_voice, public_voices,
+                       resolve_domain)
+
+_HEX = re.compile(r"^[0-9a-f]{32}$")
+_is_classic = lambda b: b.get("montage") == "classique"  # noqa: E731
+
+OFFER_Q = {
+    "ecommerce": "Qu'est-ce que tu vends en ligne ? Donne le nom du produit (ou de la gamme).",
+    "physique": "Quel produit veux-tu mettre en avant ? (nom du produit ou de la gamme)",
+    "digital": "Quel est ton produit digital ? (formation, e-book, logiciel, application… et son nom)",
+    "services": "Quel service proposes-tu exactement ? (nom de l'offre)",
+    "food": "Quel plat, produit ou formule veux-tu vendre ?",
+    "beaute": "Quel soin, produit ou prestation veux-tu mettre en avant ?",
+    "immobilier": "Qu'est-ce que tu proposes ? (terrains, maisons, construction, plans…)",
+    "education": "Quelle formation, école ou programme veux-tu promouvoir ?",
+}
+
 STEPS: list[dict[str, Any]] = [
-    {"field": "business", "q": "Bonjour ! Je suis ton motion designer IA 🎬 On va créer ta pub ensemble. Comment s'appelle ton entreprise ou ta marque ?"},
-    {"field": "offer", "q": "Qu'est-ce que tu vends exactement ? (produit, service, formation, abonnement…)"},
-    {"field": "audience", "q": "À qui s'adresse cette pub ? Décris ta cible (ex : médecins et avocats, mamans actives, commerçants de Lomé…)"},
-    {"field": "problem", "q": "Quel est le problème principal de ces personnes, avec leurs mots à elles ?"},
-    {"field": "promise", "q": "Quel résultat concret obtiennent-elles grâce à toi ?"},
-    {"field": "benefits", "q": "Donne-moi 2 ou 3 avantages concrets (un par ligne)."},
-    {"field": "proof", "q": "As-tu une preuve RÉELLE à montrer ? (chiffre vérifiable, nombre de clients, ancienneté…) Sinon réponds « non » — je n'invente jamais de chiffres.",
+    {"field": "domain", "q": "Bonjour ! Je suis ton motion designer IA 🎬 On va créer ta pub vidéo ensemble, de A à Z. Pour commencer : dans quel domaine est ton activité ?",
+     "suggestions": [f"{d['emoji']} {d['name']}" for d in DOMAINS.values()]},
+    {"field": "business", "q": "Comment s'appelle ton entreprise ou ta marque ?"},
+    {"field": "offer", "q": "Qu'est-ce que tu vends exactement ? (nom du produit ou du service)"},
+    {"field": "product_desc", "q": "Décris-le-moi comme à un client : ce que c'est, comment ça marche, ce qui le rend différent des autres."},
+    {"field": "audience", "q": "À qui s'adresse cette pub ? Décris ta cible (ex : femmes actives de Lomé, commerçants, parents d'élèves…)"},
+    {"field": "problem", "q": "Quel est LE problème de ces personnes, avec leurs mots à elles ? (c'est l'accroche de la pub)"},
+    {"field": "consequences", "q": "Qu'est-ce que ce problème leur coûte au quotidien ? Donne 2 ou 3 conséquences concrètes (temps, argent, image, stress…)."},
+    {"field": "promise", "q": "Avec ton produit, quel résultat concret obtiennent-elles ?"},
+    {"field": "benefits", "q": "Donne-moi 3 avantages concrets (un par ligne)."},
+    {"field": "price", "q": "Un prix ou une offre spéciale à annoncer ? (ex : 5 000 FCFA, -20 % cette semaine) — sinon réponds « non ».", "suggestions": ["Non"]},
+    {"field": "proof", "q": "As-tu une preuve RÉELLE à montrer ? (nombre de clients, ancienneté, avis…) Sinon « non » — je n'invente jamais de chiffres.",
      "suggestions": ["Non"]},
-    {"field": "cta_detail", "q": "À la fin, que doit faire la personne et qu'obtient-elle ? (ex : cliquer sur le bouton pour 30 minutes de conseil offertes, écrire sur WhatsApp…)"},
-    {"field": "tone", "q": "Tu préfères qu'on parle à ta cible en « vous » ou en « tu » ?", "suggestions": ["Vouvoiement", "Tutoiement"]},
-    {"field": "template", "q": "Choisis le style visuel :", "suggestions": [t["name"] for t in TEMPLATES.values()]},
+    {"field": "contact_phone", "q": "Quel numéro afficher et faire prononcer à la fin (appel / WhatsApp) ? Sinon « non ».", "suggestions": ["Non"]},
+    {"field": "cta_detail", "q": "Une phrase de fin ou un slogan pour ta marque ? (ex : « Votre peau mérite le meilleur ») — ou « non »."},
+    {"field": "product_asset", "q": "Envoie une photo de ton produit 📸 (sur fond uni, il sera détouré automatiquement et posé sur un socle). Sinon clique « Passer ».",
+     "suggestions": ["Passer"], "upload": True},
+    {"field": "logo_asset", "q": "Et ton logo ? Il apparaîtra sur l'écran de fin.", "suggestions": ["Passer"], "upload": True},
+    {"field": "tone", "q": "On parle à ta cible en « vous » ou en « tu » ?", "suggestions": ["Vouvoiement", "Tutoiement"]},
+    {"field": "montage", "q": "Choisis le mode de montage de ta pub (chaque mode a sa propre mise en scène) :",
+     "suggestions": [m["name"] for m in MONTAGES.values() if m["available"]], "montage": True},
+    {"field": "voice", "q": "Et la voix off ?", "suggestions": [v["name"] for v in public_voices()]},
+    {"field": "template", "q": "Choisis le style visuel :", "suggestions": [t["name"] for t in TEMPLATES.values()], "when": _is_classic},
     {"field": "angle", "q": "Et l'angle publicitaire ? (chaque angle raconte ta pub différemment)",
-     "suggestions": ["Choisis pour moi"] + [a["name"] for a in ANGLES.values()]},
+     "suggestions": ["Choisis pour moi"] + [a["name"] for a in ANGLES.values()], "when": _is_classic},
 ]
 
 REQUIRED = ["business", "offer", "audience", "problem", "promise"]
 
 
+_NO = re.compile(r"(?i)\s*(non|no|aucune?|rien|pas encore|passer|pas de .*|sans)\.?\s*")
+
+
 def _apply(brief: dict[str, Any], field: str, answer: str) -> None:
     a = (answer or "").strip()
-    if field == "benefits":
+    if field == "domain":
+        brief["domain"] = match_domain(a)
+    elif field == "montage":
+        brief["montage"] = match_montage(a)
+    elif field == "voice":
+        brief["voice"] = match_voice(a)
+    elif field in ("price", "contact_phone", "consequences"):
+        brief[field] = "" if _NO.fullmatch(a) else a
+    elif field in ("product_asset", "logo_asset"):
+        brief[field] = a if _HEX.match(a) else ""
+    elif field == "benefits":
         brief["benefits"] = [x.strip(" -•*") for x in re.split(r"\n|;|•", a) if x.strip(" -•*")][:4]
     elif field == "proof":
         brief["proof"] = "" if re.fullmatch(r"(?i)\s*(non|no|aucune?|rien|pas encore)\.?\s*", a) else a
@@ -52,7 +94,7 @@ def _apply(brief: dict[str, Any], field: str, answer: str) -> None:
         low = a.lower()
         brief["angle"] = next((k for k, v in ANGLES.items() if v["name"].lower() in low or k in low), "auto")
     elif field == "cta_detail":
-        brief["cta_detail"] = a
+        brief["cta_detail"] = "" if _NO.fullmatch(a) else a
         if re.search(r"(?i)whatsapp", a):
             brief["cta_action"] = "Écrivez-nous sur WhatsApp grâce au bouton juste en bas de cette vidéo"
     else:
@@ -62,8 +104,11 @@ def _apply(brief: dict[str, Any], field: str, answer: str) -> None:
 def next_step(brief: dict[str, Any]) -> Optional[dict[str, Any]]:
     asked = set(brief.get("_asked", []))
     for st in STEPS:
-        if st["field"] not in asked:
-            return st
+        if st["field"] in asked or (st.get("when") and not st["when"](brief)):
+            continue
+        if st["field"] == "offer":
+            st = {**st, "q": OFFER_Q.get(brief.get("domain", ""), st["q"])}
+        return st
     return None
 
 
@@ -80,25 +125,35 @@ def choose_angle(brief: dict[str, Any]) -> str:
 
 
 def _summary(b: dict[str, Any]) -> str:
-    tpl = TEMPLATES.get(b.get("template", ""), TEMPLATES["prestige"])["name"]
-    ang = ANGLES.get(b.get("angle", ""), ANGLES["douleur"])["name"]
     ben = "".join(f"\n• {x}" for x in b.get("benefits") or [])
-    return (f"Parfait, j'ai tout ce qu'il me faut ✅\n\n**{b.get('business')}** — {b.get('offer')}\n"
-            f"Cible : {b.get('audience')}\nProblème : {b.get('problem')}\nPromesse : {b.get('promise')}{ben}\n"
-            f"Fin : {b.get('cta_detail') or b.get('cta_action')}\nStyle : {tpl} · Angle : {ang}\n\n"
+    mont = MONTAGES.get(b.get("montage", ""), MONTAGES["impact"])["name"]
+    voice = next((v["name"].split(" — ")[0] for v in public_voices() if v["id"] == b.get("voice")), "Henri")
+    if _is_classic(b):
+        tpl = TEMPLATES.get(b.get("template", ""), TEMPLATES["prestige"])["name"]
+        ang = ANGLES.get(b.get("angle", ""), ANGLES["douleur"])["name"]
+        style = f"Montage : {mont} · Style : {tpl} · Angle : {ang}"
+    else:
+        style = f"Montage : {mont} · Voix : {voice}"
+    extra = "".join(x for x in [f"\nPrix / offre : {b['price']}" if b.get("price") else "",
+                                f"\nNuméro : {b['contact_phone']}" if b.get("contact_phone") else "",
+                                "\nPhoto produit : ✅" if b.get("product_asset") else ""])
+    return (f"Parfait, j'ai tout ce qu'il me faut ✅\n\n**{b.get('business')}** — {b.get('offer')} ({resolve_domain(b.get('domain'))['name']})\n"
+            f"Cible : {b.get('audience')}\nProblème : {b.get('problem')}\nCe que ça coûte : {b.get('consequences') or '—'}\n"
+            f"Promesse : {b.get('promise')}{ben}{extra}\n{style}\n\n"
+            "Le script suivra la méthode : problème → agitation → solution → appel à l'action.\n"
             "Clique sur « Créer ma pub » et je m'occupe du script, de la voix off, de l'animation et du son.")
 
 
 def _llm_turn(brief: dict[str, Any], history: list[dict[str, str]], answer: str, key: Optional[str]) -> Optional[dict[str, Any]]:
     from .writer import _extract_json, chat, llm_available
-    missing = [f for f in REQUIRED + ["benefits", "cta_detail"] if not brief.get(f)]
+    missing = [f for f in REQUIRED + ["product_desc", "consequences", "benefits"] if not brief.get(f)]
     prompt = f"""Tu es un motion designer publicitaire chaleureux qui interroge un client (francophone) pour écrire sa pub vidéo.
 Brief actuel (JSON): {json.dumps({k: v for k, v in brief.items() if not k.startswith('_')}, ensure_ascii=False)}
 Champs encore manquants: {missing}
 Historique récent: {json.dumps(history[-6:], ensure_ascii=False)}
 Dernière réponse du client: {answer!r}
 
-Extrais de la dernière réponse TOUTES les informations utiles pour les champs: business, offer, audience, problem, promise, benefits (liste), proof (seulement si réel et fourni), cta_detail, tone (vous/tu).
+Extrais de la dernière réponse TOUTES les informations utiles pour les champs: business, offer, product_desc, audience, problem, consequences, promise, benefits (liste), price (seulement si donné), proof (seulement si réel et fourni), contact_phone, tone (vous/tu).
 N'invente rien. Puis écris une réponse courte (1-2 phrases, tutoiement, ton pro et chaleureux) qui accuse réception et pose UNE seule question pour le champ manquant le plus important. S'il ne manque plus rien, mets done=true.
 Réponds uniquement en JSON: {{"patch": {{...}}, "reply": "...", "done": false}}"""
     try:
@@ -106,6 +161,28 @@ Réponds uniquement en JSON: {{"patch": {{...}}, "reply": "...", "done": false}}
         return data if isinstance(data, dict) else None
     except Exception as e:
         logger.warning("entretien IA indisponible: %s", e)
+        return None
+
+
+FOLLOWUP = {
+    "product_desc": "Peux-tu m'en dire un peu plus ? Ce qui le rend vraiment différent : ingrédients, matière, méthode, garantie, livraison…",
+    "problem": "Donne-moi une situation concrète où tes clients vivent ce problème (le moment, ce qu'ils ressentent, ce qu'ils se disent).",
+    "consequences": "Et concrètement, qu'est-ce que ça leur fait perdre ? (argent, temps, clients, confiance, image…)",
+    "promise": "Quel changement visible après ? Plus il est concret (avant / après), plus la pub convainc.",
+}
+
+
+def _llm_followup(brief: dict[str, Any], field: str, answer: str, key: Optional[str]) -> Optional[str]:
+    from .writer import chat
+    ctx = {k: v for k, v in brief.items() if not k.startswith("_") and v}
+    prompt = (f"Tu es un motion designer publicitaire qui interroge un client pour écrire sa pub (méthode problème → solution).\n"
+              f"Brief: {json.dumps(ctx, ensure_ascii=False)}\nChamp: {field}. Sa réponse est trop vague: {answer!r}.\n"
+              "Pose UNE question courte (tutoiement, chaleureuse, 1 phrase, avec un exemple adapté à SON produit) pour obtenir un détail concret et vendeur. "
+              "Réponds uniquement par la question.")
+    try:
+        q = chat(prompt, key, temperature=0.5, timeout=30).strip().strip('"')
+        return q if 10 < len(q) < 300 and q.endswith("?") else None
+    except Exception:  # noqa: BLE001
         return None
 
 
@@ -120,12 +197,24 @@ def interview_turn(brief: dict[str, Any] | None, answer: Optional[str] = None,
     from .writer import llm_available
     use_llm = bool(api_key) if api_key is not None else llm_available()
     key = api_key or None
-    if answer is not None and current:
+    fu = b.pop("_followup", None)
+    if answer is not None and fu:
+        # réponse à une question d'approfondissement : complète le champ
+        if not _NO.fullmatch(answer.strip()):
+            b[fu] = (str(b.get(fu) or "") + ". " + answer.strip()).strip(". ") if b.get(fu) else answer.strip()
+    elif answer is not None and current:
         _apply(b, current, answer)
         if current not in b["_asked"]:
             b["_asked"].append(current)
+        # l'agent creuse une réponse trop vague (une seule fois par champ)
+        if current in FOLLOWUP and len(answer.split()) < 7 and current not in b.setdefault("_dug", []):
+            b["_dug"].append(current)
+            q = _llm_followup(b, current, answer, key) if use_llm else None
+            q = q or FOLLOWUP[current]
+            b["_followup"] = current
+            return {"reply": q, "brief": b, "done": False, "suggestions": ["Non, c'est tout"], "field": current, "upload": False, "montage_picker": False}
         # l'IA complète les autres champs à partir d'une réponse riche
-        if use_llm and current in ("business", "offer", "audience", "problem", "promise") and len(answer) > 60:
+        if use_llm and current in ("business", "offer", "product_desc", "audience", "problem", "promise") and len(answer) > 60:
             res = _llm_turn(b, history or [], answer, key)
             if res and isinstance(res.get("patch"), dict):
                 for k, v in res["patch"].items():
@@ -142,13 +231,15 @@ def interview_turn(brief: dict[str, Any] | None, answer: Optional[str] = None,
         return {"reply": _summary(b), "brief": clean, "done": True, "suggestions": ["Créer ma pub"], "field": None}
     b["_current"] = st["field"]
     q = st["q"]
-    if st["field"] == "business" and answer is not None:
+    if st["field"] == "domain" and answer is not None:
         q = st["q"].split("! ", 1)[-1]
-    return {"reply": q, "brief": b, "done": False, "suggestions": st.get("suggestions", []), "field": st["field"]}
+    return {"reply": q, "brief": b, "done": False, "suggestions": st.get("suggestions", []), "field": st["field"],
+            "upload": bool(st.get("upload")), "montage_picker": bool(st.get("montage"))}
 
 
 def brief_from_interview(b: dict[str, Any]) -> Brief:
-    data = {k: v for k, v in (b or {}).items() if not k.startswith("_")}
+    # les chemins de fichiers ne viennent JAMAIS du client (résolus par le worker depuis les ids)
+    data = {k: v for k, v in (b or {}).items() if not k.startswith("_") and k not in ("product_image_path", "logo_path")}
     if data.get("angle") in (None, "", "auto"):
         data["angle"] = choose_angle(data)
     return Brief.from_dict(data)

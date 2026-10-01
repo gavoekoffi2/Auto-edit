@@ -24,7 +24,18 @@ class Brief:
     brand_color: Optional[str] = None
     duration: int = 40                 # secondes visées
     disclaimer: str = ""               # mention légale courte si nécessaire
-    voice: Optional[str] = None        # id de voix (provider-dépendant)
+    voice: Optional[str] = None        # id de voix (provider-dépendant) ; « eleven:<id> » = ElevenLabs
+    # --- Studio Pub (montages) ---
+    montage: str = "impact"            # mode de montage (grammaire), cf. montages.MONTAGES
+    domain: str = ""                   # domaine d'activité (ecommerce, physique, digital, services…)
+    product_desc: str = ""             # description du produit / service
+    consequences: str = ""             # ce que le problème coûte à la cible (agitation)
+    price: str = ""                    # prix ou offre spéciale (fourni par le client)
+    contact_phone: str = ""            # numéro affiché et prononcé à la fin
+    product_asset: str = ""            # photo produit importée (id)
+    logo_asset: str = ""               # logo importé (id)
+    product_image_path: str = ""       # chemins résolus par le worker (internes)
+    logo_path: str = ""
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Brief":

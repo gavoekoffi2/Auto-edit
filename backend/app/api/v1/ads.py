@@ -83,7 +83,9 @@ def _out(p: AdProject) -> AdOut:
 
 @router.get("/catalog")
 async def catalog():
-    return {"templates": public_templates(), "angles": public_angles()}
+    from app.explainer.montages import public_domains, public_montages, public_voices
+    return {"templates": public_templates(), "angles": public_angles(), "montages": public_montages(),
+            "domains": public_domains(), "voices": public_voices()}
 
 
 @router.post("/interview")
@@ -97,8 +99,13 @@ async def interview(body: InterviewIn, user: User = Depends(get_current_user)):
 async def preview_script(body: AdCreate, user: User = Depends(get_current_user)):
     import anyio
     from app.explainer.writer import write_storyboard
+    from app.explainer.montages import resolve_montage
     brief = brief_from_interview(body.brief)
-    board = await anyio.to_thread.run_sync(lambda: write_storyboard(brief))
+    if resolve_montage(brief.montage)["engine"] == "impact":
+        from app.explainer.impact_writer import write_impact
+        board = await anyio.to_thread.run_sync(lambda: write_impact(brief))
+    else:
+        board = await anyio.to_thread.run_sync(lambda: write_storyboard(brief))
     return {"brief": brief.to_dict(), "storyboard": board.to_dict()}
 
 
@@ -123,7 +130,8 @@ async def create_ad(body: AdCreate, request: Request, user: User = Depends(get_c
             AdProject.status != "failed"))).scalar() or 0
         if monthly >= settings.ADS_MAX_PER_MONTH_FREE:
             raise http_error("QUOTA_MONTHLY_REACHED", _rid(request))
-    proj = AdProject(user_id=user.id, title=(brief.business or "Ma pub")[:255], template=brief.template,
+    proj = AdProject(user_id=user.id, title=(brief.business or "Ma pub")[:255],
+                     template=brief.template if brief.montage == "classique" else brief.montage,
                      angle=brief.angle, brief=brief.to_dict(), storyboard=body.storyboard, status="pending")
     db.add(proj)
     await db.commit()

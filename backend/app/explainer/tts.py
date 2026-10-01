@@ -16,6 +16,7 @@ import asyncio
 import base64
 import logging
 import os
+import re
 import ssl
 import subprocess
 from dataclasses import dataclass, field
@@ -106,15 +107,20 @@ def _edge(lines: list[str], voice: str, rate: str) -> list[tuple[np.ndarray, lis
 
 
 # ----------------------------------------------------------------- ElevenLabs
-def _eleven(lines: list[str], voice: str, api_key: str) -> list[tuple[np.ndarray, list[Word]]]:
+def _eleven(lines: list[str], voice: str, api_key: str, speed: float = 1.0) -> list[tuple[np.ndarray, list[Word]]]:
     import httpx
     out = []
     with httpx.Client(timeout=120) as cl:
-        for text in lines:
+        for i, text in enumerate(lines):
+            vs = {"stability": 0.45, "similarity_boost": 0.8, "style": 0.35}
+            if abs(speed - 1.0) > 0.01:
+                vs["speed"] = max(0.7, min(1.2, speed))
             r = cl.post(f"https://api.elevenlabs.io/v1/text-to-speech/{voice}/with-timestamps",
                         headers={"xi-api-key": api_key, "Content-Type": "application/json"},
-                        json={"text": text, "model_id": "eleven_multilingual_v2",
-                              "voice_settings": {"stability": 0.45, "similarity_boost": 0.8, "style": 0.35}})
+                        json={"text": text, "model_id": "eleven_multilingual_v2", "voice_settings": vs,
+                              # continuité de l'intonation d'une phrase à l'autre
+                              "previous_text": " ".join(lines[max(0, i - 2):i]),
+                              "next_text": lines[i + 1] if i + 1 < len(lines) else ""})
             r.raise_for_status()
             data = r.json()
             audio = _decode(base64.b64decode(data["audio_base64"]))
@@ -135,18 +141,52 @@ def _eleven(lines: list[str], voice: str, api_key: str) -> list[tuple[np.ndarray
     return out
 
 
+def _squeeze(a: np.ndarray, words: list[Word], max_gap: float) -> tuple[np.ndarray, list[Word]]:
+    """Raccourcit les silences internes trop longs (hésitations) et recale les mots."""
+    h = int(0.01 * SR)
+    if len(a) < 4 * h:
+        return a, words
+    env = np.sqrt(np.convolve(a.astype(np.float64) ** 2, np.ones(h) / h, "same"))[::h]
+    thr = max(0.006, float(env.max()) * 0.03)
+    quiet = env < thr
+    keep = np.ones(len(a), bool); cuts: list[tuple[float, float]] = []
+    i = 0; n = len(quiet); mg = int(max_gap / 0.01)
+    while i < n:
+        if quiet[i]:
+            j = i
+            while j < n and quiet[j]:
+                j += 1
+            if j - i > mg and i > 0 and j < n:
+                s0, s1 = (i + mg // 2) * h, (j - mg // 2) * h
+                keep[s0:s1] = False; cuts.append((s0 / SR, (s1 - s0) / SR))
+            i = j
+        else:
+            i += 1
+    if not cuts:
+        return a, words
+    def shift(t: float) -> float:
+        return t - sum(d for c, d in cuts if c < t)
+    return a[keep], [Word(w.w, round(shift(w.s), 3), round(shift(w.e), 3)) for w in words]
+
+
 # ----------------------------------------------------------------- public
 def synthesize(lines: list[str], out_wav: str, *, voice: Optional[str] = None, rate: str = "+5%",
                pauses: Optional[list[float]] = None, lead: float = 0.3, tail: float = 2.6,
-               provider: Optional[str] = None) -> VoiceTrack:
+               provider: Optional[str] = None, max_inner_pause: float = 0.0) -> VoiceTrack:
     """Synthétise les phrases, les enchaîne et renvoie le minutage global."""
     from .conf import setting
     key = setting("ELEVENLABS_API_KEY")
-    prov = provider or ("elevenlabs" if key else "edge")
+    eleven_id = None
+    if voice and voice.startswith("eleven:"):
+        eleven_id = voice.split(":", 1)[1] or setting("ELEVENLABS_VOICE_ID") or DEFAULT_ELEVEN_VOICE
+        voice = None
+    # une voix edge choisie explicitement reste edge, même si une clé ElevenLabs existe
+    prov = provider or ("elevenlabs" if key and (eleven_id or not voice) else "edge")
+    speed = 1.0 + (float(rate.strip("%")) / 100 if re.fullmatch(r"[+-]\d+%", rate or "") else 0.0)
     parts: list[tuple[np.ndarray, list[Word]]]
     if prov == "elevenlabs" and key:
         try:
-            parts = _eleven(lines, voice or DEFAULT_ELEVEN_VOICE, key)
+            parts = _eleven(lines, eleven_id or voice or DEFAULT_ELEVEN_VOICE, key, speed=speed)
         except Exception as e:  # repli gratuit
             logger.warning("ElevenLabs indisponible (%s), repli edge-tts", e)
             prov = "edge"
@@ -159,6 +199,9 @@ def synthesize(lines: list[str], out_wav: str, *, voice: Optional[str] = None, r
     pos = lead; segs = []; words: list[Word] = []; spans = []; per_line = []
     for i, (a, ws) in enumerate(parts):
         a, off = _trim(a)
+        if max_inner_pause:
+            a, ws = _squeeze(a, [Word(w.w, max(0.0, w.s - off), max(0.0, w.e - off)) for w in ws], max_inner_pause)
+            off = 0.0
         dur = len(a) / SR
         lw = [Word(w.w, round(pos + max(0.0, w.s - off), 3), round(pos + max(0.0, w.e - off), 3)) for w in ws]
         segs.append((pos, a)); spans.append((round(pos, 3), round(pos + dur, 3))); words.extend(lw); per_line.append(lw)
