@@ -160,7 +160,7 @@
       const fg = world(el, PAL[i % PAL.length]);
       const lines = (p.lines && p.lines.length ? p.lines : [sh.text]).slice(0, 3);
       const z = SIDE ? { x: 140 * u, y: H * .2, w: W - 280 * u, h: H * .6 } : { x: 70 * u, y: H * .26, w: W - 140 * u, h: H * .46 };
-      const box = mk(el, `<div class="a" style="left:${z.x}px;top:${z.y}px;width:${z.w}px;height:${z.h}px;display:flex;flex-direction:column;justify-content:center;gap:${12 * u}px;text-align:center">${lines.map((l, k) => `<div class="ln" style="font:${k === lines.length - 1 ? `400 ${150 * u}px Anton;text-transform:uppercase` : `italic 700 ${64 * u}px Poppins`};color:${fg};line-height:1">${letters(l)}</div>`).join('')}</div>`);
+      const box = mk(el, `<div class="a" style="left:${z.x}px;top:${z.y}px;width:${z.w}px;height:${z.h}px;display:flex;flex-direction:column;justify-content:center;gap:${12 * u}px;text-align:center">${lines.map((l, k) => `<div class="ln" style="font:${k === lines.length - 1 ? `400 ${(SIDE ? 220 : 150) * u}px Anton;text-transform:uppercase` : `italic 700 ${64 * u}px Poppins`};color:${fg};line-height:1">${letters(l)}</div>`).join('')}</div>`);
       [...box.children].forEach((l) => fitBox(l, z.w, z.h / lines.length, 24));
       const ts = T.lineStarts(lines); ts.forEach((x, k) => ev(x, k === lines.length - 1 ? 'impact' : 'blip', .6));
       return { box, ts };
