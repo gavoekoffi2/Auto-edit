@@ -242,7 +242,7 @@
 
   // ---------------------------------------------------------------- moteur générique
   let MONTAGE = null;
-  function register(m) { MONTAGE = m; }
+  function register(m) { MONTAGE = m; if (window.KIT) window.KIT.M = m; }
 
   function start() {
     const stage = $('stage');
