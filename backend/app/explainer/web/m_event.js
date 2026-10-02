@@ -80,7 +80,7 @@
     build(el, p, T, sh, i) {
       dark(el, i + 1);
       const tt = mk(el, `<div class="a" style="left:${80 * u}px;top:${SIDE ? H * .3 : H * .36}px;width:${W - 160 * u}px;text-align:center;font:400 ${220 * u}px Anton;color:#fff;text-transform:uppercase;line-height:.95">${letters(p.text || sh.text)}</div>`); fitBox(tt, W - 160 * u, SIDE ? H * .4 : H * .3, 40);
-      const tb = T.at(p.at, 0, .2); ev(tb, 'impact_big', 1);
+      const tb = Math.min(T.at(p.at, 0, .2), sh.start + .45); ev(tb, 'impact_big', 1);
       return { tt, tb };
     },
     update(t, c, p, T, sh) { const q = P(t, c.tb - .1, c.tb + .25); c.tt.style.opacity = cl(q * 3); c.tt.style.transform = `scale(${lerp(2.2, 1, eo(q))})`; kick(t, c.tb + .05, 22); flash(t, c.tb, .35); },

@@ -44,9 +44,10 @@
   // Accroche : pilule 3D géante qui bascule + phrase
   SC.ap_hook = {
     build(el, p, T, sh, i) {
-      const pl = mk(el, `<div class="a" style="left:0;right:0;top:${SIDE ? H * .26 : H * .17}px;text-align:center">${pill(p.pill || 'STOP', ACC, SIDE ? 120 : 140)}</div>`);
-      const ln = mk(el, `<div class="a" style="left:${80 * u}px;top:${SIDE ? H * .55 : H * .31}px;width:${W - 160 * u}px;text-align:center;font:700 ${76 * u}px Poppins;color:${NAVY};line-height:1.12">${letters(p.line || sh.text)}</div>`); fitBox(ln, W - 160 * u, SIDE ? H * .3 : H * .28, 26);
-      const ph = SIDE ? null : phone3d(el, i, 'dashboard', { title: PRODUCT.name }, (W - PW * .8) / 2, H * .62, PW * .8);
+      const TALL = O === 'tall';
+      const pl = mk(el, `<div class="a" style="left:0;right:0;top:${SIDE ? H * .26 : TALL ? H * .07 : H * .17}px;text-align:center">${pill(p.pill || 'STOP', ACC, SIDE ? 120 : 140)}</div>`);
+      const ln = mk(el, `<div class="a" style="left:${80 * u}px;top:${SIDE ? H * .55 : TALL ? H * .285 : H * .31}px;width:${W - 160 * u}px;text-align:center;font:700 ${76 * u}px Poppins;color:${NAVY};line-height:1.12">${letters(p.line || sh.text)}</div>`); fitBox(ln, W - 160 * u, SIDE ? H * .3 : TALL ? H * .19 : H * .28, 26);
+      const ph = SIDE ? null : phone3d(el, i, 'dashboard', { title: PRODUCT.name }, (W - PW * (TALL ? .62 : .8)) / 2, TALL ? H * .52 : H * .62, PW * (TALL ? .62 : .8));
       const tp = Math.min(T.at(p.at, 0, .1), sh.start + .6); ev(tp, 'whoosh', .6); ev(tp + .25, 'pop_high', .8);
       return { pl, ln, tp, ph };
     },
@@ -72,7 +73,7 @@
       const tt = p.title ? mk(el, `<div class="a" style="left:${80 * u}px;top:${SIDE ? 70 * u : ttl.y}px;width:${W - 160 * u}px;text-align:center;font:800 ${76 * u}px Poppins;color:${NAVY}">${letters(p.title)}</div>`) : null; if (tt) fitBox(tt, W - 160 * u, 200 * u, 26);
       const top0 = SIDE ? H * .26 : H * .25, gap = SIDE ? (H * .64) / Math.max(1, items.length) : 270 * u;
       const ps = items.map((it, i) => { const e = mk(el, `<div class="a" style="left:0;right:0;top:${top0 + i * gap}px;text-align:center"><span style="display:inline-block">${(it.emoji ? `<span class="emo" style="font-size:${90 * u}px;vertical-align:middle;margin-right:${20 * u}px">${esc(it.emoji)}</span>` : '')}</span>${pill(it.text || it, cols[i % cols.length], SIDE ? 64 : 76, W - (it.emoji ? 300 : 180) * u)}</div>`); return e; });
-      const ts = T.seq(items, 'at', .05, .8); ts.forEach((x) => { ev(x, 'whoosh', .45); ev(x + .2, 'pop', .7); });
+      const ts = T.seq(items, 'at', .05, .8); if (ts.length) ts[0] = Math.min(ts[0], sh.start + .35); ts.forEach((x) => { ev(x, 'whoosh', .45); ev(x + .2, 'pop', .7); });
       return { tt, ps, ts };
     },
     update(t, c, p, T, sh) { if (c.tt) typeIn(c.tt, t, sh.start, .5); c.ps.forEach((e, i) => tumble(e, t, c.ts[i], .5, i % 2 ? 4 : -4)); },

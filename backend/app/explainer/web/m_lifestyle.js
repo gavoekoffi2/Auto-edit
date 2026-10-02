@@ -45,7 +45,7 @@
       const pw = SIDE ? W * .34 : W * .6;
       const scr = (K.S.screens || [])[i % Math.max(1, (K.S.screens || []).length)];
       const inner = scr ? `<img src="${scr}" style="width:100%;height:100%;object-fit:cover">` : `<div style="width:100%;height:100%;background:linear-gradient(135deg,#111,#2b2b33);display:flex;align-items:center;justify-content:center;padding:8%;box-sizing:border-box"><div class="ttx" style="font:400 ${pw * .22}px Anton;color:#fff;text-transform:uppercase;line-height:.95;transform:rotate(90deg);text-align:center;width:${pw * 1.6}px">${esc(p.screen || PRODUCT.name || '')}</div></div>`;
-      const ph = mk(el, `<div class="a" style="left:${SIDE ? W * .48 : W * .3}px;top:${SIDE ? H * .1 : H * .12}px;transform-origin:50% 50%">${LIB.phone(pw, inner)}</div>`);
+      const ph = mk(el, `<div class="a" style="left:${SIDE ? W * .6 : W * .3}px;top:${SIDE ? H * .1 : H * .12}px;transform-origin:50% 50%">${LIB.phone(pw, inner)}</div>`);
       const ln = ital(el, p.line || sh.text, SIDE ? { x: 80 * u, y: H * .3, w: W * .4, h: H * .4 } : { x: 70 * u, y: H * .74, w: W - 140 * u, h: H * .16 }, fg, SIDE ? 60 : 64, SIDE ? 'left' : 'center');
       ev(sh.start + .05, 'whoosh_deep', .6);
       return { ph, ln };
@@ -88,7 +88,7 @@
     build(el, p, T, sh, i) {
       const fg = world(el, '#111827');
       const tt = big(el, p.text || sh.text, SIDE ? { x: 120 * u, y: H * .3, w: W - 240 * u, h: H * .4 } : { x: 70 * u, y: H * .36, w: W - 140 * u, h: H * .3 }, fg, 220, 'center');
-      const tb = T.at(p.at, 0, .2); ev(tb, 'impact_big', 1);
+      const tb = Math.min(T.at(p.at, 0, .2), sh.start + .45); ev(tb, 'impact_big', 1);
       return { tt, tb };
     },
     update(t, c, p, T, sh) { const q = P(t, c.tb - .1, c.tb + .25); c.tt.style.transform = `scale(${lerp(2, 1, eo(q))})`; c.tt.style.opacity = cl(q * 3); kick(t, c.tb + .05, 20); flash(t, c.tb, .25); },
