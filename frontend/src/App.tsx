@@ -17,6 +17,7 @@ const Editor = lazy(() => import('./pages/Editor'))
 const Clips = lazy(() => import('./pages/Clips'))
 const AdStudio = lazy(() => import('./pages/AdStudio'))
 const Studio = lazy(() => import('./pages/Studio'))
+const Shorts = lazy(() => import('./pages/Shorts'))
 const Pricing = lazy(() => import('./pages/Pricing'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
@@ -124,6 +125,14 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <Studio />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/shorts"
+              element={
+                <ProtectedRoute>
+                  <Shorts />
                 </ProtectedRoute>
               }
             />

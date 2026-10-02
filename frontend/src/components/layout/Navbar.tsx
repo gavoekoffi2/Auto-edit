@@ -41,6 +41,9 @@ export default function Navbar() {
                   Studio
                   <span className="absolute -right-2 -top-1.5 h-1.5 w-1.5 rounded-full bg-accent-400 shadow-[0_0_10px_rgba(251,146,60,.9)]" />
                 </Link>
+                <Link to="/shorts" className="whitespace-nowrap text-dark-300 hover:text-white transition-colors">
+                  Shorts
+                </Link>
                 <Link to="/clips" className="text-dark-300 hover:text-white transition-colors">
                   Clips
                 </Link>

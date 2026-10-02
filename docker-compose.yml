@@ -66,6 +66,11 @@ x-backend-env: &backend-env
   LLM_BASE_URL: ${LLM_BASE_URL:-}
   LLM_API_KEY: ${LLM_API_KEY:-}
   LLM_MODEL: ${LLM_MODEL:-auto:smart}
+  # Jev (décisions du moteur Shorts) via la Decisions API d'OpenRouter
+  JEV_ENABLED: ${JEV_ENABLED:-1}
+  JEV_MODEL: ${JEV_MODEL:-typesafe/jev-1.13}
+  TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+  SHORTS_WHISPER_MODEL: ${SHORTS_WHISPER_MODEL:-}
   BROLL_STYLE: ${BROLL_STYLE:-african_business_premium}
   BROLL_MAX_CUES_PER_VIDEO: ${BROLL_MAX_CUES_PER_VIDEO:-14}
   BROLL_SHORTS_MAX_DURATION_SECONDS: ${BROLL_SHORTS_MAX_DURATION_SECONDS:-90.0}

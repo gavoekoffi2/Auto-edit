@@ -60,10 +60,16 @@ export interface JobOptions {
   /** Noms propres / mots-clés qui aident la transcription. */
   vocabulary?: string
   cleanup_level?: 'off' | 'light' | 'balanced' | 'aggressive'
+  /** Shorts face caméra: habillage (auto ou thème imposé). */
+  shorts_theme?: 'auto' | 'or_noir' | 'braise' | 'ocean' | 'menthe' | 'royal'
+  /** Shorts face caméra: auto | cadre (fenêtre 4:5) | plein (9:16 plein écran). */
+  shorts_layout?: 'auto' | 'cadre' | 'plein'
 }
 
 export interface JobCreateData {
   video_id: string
+  /** Shorts face caméra: rushes supplémentaires (le premier est `video_id`). */
+  extra_video_ids?: string[]
   job_type?: string
   mode?: string
   params?: Record<string, unknown>

@@ -149,8 +149,32 @@ async def create_job(
 
     # Durée autorisée par le plan (une vidéo importée pour Clips, dont la
     # limite est plus longue, ne doit pas servir à contourner celle du montage).
+    # Shorts face caméra: rushes supplémentaires, tous à l'utilisateur et encore sur disque.
+    rushes: list[Video] = [video]
+    if (data.mode or "") == "shorts_facecam" and data.extra_video_ids:
+        seen = {video.id}
+        for vid in data.extra_video_ids:
+            if vid in seen:
+                continue
+            seen.add(vid)
+            r = (await db.execute(select(Video).where(Video.id == vid, Video.user_id == current_user.id,
+                                                      Video.deleted_at.is_(None)))).scalar_one_or_none()
+            if not r:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Un des rushes est introuvable")
+            if not os.path.exists(get_absolute_path(r.original_path)):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                    detail=f"Le fichier du rush « {r.title} » a expiré. Réimporte-le.")
+            rushes.append(r)
+    total_s = sum((r.duration_s or 0) for r in rushes)
+
     from app.services.plans import effective_video_duration_limit_s
     limit_s = effective_video_duration_limit_s(current_user, clips=False)
+    if limit_s is not None and len(rushes) > 1 and total_s > limit_s + 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(f"Ton plan permet de monter {limit_s / 60:g} min de rushes au total "
+                    f"(ces {len(rushes)} rushes durent {total_s / 60:.1f} min)."),
+        )
     if limit_s is not None and (video.duration_s or 0) > limit_s + 1:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -210,10 +234,15 @@ async def create_job(
         merged_params["style_history"] = await _style_history(db, current_user.id)
         merged_params["user_id"] = str(current_user.id)
 
+    if (data.mode or "") == "shorts_facecam":
+        # chemins relatifs (résolus par le worker), dans l'ordre d'import
+        merged_params["rush_paths"] = [r.original_path for r in rushes]
+        merged_params["user_id"] = str(current_user.id)
+
     from app.config import settings
     pipeline_version = data.pipeline_version or settings.PIPELINE_VERSION
-    if (data.mode or "") == "studio_facecam":
-        pipeline_version = "v2"  # moteur Studio = pipeline v2 uniquement
+    if (data.mode or "") in ("studio_facecam", "shorts_facecam"):
+        pipeline_version = "v2"  # moteurs Studio / Shorts = pipeline v2 uniquement
 
     # Même pour les clients API qui omettent `mode`, le moteur produit par
     # défaut doit être explicite et persistant dans le job.

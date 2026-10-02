@@ -77,6 +77,10 @@ class JobOptions(BaseModel):
     logo_asset: Optional[str] = Field(default=None, pattern=r"^[0-9a-f]{32}$")
     brand_name: Optional[str] = Field(default=None, max_length=60)
     vocabulary: Optional[str] = Field(default=None, max_length=300)
+    # Shorts face caméra: habillage (auto | or_noir | braise | ocean | menthe | royal)
+    # et cadrage (auto | cadre = fenêtre 4:5 | plein = 9:16 plein écran).
+    shorts_theme: Optional[str] = Field(default=None, pattern=r"^(auto|or_noir|braise|ocean|menthe|royal)$")
+    shorts_layout: Optional[str] = Field(default=None, pattern=r"^(auto|cadre|plein)$")
 
     @field_validator("broll_demographic")
     @classmethod
@@ -170,6 +174,8 @@ class JobOptions(BaseModel):
 
 class JobCreate(BaseModel):
     video_id: UUID
+    # Shorts face caméra: rushes supplémentaires (le 1er rush est `video_id`).
+    extra_video_ids: Optional[list[UUID]] = Field(default=None, max_length=9)
     job_type: str = "pipeline"
     mode: Optional[str] = None
     params: Optional[dict] = None

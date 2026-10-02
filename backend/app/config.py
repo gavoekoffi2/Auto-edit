@@ -56,6 +56,9 @@ VALID_MODES = {
     "motion_pro_solaire",
     # Studio face caméra: un style unique par vidéo (ADN de style, anti-répétition)
     "studio_facecam",
+    # Shorts face caméra (app.explainer.shorts): plusieurs rushes -> vidéo TikTok
+    # remise en ordre, nettoyée, habillée (LLM + Jev + règles).
+    "shorts_facecam",
 }
 VALID_PIPELINE_VERSIONS = {"v1", "v2"}
 VALID_IMAGE_PROVIDERS = {"openrouter", "replicate", "stability", "noop"}
@@ -111,6 +114,11 @@ class Settings(BaseSettings):
     LLM_BASE_URL: str = ""
     LLM_API_KEY: str = ""
     LLM_MODEL: str = "auto:smart"
+    # Jev (TypeSafe): décisions du moteur Shorts (prises, faux départs, thème, vérif. des cartes)
+    JEV_ENABLED: str = "1"
+    JEV_MODEL: str = "typesafe/jev-1.13"
+    TYPESAFE_API_KEY: str = ""
+    SHORTS_WHISPER_MODEL: str = ""
     EXPLAINER_RENDER_WORKERS: int = 0   # 0 = nombre de CPU
 
     # ---------------------------------------------------------------------

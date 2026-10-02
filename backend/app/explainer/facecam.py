@@ -56,9 +56,11 @@ def probe(path: str) -> dict[str, Any]:
 
 
 # ----------------------------------------------------------------- transcription
-def transcribe(video: str, workdir: str, language: Optional[str] = None, prompt: Optional[str] = None) -> dict[str, Any]:
+def transcribe(video: str, workdir: str, language: Optional[str] = None, prompt: Optional[str] = None,
+               model: Optional[str] = None) -> dict[str, Any]:
     """Transcription mot à mot au format « vu » du moteur Auto Edit.
-    `prompt`: vocabulaire du client (marque, mots-clés) — Whisper les écrit juste."""
+    `prompt`: vocabulaire du client (marque, mots-clés) — Whisper les écrit juste.
+    `model`: taille Whisper (défaut WHISPER_MODEL)."""
     cached = Path(workdir, "transcript_vu.json")
     if cached.exists() and cached.stat().st_mtime >= os.path.getmtime(video):
         return json.loads(cached.read_text())  # reprise d'un rendu interrompu
@@ -67,8 +69,8 @@ def transcribe(video: str, workdir: str, language: Optional[str] = None, prompt:
     lang = language or setting("WHISPER_LANGUAGE") or None
     try:
         from faster_whisper import WhisperModel  # type: ignore
-        model = WhisperModel(setting("WHISPER_MODEL", "small") or "small", device="cpu", compute_type="int8")
-        segs, info = model.transcribe(wav, language=lang, word_timestamps=True, beam_size=5,
+        wm = WhisperModel(model or setting("WHISPER_MODEL", "small") or "small", device="cpu", compute_type="int8")
+        segs, info = wm.transcribe(wav, language=lang, word_timestamps=True, beam_size=5,
                                       condition_on_previous_text=False, initial_prompt=prompt or None)
         segments = [{"start": s.start, "end": s.end, "text": s.text,
                      "words": [{"word": w.word.strip(), "start": w.start, "end": w.end} for w in (s.words or [])]}
@@ -76,7 +78,7 @@ def transcribe(video: str, workdir: str, language: Optional[str] = None, prompt:
         language_out = info.language
     except ImportError:
         from app.processing.transcription_service import TranscriptionService
-        tr = TranscriptionService(model_name=setting("WHISPER_MODEL", "small") or "small").transcribe(video, workdir)
+        tr = TranscriptionService(model_name=model or setting("WHISPER_MODEL", "small") or "small").transcribe(video, workdir)
         segments = [{"start": s.start, "end": s.end, "text": s.text,
                      "words": [{"word": w.text.strip(), "start": w.start, "end": w.end} for w in s.words]}
                     for s in tr.segments]

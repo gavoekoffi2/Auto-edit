@@ -366,6 +366,27 @@ MODE_DEFINITIONS: list[dict] = [
         },
     },
     {
+        "id": "shorts_facecam",
+        "name": "Shorts TikTok face caméra",
+        "icon": "📱",
+        "family": "studio",
+        "badge": "plusieurs rushes",
+        "description": (
+            "Envoie tes rushes bruts, même filmés dans le désordre ou refaits : le moteur "
+            "les transcrit, garde la meilleure prise, coupe silences, répétitions et faux départs, "
+            "remet le discours dans un ordre cohérent, puis habille la vidéo verticale : chapitres, "
+            "sous-titres mot à mot, cartes animées, versets (Louis Segond 1910), scènes plein écran, "
+            "effets sonores et musique."
+        ),
+        "pipeline": "v2",
+        "defaults": {
+            "remove_silence": True, "dynamic_captions": True, "ai_broll": False,
+            "motion_design": True, "music": True, "sfx": True, "vertical_9_16": True,
+            "final_cta": False, "visual_mode": "credit_saver",
+            "shorts_theme": "auto", "shorts_layout": "auto",
+        },
+    },
+    {
         "id": "motion_pro_prestige",
         "name": "Motion Pro · Prestige",
         "icon": "🏆",

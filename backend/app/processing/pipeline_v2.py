@@ -437,6 +437,44 @@ def _run_studio(video_path: str, output_dir: str, mode: str, options: dict, para
     }
 
 
+def _run_shorts(video_path: str, output_dir: str, mode: str, options: dict, params: dict,
+                progress_callback: Optional[ProgressFn]) -> dict:
+    """Délègue au moteur Shorts face caméra (plusieurs rushes); contrat V1/V2."""
+    from app.explainer.shorts import run_shorts
+    from app.services.storage import get_absolute_path
+
+    rushes = [get_absolute_path(p) for p in (params or {}).get("rush_paths") or []]
+    rushes = [p for p in rushes if p and os.path.exists(p)]
+    if not rushes or os.path.abspath(rushes[0]) != os.path.abspath(video_path):
+        rushes = [video_path] + [p for p in rushes if os.path.abspath(p) != os.path.abspath(video_path)]
+    theme = options.get("shorts_theme")
+    layout = options.get("shorts_layout")
+    res = run_shorts(
+        rushes, output_dir,
+        captions=options.get("dynamic_captions", True) is not False,
+        music=options.get("music", True) is not False,
+        vocabulary=options.get("vocabulary") or "",
+        brand=options.get("brand_name") or "",
+        theme=theme if theme and theme != "auto" else None,
+        layout=layout if layout and layout != "auto" else None,
+        progress=(lambda p, m: progress_callback(p, m)) if progress_callback else None,
+    )
+    out = res["output_path"]
+    if not os.path.exists(out) or os.path.getsize(out) == 0:
+        raise RuntimeError("Le moteur Shorts n'a pas produit de vidéo de sortie.")
+    return {
+        "pipeline_version": "v2", "engine": "shorts", "mode": mode, "options": options,
+        "aspect_ratio": "9:16", "visual_mode": "credit_saver", "visualModeUsed": "credit_saver",
+        "aiImagesSkipped": True, "fallbackReason": None,
+        "steps_completed": res.get("steps_completed", []), "steps_failed": res.get("steps_failed", []),
+        "shorts": {k: res.get(k) for k in ("rushes", "layout", "theme", "tag", "chapters", "cards", "takes",
+                                            "direction", "jev_usage", "shots", "sfx_count", "render_seconds")},
+        "motion_design": {"enabled": True, "scenes": res.get("cards", [])},
+        "duration": res.get("duration"), "source_duration": res.get("source_duration"),
+        "output_path": out, "output_size_bytes": os.path.getsize(out),
+    }
+
+
 def run_pipeline_v2(
     video_path: str,
     output_dir: str,
@@ -493,6 +531,8 @@ def run_pipeline_v2(
         return _run_motion_pro(video_path, output_dir, mode or "", options, progress_callback)
     if mode == "studio_facecam":
         return _run_studio(video_path, output_dir, mode, options, params or {}, progress_callback)
+    if mode == "shorts_facecam":
+        return _run_shorts(video_path, output_dir, mode, options, params or {}, progress_callback)
 
     # Collage Premium: le moteur lit sa configuration dans os.environ (comme le
     # reste du moteur Auto Edit). On la dérive des réglages produit + options du

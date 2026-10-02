@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   ArrowRight, Check, Clapperboard, Download, Film, ImagePlus, Loader2, Music2, RefreshCw,
@@ -47,9 +47,14 @@ function Hero() {
       <div className="absolute inset-0 cf-grid-dots opacity-60" />
       <div className="relative grid items-center gap-10 lg:grid-cols-[1.15fr_1fr]">
         <div>
-          <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold tracking-wide text-primary-200">
-            <Clapperboard className="h-3.5 w-3.5" /> Studio face caméra
-          </span>
+          <div className="flex flex-wrap gap-2">
+            <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold tracking-wide text-primary-200">
+              <Clapperboard className="h-3.5 w-3.5" /> Studio face caméra
+            </span>
+            <Link to="/shorts" className="inline-flex items-center gap-2 rounded-full border border-amber-300/30 px-3 py-1 text-xs font-semibold text-amber-200 hover:bg-amber-300/10">
+              Shorts TikTok · plusieurs rushes →
+            </Link>
+          </div>
           <h1 className="mt-5 text-4xl font-bold leading-[1.05] sm:text-5xl text-balance">
             Ta vidéo face caméra, montée comme un <span className="gradient-text">studio de motion design</span>.
           </h1>
