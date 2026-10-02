@@ -133,3 +133,58 @@ def compose_impact(board: Storyboard, voice: VoiceTrack, *, brand: str = "", pro
                 .replace("__STORY__", json.dumps(story, ensure_ascii=False).replace("</", "<\\/"))
                 .replace("__ENGINE__", (WEB / "impact.js").read_text(encoding="utf-8")))
     return html, story
+
+
+# --------------------------------------------------------------------------- modes « kit » (multi-format)
+FORMATS = {"9:16": (1080, 1920), "4:5": (1080, 1350), "1:1": (1080, 1080), "16:9": (1920, 1080)}
+
+
+def _photo_data(path: str, max_side: int = 1100) -> str:
+    """Photo → data URL JPEG (ou PNG si détourée), sans jamais rogner : la mise en page s'en charge."""
+    import io
+    try:
+        from PIL import Image
+        im = Image.open(path); im.load()
+        has_a = im.mode in ("RGBA", "LA") and im.getchannel("A").getextrema()[0] < 250
+        im = im.convert("RGBA" if has_a else "RGB")
+        im.thumbnail((max_side, max_side))
+        buf = io.BytesIO(); im.save(buf, "PNG" if has_a else "JPEG", **({} if has_a else {"quality": 88}))
+        return f"data:image/{'png' if has_a else 'jpeg'};base64," + base64.b64encode(buf.getvalue()).decode()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def compose_kit(board: Storyboard, voice: VoiceTrack, *, montage: str, fmt: str = "9:16", brand: str = "",
+                product_name: str = "", product_image: str | None = None, logo_path: str | None = None,
+                photos: list[str] | None = None, screens: list[str] | None = None, accent: str | None = None,
+                accent2: str | None = None, keywords: list[str] | None = None) -> tuple[str, dict[str, Any], tuple[int, int]]:
+    """Storyboard + voix → page HTML autonome d'un mode « kit » au format demandé."""
+    from .brand import prepare_logo
+    w, h = FORMATS.get(fmt, FORMATS["9:16"])
+    shots: list[dict[str, Any]] = []
+    for i, beat in enumerate(board.beats):
+        start, end = voice.lines[i]
+        words = [{"w": x.w, "s": x.s, "e": x.e} for x in (voice.line_words[i] if i < len(voice.line_words) else [])]
+        shots.append({"start": start, "speechEnd": end, "words": words, "text": beat.text, "scene": dict(beat.scene or {})})
+    for i, sh in enumerate(shots):
+        sh["start"] = 0.0 if i == 0 else round(max(0.0, sh["start"] - 0.12), 3)
+    for i, sh in enumerate(shots):
+        sh["end"] = round(shots[i + 1]["start"], 3) if i + 1 < len(shots) else round(voice.duration, 3)
+    prod = prepare_product(product_image)
+    story = {"duration": round(voice.duration, 3), "format": {"w": w, "h": h, "id": fmt}, "shots": shots, "brand": brand,
+             "accent": accent or None, "accent2": accent2 or None,
+             "product": {"img": prod["img"], "cut": prod["cut"], "name": product_name or brand},
+             "logo": prepare_logo(logo_path) if logo_path else "",
+             "photos": [x for x in (_photo_data(p) for p in (photos or [])[:8]) if x],
+             "screens": [x for x in (_photo_data(p, 900) for p in (screens or [])[:6]) if x],
+             "keywords": keywords or []}
+    html = (WEB / "kit.html").read_text(encoding="utf-8")
+    for f in ["Anton", "DMSerif", "Poppins-500", "Poppins-700", "Poppins-800"]:
+        html = html.replace(f"__FONT_{f}__", base64.b64encode((WEB / "fonts" / f"{f}.woff2").read_bytes()).decode())
+    css_p = WEB / f"m_{montage}.css"
+    html = (html.replace("__W__", str(w)).replace("__H__", str(h))
+                .replace("__MONTAGE_CSS__", css_p.read_text(encoding="utf-8") if css_p.exists() else "")
+                .replace("__STORY__", json.dumps(story, ensure_ascii=False).replace("</", "<\\/"))
+                .replace("__KIT__", (WEB / "kit.js").read_text(encoding="utf-8"))
+                .replace("__MONTAGE_JS__", (WEB / f"m_{montage}.js").read_text(encoding="utf-8")))
+    return html, story, (w, h)

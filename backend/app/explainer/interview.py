@@ -18,8 +18,8 @@ from .templates import ANGLES, TEMPLATES
 
 logger = logging.getLogger(__name__)
 
-from .montages import (DOMAINS, MONTAGES, match_domain, match_montage, match_voice, public_voices,
-                       resolve_domain)
+from .montages import (AUTO, DOMAINS, FORMATS, MONTAGES, auto_montage, match_domain, match_format, match_montage,
+                       match_voice, public_voices, resolve_domain, resolve_format)
 
 _HEX = re.compile(r"^[0-9a-f]{32}$")
 _is_classic = lambda b: b.get("montage") == "classique"  # noqa: E731
@@ -54,9 +54,15 @@ STEPS: list[dict[str, Any]] = [
     {"field": "product_asset", "q": "Envoie une photo de ton produit 📸 (sur fond uni, il sera détouré automatiquement et posé sur un socle). Sinon clique « Passer ».",
      "suggestions": ["Passer"], "upload": True},
     {"field": "logo_asset", "q": "Et ton logo ? Il apparaîtra sur l'écran de fin.", "suggestions": ["Passer"], "upload": True},
+    {"field": "photo_assets", "q": "As-tu des photos à mettre dans la pub ? (toi, ton équipe, tes clients, ton lieu, ton événement — jusqu'à 6). "
+                                   "Sinon clique « Passer » : j'utiliserai des illustrations.", "suggestions": ["Passer"], "upload": True, "multiple": True},
+    {"field": "screen_assets", "q": "Des captures d'écran de ton application ou de ton site ? Elles s'afficheront dans les téléphones et les écrans animés.",
+     "suggestions": ["Passer"], "upload": True, "multiple": True, "when": lambda b: b.get("domain") in ("appli", "digital", "services")},
     {"field": "tone", "q": "On parle à ta cible en « vous » ou en « tu » ?", "suggestions": ["Vouvoiement", "Tutoiement"]},
-    {"field": "montage", "q": "Choisis le mode de montage de ta pub (chaque mode a sa propre mise en scène) :",
-     "suggestions": [m["name"] for m in MONTAGES.values() if m["available"]], "montage": True},
+    {"field": "format", "q": "Où vas-tu publier ta pub ? Je cadre tout le montage pour ce format :",
+     "suggestions": [f"{f['name']} — {f['hint']}" for f in FORMATS], "format_picker": True},
+    {"field": "montage", "q": "Choisis le mode de montage de ta pub (chaque mode a sa propre mise en scène), ou laisse-moi choisir :",
+     "suggestions": ["✨ Choix automatique (recommandé)"] + [m["name"] for m in MONTAGES.values() if m["available"]], "montage": True},
     {"field": "voice", "q": "Et la voix off ?", "suggestions": [v["name"] for v in public_voices()]},
     {"field": "template", "q": "Choisis le style visuel :", "suggestions": [t["name"] for t in TEMPLATES.values()], "when": _is_classic},
     {"field": "angle", "q": "Et l'angle publicitaire ? (chaque angle raconte ta pub différemment)",
@@ -81,6 +87,10 @@ def _apply(brief: dict[str, Any], field: str, answer: str) -> None:
         brief[field] = "" if _NO.fullmatch(a) else a
     elif field in ("product_asset", "logo_asset"):
         brief[field] = a if _HEX.match(a) else ""
+    elif field in ("photo_assets", "screen_assets"):
+        brief[field] = [x for x in re.split(r"[\s,;]+", a) if _HEX.match(x)][:6]
+    elif field == "format":
+        brief["format"] = match_format(a)
     elif field == "benefits":
         brief["benefits"] = [x.strip(" -•*") for x in re.split(r"\n|;|•", a) if x.strip(" -•*")][:4]
     elif field == "proof":
@@ -108,6 +118,10 @@ def next_step(brief: dict[str, Any]) -> Optional[dict[str, Any]]:
             continue
         if st["field"] == "offer":
             st = {**st, "q": OFFER_Q.get(brief.get("domain", ""), st["q"])}
+        if st["field"] == "montage":
+            fmt = resolve_format(brief.get("format"))
+            st = {**st, "suggestions": ["✨ Choix automatique (recommandé)"] + [m["name"] for m in MONTAGES.values()
+                                                                               if m["available"] and fmt in m.get("formats", ["9:16"])]}
         return st
     return None
 
@@ -126,17 +140,24 @@ def choose_angle(brief: dict[str, Any]) -> str:
 
 def _summary(b: dict[str, Any]) -> str:
     ben = "".join(f"\n• {x}" for x in b.get("benefits") or [])
-    mont = MONTAGES.get(b.get("montage", ""), MONTAGES["impact"])["name"]
+    if b.get("montage") == AUTO:
+        mid, _why = auto_montage(b)
+        mont = f"automatique (je partirai sur « {MONTAGES[mid]['name']} »)"
+    else:
+        mont = MONTAGES.get(b.get("montage", ""), MONTAGES["impact"])["name"]
+    fmt = next((f"{f['name']} ({f['hint']})" for f in FORMATS if f["id"] == resolve_format(b.get("format"))), "Vertical 9:16")
     voice = next((v["name"].split(" — ")[0] for v in public_voices() if v["id"] == b.get("voice")), "Henri")
     if _is_classic(b):
         tpl = TEMPLATES.get(b.get("template", ""), TEMPLATES["prestige"])["name"]
         ang = ANGLES.get(b.get("angle", ""), ANGLES["douleur"])["name"]
         style = f"Montage : {mont} · Style : {tpl} · Angle : {ang}"
     else:
-        style = f"Montage : {mont} · Voix : {voice}"
+        style = f"Format : {fmt}\nMontage : {mont} · Voix : {voice}"
     extra = "".join(x for x in [f"\nPrix / offre : {b['price']}" if b.get("price") else "",
                                 f"\nNuméro : {b['contact_phone']}" if b.get("contact_phone") else "",
-                                "\nPhoto produit : ✅" if b.get("product_asset") else ""])
+                                "\nPhoto produit : ✅" if b.get("product_asset") else "",
+                                f"\nPhotos : {len(b.get('photo_assets') or [])}" if b.get("photo_assets") else "",
+                                f"\nCaptures d'écran : {len(b.get('screen_assets') or [])}" if b.get("screen_assets") else ""])
     return (f"Parfait, j'ai tout ce qu'il me faut ✅\n\n**{b.get('business')}** — {b.get('offer')} ({resolve_domain(b.get('domain'))['name']})\n"
             f"Cible : {b.get('audience')}\nProblème : {b.get('problem')}\nCe que ça coûte : {b.get('consequences') or '—'}\n"
             f"Promesse : {b.get('promise')}{ben}{extra}\n{style}\n\n"
@@ -212,7 +233,7 @@ def interview_turn(brief: dict[str, Any] | None, answer: Optional[str] = None,
             q = _llm_followup(b, current, answer, key) if use_llm else None
             q = q or FOLLOWUP[current]
             b["_followup"] = current
-            return {"reply": q, "brief": b, "done": False, "suggestions": ["Non, c'est tout"], "field": current, "upload": False, "montage_picker": False}
+            return {"reply": q, "brief": b, "done": False, "suggestions": ["Non, c'est tout"], "field": current, "upload": False, "multiple": False, "montage_picker": False, "format_picker": False}
         # l'IA complète les autres champs à partir d'une réponse riche
         if use_llm and current in ("business", "offer", "product_desc", "audience", "problem", "promise") and len(answer) > 60:
             res = _llm_turn(b, history or [], answer, key)
@@ -222,24 +243,37 @@ def interview_turn(brief: dict[str, Any] | None, answer: Optional[str] = None,
                         b[k] = v
                         if k not in b["_asked"] and k in {s["field"] for s in STEPS}:
                             b["_asked"].append(k)
+    note = ""
+    if answer is not None and current == "domain" and not fu:
+        note = f"Domaine retenu : {resolve_domain(b.get('domain'))['emoji']} {resolve_domain(b.get('domain'))['name']} (dis-le-moi si ce n'est pas ça).\n\n"
+    elif answer is not None and current == "montage" and not fu:
+        fmt = resolve_format(b.get("format"))
+        if b.get("montage") == AUTO:
+            mid, why = auto_montage(b)
+            note = f"Je te propose « {MONTAGES[mid]['name']} » ({why}). Tu peux me demander un autre montage à tout moment.\n\n"
+        elif fmt not in MONTAGES.get(b.get("montage", ""), {}).get("formats", ["9:16"]):
+            mid, why = auto_montage(b)
+            note = f"« {MONTAGES[b['montage']]['name']} » n'existe qu'en vertical : pour le format {fmt} je prends « {MONTAGES[mid]['name']} ».\n\n"
+            b["montage"] = mid
     st = next_step(b)
     if st is None:
         if b.get("angle") in (None, "", "auto"):
             b["angle"] = choose_angle(b)
         b["_current"] = None
         clean = {k: v for k, v in b.items()}
-        return {"reply": _summary(b), "brief": clean, "done": True, "suggestions": ["Créer ma pub"], "field": None}
+        return {"reply": note + _summary(b), "brief": clean, "done": True, "suggestions": ["Créer ma pub"], "field": None}
     b["_current"] = st["field"]
     q = st["q"]
     if st["field"] == "domain" and answer is not None:
         q = st["q"].split("! ", 1)[-1]
-    return {"reply": q, "brief": b, "done": False, "suggestions": st.get("suggestions", []), "field": st["field"],
-            "upload": bool(st.get("upload")), "montage_picker": bool(st.get("montage"))}
+    return {"reply": note + q, "brief": b, "done": False, "suggestions": st.get("suggestions", []), "field": st["field"],
+            "upload": bool(st.get("upload")), "multiple": bool(st.get("multiple")), "montage_picker": bool(st.get("montage")),
+            "format_picker": bool(st.get("format_picker"))}
 
 
 def brief_from_interview(b: dict[str, Any]) -> Brief:
     # les chemins de fichiers ne viennent JAMAIS du client (résolus par le worker depuis les ids)
-    data = {k: v for k, v in (b or {}).items() if not k.startswith("_") and k not in ("product_image_path", "logo_path")}
+    data = {k: v for k, v in (b or {}).items() if not k.startswith("_") and k not in ("product_image_path", "logo_path", "photo_paths", "screen_paths")}
     if data.get("angle") in (None, "", "auto"):
         data["angle"] = choose_angle(data)
     return Brief.from_dict(data)

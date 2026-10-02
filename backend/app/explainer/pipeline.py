@@ -35,10 +35,17 @@ def run_explainer(brief: dict[str, Any] | Brief, workdir: str, *, storyboard: Op
     wd = Path(workdir); wd.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
 
-    from .montages import resolve_montage
-    mont = resolve_montage(b.montage)
+    from .montages import AUTO, auto_montage, resolve_format, resolve_montage
+    b.format = resolve_format(b.format)
+    if b.montage == AUTO or not b.montage:
+        b.montage, why = auto_montage(b)
+        logger.info("montage automatique : %s (%s)", b.montage, why)
+    mont = resolve_montage(b.montage, b.format)
+    b.montage = mont["id"]
     if mont["engine"] == "impact":
         return _run_impact(b, wd, mont, storyboard, prog, fps=fps, sub=sub, workers=workers, t0=t0)
+    if mont["engine"] == "kit":
+        return _run_kit(b, wd, mont, storyboard, prog, fps=fps, sub=sub, workers=workers, t0=t0)
 
     prog(3, "Écriture du script et du storyboard")
     board = sanitize(Storyboard.from_dict(storyboard), b) if storyboard else write_storyboard(b)
@@ -137,6 +144,59 @@ def _run_impact(b: Brief, wd: Path, mont: dict[str, Any], storyboard: Optional[d
         "duration": round(story["duration"], 2), "script": [x.text for x in board.beats],
         "storyboard": board.to_dict(), "template": b.template, "montage": mont["id"], "angle": board.angle,
         "voice_provider": voice.provider, "notes": board.notes, "render_seconds": round(time.time() - t0, 1),
+    }
+    (wd / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=1))
+    prog(100, "Terminé")
+    return result
+
+
+def _run_kit(b: Brief, wd: Path, mont: dict[str, Any], storyboard: Optional[dict[str, Any]], prog: Progress, *,
+             fps: int, sub: int, workers: Optional[int], t0: float) -> dict[str, Any]:
+    """Modes « kit » (Studio blanc, Dossier résultat, App 3D, Lifestyle offre, Événement), au format choisi."""
+    from .composer import compose_kit
+    from .motion_writer import sanitize_motion, write_motion
+
+    mid = mont["id"]
+    prog(3, "Écriture du script (problème → solution)")
+    board = sanitize_motion(Storyboard.from_dict(storyboard), b, mid) if storyboard else write_motion(b, mid)
+    (wd / "storyboard.json").write_text(json.dumps(board.to_dict(), ensure_ascii=False, indent=1))
+
+    prog(12, "Enregistrement de la voix off")
+    voice = synthesize([x.text for x in board.beats], str(wd / "voice.wav"), voice=b.voice or "henri",
+                       rate=mont.get("voice_rate", "+6%"), pauses=[x.pause_after for x in board.beats],
+                       lead=0.25, tail=2.8, max_inner_pause=0.16)
+
+    prog(20, f"Composition des scènes ({mont['name']}, {b.format})")
+    kw = [w for w in [b.business, b.offer] + list(b.benefits or []) for w in str(w).split() if len(w) > 3][:20]
+    html, story, size = compose_kit(board, voice, montage=mid, fmt=b.format, brand=b.business, product_name=b.offer or b.business,
+                                    product_image=b.product_image_path or None, logo_path=b.logo_path or None,
+                                    photos=list(b.photo_paths or []), screens=list(b.screen_paths or []),
+                                    accent=b.brand_color, keywords=kw)
+    page = wd / "page.html"; page.write_text(html, encoding="utf-8")
+    ev = renderer.events(str(page), str(wd / "events.json"), size=size)
+    if ev.get("errors"):
+        logger.warning("erreurs page: %s", ev["errors"][:3])
+    renderer.stills(str(page), [0.0], str(wd / "thumb"), size=size)  # vignette = image 0
+
+    prog(25, "Rendu de l'animation")
+    renderer.video(str(page), story["duration"], str(wd / "video.mp4"), fps=fps, sub=sub, workers=workers, size=size,
+                   progress=lambda f: prog(25 + int(63 * f), "Rendu de l'animation"))
+
+    prog(90, "Sound design et mixage")
+    shots = story["shots"]
+    turn = next((s["start"] for s in shots if (s["scene"] or {}).get("role") in ("pivot", "reveal")), story["duration"] * 0.4)
+    audio.mix(str(wd / "voice.wav"), ev.get("events", []), story["duration"], str(wd / "mix.wav"),
+              mood=mont.get("music", "energetic"), bpm=mont.get("bpm", 100), turn=turn, music_db=-17, sfx_db=-5)
+
+    prog(97, "Export final")
+    out = wd / "pub.mp4"
+    renderer.mux(str(wd / "video.mp4"), str(wd / "mix.wav"), str(out))
+    thumbs = sorted((wd / "thumb").glob("*.png"))
+    result = {
+        "video_path": str(out), "thumbnail_path": str(thumbs[0]) if thumbs else None,
+        "duration": round(story["duration"], 2), "script": [x.text for x in board.beats],
+        "storyboard": board.to_dict(), "template": b.template, "montage": mid, "format": b.format, "size": list(size),
+        "angle": board.angle, "voice_provider": voice.provider, "notes": board.notes, "render_seconds": round(time.time() - t0, 1),
     }
     (wd / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=1))
     prog(100, "Terminé")

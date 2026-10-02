@@ -2,7 +2,9 @@ import client from './client'
 
 export interface AdTemplate { id: string; name: string; description: string; accent: string; dark: string }
 export interface AdAngle { id: string; name: string; structure: string }
-export interface AdMontage { id: string; name: string; description: string; available: boolean; rhythm?: string }
+export interface AdMontage { id: string; name: string; description: string; available: boolean; rhythm?: string; formats?: string[]; best_for?: string[] }
+export interface AdFormat { id: string; name: string; hint: string; size: string }
+export interface MontageChoice { id: string; name: string; auto: boolean; reason: string }
 export interface AdVoice { id: string; name: string }
 export interface AdDomain { id: string; name: string; emoji: string }
 
@@ -14,6 +16,8 @@ export interface InterviewTurn {
   field: string | null
   upload?: boolean
   montage_picker?: boolean
+  format_picker?: boolean
+  multiple?: boolean
 }
 
 export interface StoryBeat { text: string; scene: { type: string; [k: string]: unknown }; pause_after?: number }
@@ -29,12 +33,12 @@ export interface AdProject {
   stage?: string | null
   error_message?: string | null
   brief: Record<string, unknown>
-  result?: { duration?: number; script?: string[]; voice_provider?: string; notes?: string[] } | null
+  result?: { duration?: number; script?: string[]; voice_provider?: string; notes?: string[]; montage?: string; format?: string } | null
   created_at: string
   completed_at?: string | null
 }
 
-export async function getAdCatalog(): Promise<{ templates: AdTemplate[]; angles: AdAngle[]; montages?: AdMontage[]; voices?: AdVoice[]; domains?: AdDomain[] }> {
+export async function getAdCatalog(): Promise<{ templates: AdTemplate[]; angles: AdAngle[]; montages?: AdMontage[]; voices?: AdVoice[]; domains?: AdDomain[]; formats?: AdFormat[] }> {
   return (await client.get('/ads/catalog')).data
 }
 
@@ -42,7 +46,7 @@ export async function interviewTurn(brief: Record<string, unknown>, answer?: str
   return (await client.post('/ads/interview', { brief, answer, history }, { timeout: 60000 })).data
 }
 
-export async function previewScript(brief: Record<string, unknown>): Promise<{ brief: Record<string, unknown>; storyboard: Storyboard }> {
+export async function previewScript(brief: Record<string, unknown>): Promise<{ brief: Record<string, unknown>; storyboard: Storyboard; montage_choice?: MontageChoice }> {
   return (await client.post('/ads/script', { brief }, { timeout: 120000 })).data
 }
 

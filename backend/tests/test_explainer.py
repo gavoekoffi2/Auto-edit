@@ -78,7 +78,7 @@ def test_interview_without_key_reaches_complete_brief():
                "Gâteaux faits maison, décorés au prénom, livrés frais le jour même", "Les mamans actives",
                "Elles n'ont jamais le temps de préparer un beau gâteau pour l'anniversaire", "Du stress, un gâteau de dernière minute raté, des invités déçus",
                "Un beau gâteau livré à la maison sans aucun stress", "Livraison gratuite\nPersonnalisé", "non", "non", "non", "WhatsApp pour commander",
-               "Passer", "Passer", "Tutoiement", "Explicatif illustré", "Henri", "Néon énergie", "Choisis pour moi"]
+               "Passer", "Passer", "Passer", "Tutoiement", "Vertical 9:16 — TikTok", "Explicatif illustré", "Henri", "Néon énergie", "Choisis pour moi"]
     for a in answers:
         assert not r["done"], r
         r = interview_turn(r["brief"], a, api_key="")
@@ -251,3 +251,53 @@ def test_ads_requires_minimal_brief(env, monkeypatch):
     c = env["client"]
     h = _auth(_signup(c))
     assert c.post("/api/v1/ads", json={"brief": {"business": ""}}, headers=h).status_code == 400
+
+
+def test_interview_format_and_automatic_montage():
+    from app.explainer.interview import next_step
+    b = {"_asked": [st for st in ("domain", "business", "offer", "product_desc", "audience", "problem", "consequences", "promise", "benefits",
+                                  "price", "proof", "contact_phone", "cta_detail", "product_asset", "logo_asset", "photo_assets", "tone")],
+         "domain": "education", "business": "Prépa Canada", "offer": "Préparation TCF Canada", "_current": "tone"}
+    r = interview_turn(b, "Tutoiement", api_key="")
+    assert r["field"] == "format" and r["format_picker"]
+    r = interview_turn(r["brief"], "Pour YouTube", api_key="")
+    assert r["brief"]["format"] == "16:9" and r["field"] == "montage"
+    assert "Impact produit" not in r["suggestions"]          # Impact n'existe qu'en vertical
+    r = interview_turn(r["brief"], "✨ Choix automatique (recommandé)", api_key="")
+    assert r["brief"]["montage"] == "auto" and "Dossier résultat" in r["reply"]
+
+
+def test_auto_montage_routes_by_domain_format_and_history():
+    from app.explainer.montages import auto_montage, resolve_montage
+    assert auto_montage({"domain": "education", "offer": "Prépa TCF Canada", "format": "9:16"})[0] == "dossier"
+    assert auto_montage({"domain": "appli", "offer": "Application de budget", "format": "9:16"})[0] == "app"
+    assert auto_montage({"domain": "evenement", "offer": "Festival", "format": "1:1"})[0] == "event"
+    assert auto_montage({"domain": "digital", "offer": "Formation Excel", "format": "4:5"})[0] == "studio"
+    assert auto_montage({"domain": "ecommerce", "offer": "Crème", "format": "16:9"})[0] != "impact"
+    assert auto_montage({"domain": "ecommerce", "offer": "Crème", "format": "9:16"}, ["impact"])[0] != "impact"
+    assert resolve_montage("impact", "16:9")["engine"] == "kit"
+
+
+def test_kit_montages_map_every_role_to_their_own_scenes():
+    from app.explainer.motion_writer import MAPPERS, STUDIO_ROLES_SCENES, write_motion
+    b = Brief.from_dict({**BRIEF, "price": "5 000 FCFA", "contact_phone": "+22890000000", "consequences": "Du stress; des invités déçus"})
+    for mid in ("studio", "dossier", "app", "lifestyle", "event"):
+        assert mid in MAPPERS
+        board = write_motion(b, mid, api_key="")
+        types = [x.scene["type"] for x in board.beats]
+        assert all(t in STUDIO_ROLES_SCENES[mid] for t in types), (mid, types)
+        assert board.beats[-1].scene["role"] == "cta" and board.beats[-1].scene["phone"]
+        assert "5 000 FCFA" in " ".join(x.text for x in board.beats)
+
+
+def test_compose_kit_sizes_per_format(tmp_path):
+    from app.explainer.composer import compose_kit
+    from app.explainer.motion_writer import write_motion
+    from app.explainer.tts import VoiceTrack
+    b = Brief.from_dict(BRIEF)
+    board = write_motion(b, "event", api_key="")
+    n = len(board.beats)
+    v = VoiceTrack(wav_path="", duration=n * 2.0, words=[], lines=[(i * 2.0, i * 2.0 + 1.6) for i in range(n)], line_words=[[] for _ in range(n)], provider="test")
+    for fmt, size in (("9:16", (1080, 1920)), ("4:5", (1080, 1350)), ("1:1", (1080, 1080)), ("16:9", (1920, 1080))):
+        html, story, wh = compose_kit(board, v, montage="event", fmt=fmt, brand=b.business)
+        assert wh == size and story["format"]["w"] == size[0] and "KIT.register" in html and "__" not in html.split("<script>")[0][-200:]

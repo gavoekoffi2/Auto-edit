@@ -34,8 +34,13 @@ class Brief:
     contact_phone: str = ""            # numéro affiché et prononcé à la fin
     product_asset: str = ""            # photo produit importée (id)
     logo_asset: str = ""               # logo importé (id)
+    format: str = "9:16"               # 9:16 (TikTok/Reels/Statut), 4:5 et 1:1 (fils FB/IG), 16:9 (YouTube)
+    photo_assets: list[str] = field(default_factory=list)    # photos (personnes, lieux, produits) importées
+    screen_assets: list[str] = field(default_factory=list)   # captures d'écran (application, site)
     product_image_path: str = ""       # chemins résolus par le worker (internes)
     logo_path: str = ""
+    photo_paths: list[str] = field(default_factory=list)
+    screen_paths: list[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Brief":

@@ -657,6 +657,9 @@ def process_ad_project_task(self, project_id: str):
     for key, dest in (("product_asset", "product_image_path"), ("logo_asset", "logo_path")):
         aid = brief.get(key)
         brief[dest] = (logo_path_for(user_id, aid) or "") if aid else ""
+    for key, dest in (("photo_assets", "photo_paths"), ("screen_assets", "screen_paths")):
+        ids = [x for x in (brief.get(key) or []) if isinstance(x, str)][:8]
+        brief[dest] = [p for p in (logo_path_for(user_id, aid) for aid in ids) if p]
     try:
         res = run_explainer(brief, workdir, storyboard=storyboard, progress=progress,
                             workers=settings.EXPLAINER_RENDER_WORKERS or None)
@@ -667,6 +670,7 @@ def process_ad_project_task(self, project_id: str):
                    result={"video_path": rel(res["video_path"]), "thumbnail_path": rel(res.get("thumbnail_path")),
                            "duration": res.get("duration"), "script": res.get("script"),
                            "voice_provider": res.get("voice_provider"), "notes": res.get("notes"),
+                           "montage": res.get("montage"), "format": res.get("format"),
                            "render_seconds": res.get("render_seconds")},
                    completed_at=datetime.now(timezone.utc))
     except JobCancelled:

@@ -28,18 +28,22 @@ def _run(args: list[str], timeout: int = 3600) -> None:
         raise RuntimeError(f"render.js a échoué: {r.stderr[-800:]}")
 
 
-def events(page: str, out_json: str) -> dict:
-    _run([page, "--events", out_json], timeout=300)
+def _size(size: Optional[tuple[int, int]]) -> list[str]:
+    return ["--w", str(int(size[0])), "--h", str(int(size[1]))] if size else []
+
+
+def events(page: str, out_json: str, size: Optional[tuple[int, int]] = None) -> dict:
+    _run([page, "--events", out_json] + _size(size), timeout=300)
     return json.loads(Path(out_json).read_text())
 
 
-def stills(page: str, times: list[float], outdir: str, alpha: bool = False) -> list[str]:
-    _run([page, "--stills", ",".join(f"{t:.2f}" for t in times), "--outdir", outdir] + (["--alpha", "1"] if alpha else []), timeout=600)
+def stills(page: str, times: list[float], outdir: str, alpha: bool = False, size: Optional[tuple[int, int]] = None) -> list[str]:
+    _run([page, "--stills", ",".join(f"{t:.2f}" for t in times), "--outdir", outdir] + (["--alpha", "1"] if alpha else []) + _size(size), timeout=600)
     return sorted(str(p) for p in Path(outdir).glob("still_*.png"))
 
 
 def video(page: str, duration: float, out_mp4: str, *, fps: int = 30, sub: int = 3, workers: Optional[int] = None,
-          progress: Optional[Callable[[float], None]] = None) -> str:
+          progress: Optional[Callable[[float], None]] = None, size: Optional[tuple[int, int]] = None) -> str:
     total = int(round(duration * fps))
     workers = max(1, min(workers or (os.cpu_count() or 2), 8, total // 60 or 1))
     step = -(-total // workers)
@@ -52,7 +56,7 @@ def video(page: str, duration: float, out_mp4: str, *, fps: int = 30, sub: int =
             continue
         part = os.path.join(tmp, f"part{i:02d}.mp4"); prog = os.path.join(tmp, f"p{i}.txt")
         parts.append(part); progs.append(prog)
-        jobs.append([page, "--video", part, "--from", str(f0), "--to", str(f1), "--fps", str(fps), "--sub", str(sub), "--progress", prog])
+        jobs.append([page, "--video", part, "--from", str(f0), "--to", str(f1), "--fps", str(fps), "--sub", str(sub), "--progress", prog] + _size(size))
 
     stop = False
     last = [-1.0]

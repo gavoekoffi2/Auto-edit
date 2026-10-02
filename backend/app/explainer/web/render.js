@@ -18,6 +18,8 @@ const page = argv[0];
 const opt = {};
 for (let i = 1; i < argv.length; i += 2) opt[argv[i].replace(/^--/, '')] = argv[i + 1];
 
+const VW = +(opt.w || 1080), VH = +(opt.h || 1920);
+
 async function launch() {
   const exe = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROMIUM_PATH;
   try {
@@ -26,12 +28,12 @@ async function launch() {
     const bin = candidates.find((p) => { try { return fs.existsSync(p); } catch (e) { return false; } });
     if (!bin) throw new Error('no chromium');
     const b = await pp.launch({ executablePath: bin, headless: 'new', args: ['--no-sandbox', '--disable-dev-shm-usage', '--font-render-hinting=none', '--force-color-profile=srgb'] });
-    const p = await b.newPage(); await p.setViewport({ width: 1080, height: 1920, deviceScaleFactor: 1 });
+    const p = await b.newPage(); await p.setViewport({ width: VW, height: VH, deviceScaleFactor: 1 });
     return { b, p, shot: (o) => p.screenshot(o), cdp: () => p.target().createCDPSession(), close: () => b.close() };
   } catch (e) {
     const { chromium } = require('playwright');
     const b = await chromium.launch({ args: ['--font-render-hinting=none'] });
-    const p = await b.newPage({ viewport: { width: 1080, height: 1920 } });
+    const p = await b.newPage({ viewport: { width: VW, height: VH } });
     return { b, p, shot: (o) => p.screenshot(o), cdp: () => p.context().newCDPSession(p), close: () => b.close() };
   }
 }

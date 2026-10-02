@@ -83,9 +83,27 @@ def _out(p: AdProject) -> AdOut:
 
 @router.get("/catalog")
 async def catalog():
-    from app.explainer.montages import public_domains, public_montages, public_voices
+    from app.explainer.montages import public_domains, public_formats, public_montages, public_voices
     return {"templates": public_templates(), "angles": public_angles(), "montages": public_montages(),
-            "domains": public_domains(), "voices": public_voices()}
+            "domains": public_domains(), "voices": public_voices(), "formats": public_formats()}
+
+
+async def _choose_montage(brief, db: AsyncSession, user_id) -> Optional[dict]:
+    """Montage « automatique » : choisi selon le domaine, le brief et le format, sans répéter les dernières pubs."""
+    from app.explainer.montages import AUTO, MONTAGES, auto_montage, resolve_format, resolve_montage
+    brief.format = resolve_format(brief.format)
+    if brief.montage and brief.montage != AUTO:
+        asked = MONTAGES.get(brief.montage, {}).get("name", brief.montage)
+        m = resolve_montage(brief.montage, brief.format)
+        changed = m["id"] != brief.montage
+        brief.montage = m["id"]
+        reason = (f"« {asked} » n'existe pas en {brief.format} : remplacé par « {m['name']} »" if changed else "choisi par vous")
+        return {"id": m["id"], "name": m["name"], "auto": False, "reason": reason}
+    recent = (await db.execute(select(AdProject.template).where(AdProject.user_id == user_id)
+                               .order_by(AdProject.created_at.desc()).limit(3))).scalars().all()
+    mid, why = auto_montage(brief, list(recent))
+    brief.montage = mid
+    return {"id": mid, "name": MONTAGES[mid]["name"], "auto": True, "reason": why}
 
 
 @router.post("/interview")
@@ -96,17 +114,22 @@ async def interview(body: InterviewIn, user: User = Depends(get_current_user)):
 
 
 @router.post("/script")
-async def preview_script(body: AdCreate, user: User = Depends(get_current_user)):
+async def preview_script(body: AdCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     import anyio
     from app.explainer.writer import write_storyboard
     from app.explainer.montages import resolve_montage
     brief = brief_from_interview(body.brief)
-    if resolve_montage(brief.montage)["engine"] == "impact":
+    choice = await _choose_montage(brief, db, user.id)
+    engine = resolve_montage(brief.montage, brief.format)["engine"]
+    if engine == "impact":
         from app.explainer.impact_writer import write_impact
         board = await anyio.to_thread.run_sync(lambda: write_impact(brief))
+    elif engine == "kit":
+        from app.explainer.motion_writer import write_motion
+        board = await anyio.to_thread.run_sync(lambda: write_motion(brief, brief.montage))
     else:
         board = await anyio.to_thread.run_sync(lambda: write_storyboard(brief))
-    return {"brief": brief.to_dict(), "storyboard": board.to_dict()}
+    return {"brief": brief.to_dict(), "storyboard": board.to_dict(), "montage_choice": choice}
 
 
 @router.post("", response_model=AdOut, status_code=status.HTTP_201_CREATED)
@@ -115,6 +138,7 @@ async def create_ad(body: AdCreate, request: Request, user: User = Depends(get_c
     brief = brief_from_interview(body.brief)
     if not (brief.business and brief.offer):
         raise HTTPException(status_code=400, detail="Le brief doit contenir au moins l'entreprise et l'offre.")
+    await _choose_montage(brief, db, user.id)
     # quotas atomiques (verrou sur la ligne utilisateur)
     await db.execute(select(User.id).where(User.id == user.id).with_for_update())
     rules = rules_for_user(user)
