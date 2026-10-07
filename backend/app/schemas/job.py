@@ -24,6 +24,15 @@ VALID_MOTION_PRESETS = {
 # Source de vérité: les templates ASS du moteur (config légère, sans PIL/ffmpeg).
 from app.autoedit_engine.config import ASS_TEMPLATES as _ENGINE_ASS_TEMPLATES
 
+try:
+    from app.illustration_engine.styles import STYLES as _ILLUSTRATION_STYLES
+    VALID_ILLUSTRATION_STYLES = frozenset(_ILLUSTRATION_STYLES)
+except Exception:  # noqa: BLE001 - the API schema must load regardless
+    VALID_ILLUSTRATION_STYLES = frozenset({
+        "professional", "education", "business", "technology", "finance",
+        "marketing", "minimal", "whiteboard", "dark_premium", "clean",
+    })
+
 VALID_SUBTITLE_TEMPLATES = set(_ENGINE_ASS_TEMPLATES)
 
 
@@ -49,6 +58,16 @@ class JobOptions(BaseModel):
     visual_mode: Optional[str] = None
     # Famille motion design forcée (sinon choisie par seed stable de la vidéo).
     motion_preset: Optional[str] = None
+    # --- Moteur d'illustration (backend/app/illustration_engine) ------------
+    # Direction artistique des scènes illustrées: professional | education |
+    # business | technology | finance | marketing | minimal | whiteboard |
+    # dark_premium | clean.
+    illustration_style: Optional[str] = None
+    # Densité d'illustrations: low | medium | high.
+    illustration_intensity: Optional[str] = None
+    # Source d'intelligence sémantique: offline (défaut, aucun réseau) |
+    # free | cloud.
+    illustration_ai_mode: Optional[str] = None
     # Template de sous-titres animés (sinon déduit du mode choisi).
     subtitle_template: Optional[str] = None
     # Active explicitement l'assemblage éditorial Collage Premium.
@@ -123,6 +142,38 @@ class JobOptions(BaseModel):
         if v is not None and v not in VALID_MOTION_PRESETS:
             raise ValueError(
                 f"motion_preset must be one of: {', '.join(sorted(VALID_MOTION_PRESETS))}"
+            )
+        return v
+
+    @field_validator("illustration_style")
+    @classmethod
+    def validate_illustration_style(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        if v not in VALID_ILLUSTRATION_STYLES:
+            raise ValueError(
+                "illustration_style must be one of: "
+                f"{', '.join(sorted(VALID_ILLUSTRATION_STYLES))}"
+            )
+        return v
+
+    @field_validator("illustration_intensity")
+    @classmethod
+    def validate_illustration_intensity(cls, v: Optional[str]) -> Optional[str]:
+        allowed = {"low", "medium", "high"}
+        if v is not None and v not in allowed:
+            raise ValueError(
+                f"illustration_intensity must be one of: {', '.join(sorted(allowed))}"
+            )
+        return v
+
+    @field_validator("illustration_ai_mode")
+    @classmethod
+    def validate_illustration_ai_mode(cls, v: Optional[str]) -> Optional[str]:
+        allowed = {"offline", "free", "cloud"}
+        if v is not None and v not in allowed:
+            raise ValueError(
+                f"illustration_ai_mode must be one of: {', '.join(sorted(allowed))}"
             )
         return v
 

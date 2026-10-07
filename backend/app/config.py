@@ -184,6 +184,12 @@ class Settings(BaseSettings):
 
     # Whisper (repli local) — "small" plus précis que "base" en français.
     WHISPER_MODEL: str = "small"
+    # Moteur de transcription LOCALE: auto | faster_whisper | whisper.
+    # "auto" prend faster-whisper s'il est installé (4-5x plus rapide sur CPU,
+    # bien moins de RAM), sinon openai-whisper. Aucune API payante requise.
+    WHISPER_BACKEND: str = "auto"
+    # Quantisation de faster-whisper: int8 (défaut VPS) | int8_float16 | float32.
+    WHISPER_COMPUTE_TYPE: str = "int8"
 
     # Rate limiting
     LOGIN_RATE_LIMIT: int = 5  # max attempts per window
@@ -359,6 +365,14 @@ class Settings(BaseSettings):
             return generated
         if len(v) < 32:
             raise ValueError("SECRET_KEY must be at least 32 characters")
+        return v
+
+    @field_validator("WHISPER_BACKEND")
+    @classmethod
+    def validate_whisper_backend(cls, v: str) -> str:
+        allowed = {"auto", "faster_whisper", "whisper"}
+        if v not in allowed:
+            raise ValueError(f"WHISPER_BACKEND must be one of: {allowed}")
         return v
 
     @field_validator("WHISPER_MODEL")

@@ -652,11 +652,15 @@ def run_pipeline_v2(
     if vu_path is None:
         # Repli local Whisper (gratuit, hors-ligne).
         from app.processing.transcription_service import TranscriptionService
-        ts = TranscriptionService(model_name=settings.WHISPER_MODEL, word_timestamps=True)
+        ts = TranscriptionService(
+            model_name=settings.WHISPER_MODEL, word_timestamps=True,
+            backend=getattr(settings, "WHISPER_BACKEND", None),
+            compute_type=getattr(settings, "WHISPER_COMPUTE_TYPE", None))
+        backend = ts.resolve_backend()
         transcript = ts.transcribe(video_path, output_dir)
         vu_path = _transcript_to_vu(transcript, output_dir, video_path)
         results["transcription"] = {
-            "provider": "whisper",
+            "provider": backend,
             "language": transcript.language,
             "text": transcript.text,
             "segments_count": len(transcript.segments),
@@ -685,6 +689,9 @@ def run_pipeline_v2(
         visual_mode=visual_mode,
         motion_preset=motion_preset,
         disable_paid_images=disable_paid_images,
+        illustration_style=options.get("illustration_style"),
+        illustration_intensity=options.get("illustration_intensity"),
+        illustration_ai_mode=options.get("illustration_ai_mode"),
         cleanup_level=options.get("cleanup_level"),
         smart_crop_mode=options.get("smart_crop_mode"),
         scrub_source_subtitles=options.get("remove_source_subtitles", True) is not False,
@@ -707,6 +714,11 @@ def run_pipeline_v2(
     # contient (scènes motion design, B-rolls, popups, SFX) — fini les doutes
     # "est-ce l'ancien rendu ?".
     results["montage"] = montage_report
+    # The illustration plan is what the UI shows the user: when, what and why.
+    illustration_report = montage_report.get("illustration_engine") or {}
+    if illustration_report.get("enabled"):
+        results["illustrationEngine"] = illustration_report
+        results["illustrationPlan"] = illustration_report.get("plan", [])
     if do_motion:
         if montage_report.get("motion_scenes_rendered", 0) > 0:
             results["steps_completed"].append("motion_design")

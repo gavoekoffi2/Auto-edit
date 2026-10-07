@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1 import admin, auth, videos, jobs, payments, clips, ads
+from app.api.v1 import admin, auth, videos, jobs, payments, clips, ads, illustrations
 
 api_router = APIRouter()
 
@@ -11,3 +11,5 @@ api_router.include_router(clips.router, prefix="/clips", tags=["Clips"])
 api_router.include_router(payments.router, prefix="/payments", tags=["Payments"])
 api_router.include_router(admin.router, prefix="/admin", tags=["Admin"])
 api_router.include_router(ads.router, prefix="/ads", tags=["Pub explicative"])
+api_router.include_router(illustrations.router, prefix="/illustrations",
+                          tags=["Illustrations"])

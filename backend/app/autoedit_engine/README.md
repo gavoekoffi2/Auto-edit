@@ -17,7 +17,7 @@ cut + grade → dynamic zoom → motion design + overlays (ballotage) → SFX �
 | 1 | `transcribe.py` | `transcripts/<v>_vu.json` (ElevenLabs Scribe, word-level) |
 | 2 | `build_edl.py` | `edl.json`, `clips_graded/seg_*.mp4`, `base_only.mp4` (cut + warm_cinematic grade + concat **filter**) |
 | 3 | `overlays.py` | `animations/*.mov` (counters / progress / lists / stats / lower-thirds → ProRes 4444) |
-| 4 | `motion_design.py` | `motion_clips/md_*.mov` — **scènes illustrées animées** qui dessinent ce que la personne explique (illustration IA flat-design ou dessin procédural trait-par-trait, flèches dessinées, cercle marqueur, étapes numérotées, compteurs) |
+| 4 | **`app/illustration_engine/`** | `motion_clips/ill_*.mov` — **scènes illustrées animées** choisies par l'IllustrationDirector: analyse du discours → storyboard → 12 types de scènes (whiteboard, diagramme, processus, comparaison, statistiques, typographie cinétique…) synchronisées sur la voix. `motion_design.py` reste disponible en **LEGACY** (`ILLUSTRATION_ENGINE_ENABLED=false`). |
 | 5 | `genimg.py` | `broll/*.png` (OpenRouter `gemini-2.5-flash-image`, **n ≈ duration/5**, évite les beats motion) + `motion/*.png` (illustrations des scènes) |
 | 6 | `broll_anim.py` | `broll_clips/br_*.mov` (punch/slide/rise/glitch/flash/… + Ken Burns + cyan brackets) |
 | 7 | `plan_overlays.py` | `edl.json` overlays + `sfx_cues.json` (ballotage, priorité motion, riser+whoosh+pops par scène — chaque SFX est lié à un visuel, pas de gap-fill) |

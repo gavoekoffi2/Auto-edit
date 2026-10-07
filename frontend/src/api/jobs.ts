@@ -17,6 +17,26 @@ export type SubtitleTemplate =
   | 'beast_impact' | 'mint_wave' | 'board_serif'
 /** Direction artistique du moteur de collage papier (3 moteurs produit). */
 export type CollageProfile = 'editorial' | 'ugc_product' | 'ugc_motion'
+/** Direction artistique des illustrations automatiques. */
+export type IllustrationStyle =
+  | 'professional' | 'education' | 'business' | 'technology'
+  | 'whiteboard' | 'minimal'
+/** Densité des illustrations sur la timeline. */
+export type IllustrationIntensity = 'low' | 'medium' | 'high'
+/** Source d'intelligence sémantique du moteur d'illustration. */
+export type IllustrationAiMode = 'offline' | 'free' | 'cloud'
+
+/** Une entrée du plan d'illustration renvoyé par le job. */
+export interface IllustrationPlanEntry {
+  scene_id: string
+  /** Horodatage lisible, ex "00:32". */
+  at: string
+  start: number
+  duration: number
+  visual_type: string
+  concept: string
+  visual_score: number
+}
 
 export interface JobOptions {
   remove_silence?: boolean
@@ -40,6 +60,12 @@ export interface JobOptions {
   collage_broll?: boolean
   /** Direction artistique du collage: editorial | ugc_product | ugc_motion. */
   collage_profile?: CollageProfile
+  /** Direction artistique des illustrations automatiques. */
+  illustration_style?: IllustrationStyle
+  /** Densité des illustrations: low | medium | high. */
+  illustration_intensity?: IllustrationIntensity
+  /** offline (défaut, aucun réseau) | free | cloud. */
+  illustration_ai_mode?: IllustrationAiMode
   /** Fonctionnalité Clips: nombre max de shorts extraits d'une vidéo longue (1-10). */
   max_clips?: number
   /** Supprime les sous-titres déjà incrustés dans la source (défaut: activé). */
