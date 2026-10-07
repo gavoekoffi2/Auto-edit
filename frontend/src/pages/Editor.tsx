@@ -51,7 +51,8 @@ const FALLBACK_MODES: ModeDescriptor[] = [
     badge: 'images IA si dispo',
     description:
       'Analyse du sens, métaphore visuelle et collage papier éditorial assemblé ' +
-      'pièce par pièce à l’écran.',
+      'pièce par pièce à l’écran, à partir des mots réellement prononcés. ' +
+      'Scènes illustrées par l’Illustration Director (repli 3D procédural).',
     pipeline: 'v2',
     default: true,
     defaults: {
@@ -89,8 +90,8 @@ const FALLBACK_MODES: ModeDescriptor[] = [
     family: 'collage',
     badge: '0 crédit image',
     description:
-      'Le moteur UGC Produit avec les scènes de motion design animées. ' +
-      'Toujours aucune image IA générée.',
+      'Le moteur UGC Produit avec les scènes illustrées animées (Illustration ' +
+      'Director, repli 3D procédural). Toujours aucune image IA générée.',
     pipeline: 'v2',
     defaults: {
       remove_silence: true, dynamic_captions: true, ai_broll: true,
@@ -126,8 +127,8 @@ const FALLBACK_MODES: ModeDescriptor[] = [
     family: 'viral',
     badge: '0 crédit image',
     description:
-      'Silences coupés, captions, zooms, SFX, transitions et motion design ' +
-      'procédural — aucune image IA payante.',
+      'Silences coupés, captions, zooms, SFX, transitions et scènes illustrées ' +
+      'rendues localement (repli 3D) — aucune image IA payante.',
     pipeline: 'v2',
     defaults: {
       remove_silence: true, dynamic_captions: true, ai_broll: false,
@@ -861,7 +862,15 @@ function MontageRecap(props: {
   const items: Array<[string, string, boolean]> = [
     ['⚡', `${n('key_moment_punches')} punch-zooms`, n('key_moment_punches') > 0],
     ['💡', `${n('light_overlays')} passages de lumière`, n('light_overlays') > 0],
-    ['🎨', `${n('motion_scenes_rendered')} scènes motion design`, n('motion_scenes_rendered') > 0],
+    [
+      '🎨',
+      // On dit combien de scènes sont rendues en 3D: c'est la preuve visible
+      // que le motion design a bien tourné, et non un simple compteur.
+      n('motion_scenes_3d') > 0
+        ? `${n('motion_scenes_rendered')} scènes motion design (${n('motion_scenes_3d')} en 3D)`
+        : `${n('motion_scenes_rendered')} scènes motion design`,
+      n('motion_scenes_rendered') > 0,
+    ],
     ['✂️', `${n('collage_clips')} scènes de collage`, n('collage_clips') > 0],
     ['🔊', `${n('sfx_cues')} effets sonores`, n('sfx_cues') > 0],
     ['🏷️', `${n('keyword_popups')} mots-clés popup`, n('keyword_popups') > 0],

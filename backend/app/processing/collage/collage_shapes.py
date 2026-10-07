@@ -22,7 +22,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import hashlib
 import math
 import os
 import re
@@ -410,60 +409,177 @@ DEFAULT_PICTOGRAM = "sparkle"
 # L'ordre compte: les règles les plus spécifiques d'abord.
 # --------------------------------------------------------------------------- #
 _KEYWORD_RULES: list[tuple[str, str]] = [
-    ("thumb_up", r"thumb|pouce|like|approv|recommand"),
-    ("truck", r"truck|van|deliver|livrais|colis en route|shipping|courier|transport"),
-    ("box", r"\bbox\b|carton|parcel|package|colis|packaging|emballage|coffret"),
-    ("bottle", r"bottle|flacon|bouteille|spray|vaporis|parfum|shampo|serum|sérum"),
-    ("jar", r"\bjar\b|\bpot\b|crème|creme|cream|baume|balm|masque|mask|beurre"),
-    ("tube", r"tube|dentifrice|gel\b|lotion|mascara|rouge à lèvres"),
-    ("bag", r"\bbag\b|sachet|pouch|sac\b|poche"),
-    ("cart", r"cart|basket|panier|caddie|trolley|commande|checkout"),
-    ("tag", r"tag\b|étiquette|etiquette|label|price|prix|tarif|promo|réduction|reduction|discount|solde"),
-    ("coins", r"coin|money|argent|banknote|billet|cash|budget|euro|franc|payer|paiement|économ|econom"),
-    ("hand", r"hand|main\b|paume|palm|geste|tenir|holding|grasp|doigt"),
-    ("star", r"star|étoile|etoile|avis|review|note\b|rating|témoign|temoign|client satisfait"),
-    ("heart", r"heart|cœur|coeur|love|adore|favori|préfér|prefer|kiff"),
-    ("check", r"check|coche|tick|valid|inclus|garanti ok|réussi|reussi|done|resolved"),
-    ("cross", r"cross|croix|erreur|problem|problème|probleme|éviter|eviter|jamais|arnaque|fail"),
-    ("clock", r"clock|montre|horloge|temps|time|minute|heure|rapide|vite|urgence|dernier jour"),
-    ("calendar", r"calendar|calendrier|date|jour|semaine|mois|routine|planning"),
-    ("phone", r"phone|smartphone|téléphone|telephone|mobile|écran|ecran|whatsapp|dm\b|insta"),
-    ("chat", r"chat|bubble|bulle|message|question|commentaire|comment|discussion|témoignage"),
-    ("leaf", r"leaf|feuille|plant|plante|natur|bio|végét|veget|ingrédient|ingredient|composition"),
-    ("drop", r"drop|goutte|water|eau\b|hydrat|liquid|liquide|huile|\boil\b|texture"),
-    ("flame", r"flame|feu|flamme|hot|chaud|tendance|trend|viral|cartonne|explos"),
-    ("sparkle", r"sparkle|shine|éclat|eclat|brill|glow|résultat|resultat|effet|magic|waouh|wow"),
-    ("shield", r"shield|bouclier|garantie|guarantee|sécur|secur|protect|risque|remboours|rembours"),
-    ("magnifier", r"magnif|loupe|zoom|détail|detail|compar|analys|inspect|regarde de près"),
-    ("arrow_up", r"arrow|flèche|fleche|up\b|monte|augment|progress|croissance|growth|améliore|ameliore"),
-    ("chart", r"chart|graph|barre|courbe|stat|chiffre|résultats mesur|performance|vente"),
-    ("gift", r"gift|cadeau|bonus|offert|free|gratuit|surprise|ruban|ribbon"),
-    ("person", r"person|people|silhouette|client|utilisateur|user|femme|homme|visage|face|customer|moi\b"),
-    ("mirror", r"mirror|miroir|avant|before|après|apres|after|transformation|changement|comparaison"),
-    ("shirt", r"shirt|vêtement|vetement|robe|tshirt|t-shirt|pull|veste|clothes|mode|taille"),
-    ("shoe", r"shoe|chaussure|basket\b|sneaker|semelle|pied"),
-    ("lock", r"lock|cadenas|padlock|secret|exclusi|accès|acces|privé|prive|verrou"),
-    ("door", r"door|porte|opportunit|entrée|entree|ouvre|open path|seuil"),
+    ("thumb_up", r"thumb|pouce|like|approv|recommand|satisfait|content"),
+    ("truck", r"truck|van|deliver|livrais|livré|livre[rz]|colis en route|shipping|"
+              r"courier|transport|exp[ée]di|acheminement|logistique|fret|camion|"
+              r"livreur|coursier"),
+    ("box", r"\bbox\b|carton|parcel|package|colis|packaging|emballage|coffret|"
+            r"stock|inventaire|entrep[ôo]t|r[ée]serve"),
+    ("bottle", r"bottle|flacon|bouteille|spray|vaporis|parfum|shampo|serum|sérum|"
+               r"boisson|jus\b|sirop"),
+    ("jar", r"\bjar\b|\bpot\b|crème|creme|cream|baume|balm|masque|mask|beurre|"
+            r"pommade|gommage"),
+    ("tube", r"tube|dentifrice|gel\b|lotion|mascara|rouge à lèvres|pommade"),
+    ("bag", r"\bbag\b|sachet|pouch|sac\b|poche|valise|bagage|cabas"),
+    ("cart", r"\bcarts?\b|basket|panier|caddie|trolley|commande|checkout|achat|acheter|"
+             r"boutique|magasin|shop|vendre|vente"),
+    ("tag", r"tag\b|étiquette|etiquette|label|price|prix|tarif|promo|réduction|"
+            r"reduction|discount|solde|co[ûu]t|abonnement|forfait|frais"),
+    ("coins", r"coin|money|argent|banknote|billet|cash|budget|euro|dollar|franc|"
+              r"payer|paiement|économ|econom|salaire|revenu|gain|marge|"
+              r"b[ée]n[ée]fice|capital|investi|[ée]pargne|virement|transf[eè]r|"
+              r"facture|monnaie|fcfa|cfa|mobile money|portefeuille|wallet|"
+              r"cagnotte|richesse|riche|fortune|\bcartes?\b|\bcards?\b|bancaire|"
+              r"banques?\b|\bbank\b|ch[èe]que"),
+    ("hand", r"hand|main\b|paume|palm|geste|tenir|holding|grasp|doigt|donner|"
+             r"recevoir|re[çc]oit|partager"),
+    ("star", r"star|étoile|etoile|avis|review|note\b|rating|témoign|temoign|"
+             r"client satisfait|r[ée]putation|qualit[ée]|excellence|premium|"
+             r"meilleur|top\b|champion|r[ée]compense"),
+    ("heart", r"heart|cœur|coeur|love|adore|favori|préfér|prefer|kiff|passion|"
+              r"[ée]motion|bienveill|fid[èe]l"),
+    ("check", r"check|coche|tick|valid|inclus|garanti ok|réussi|reussi|done|"
+              r"resolved|solution|r[ée]soudre|corrig|conforme|approuv|certifi|"
+              r"v[ée]rifi|ok\b|c'est bon|termin[ée]"),
+    ("cross", r"cross|croix|erreur|problem|problème|probleme|éviter|eviter|jamais|"
+              r"arnaque|fail|[ée]chec|refus|interdit|faux|piège|piege|danger|"
+              r"perte|perdre|attention"),
+    ("clock", r"clock|montre|horloge|temps|time|minute|heure|rapide|vite|urgence|"
+              r"dernier jour|d[ée]lai|attente|imm[ée]diat|instantan|maintenant|"
+              r"secondes?"),
+    ("calendar", r"calendar|calendrier|date|jour\b|semaine|mois\b|ann[ée]e|routine|"
+                 r"planning|agenda|[ée]ch[ée]ance|rendez-vous|programme"),
+    ("phone", r"phone|smartphone|téléphone|telephone|mobile|écran|ecran|whatsapp|"
+              r"\bdm\b|insta|application|\bapp\b|sms|appel|num[ée]ro|en ligne|"
+              r"internet|site|plateforme|r[ée]seau"),
+    ("chat", r"chat|bubble|bulle|message|question|commentaire|comment|discussion|"
+             r"témoignage|conversation|parler|\bdire\b|expliqu|[ée]change|r[ée]ponse|"
+             r"support|conseil"),
+    ("leaf", r"leaf|feuille|plant|plante|natur|bio|végét|veget|ingrédient|"
+             r"ingredient|composition|[ée]colo|durable|croissance naturelle|graine"),
+    ("drop", r"drop|goutte|water|\beau\b|hydrat|liquid|liquide|huile|\boil\b|"
+             r"texture|essence|source|peau|sueur"),
+    ("flame", r"flame|feu|flamme|hot|chaud|tendance|trend|viral|cartonne|explos|"
+              r"énergie|energie|motivation|urgent|buzz"),
+    ("sparkle", r"sparkle|shine|éclat|eclat|brill|glow|résultat|resultat|effet|"
+                r"magic|waouh|wow|transformation r[ée]ussie|nouveau|surprise"),
+    ("shield", r"shield|bouclier|garantie|guarantee|sécur|secur|protect|risque|"
+               r"rembours|assurance|confiance|fiable|s[ûu]r\b|sain|d[ée]fense|"
+               r"conformit[ée]|kyc"),
+    ("magnifier", r"magnif|loupe|zoom|détail|detail|compar|analys|inspect|"
+                  r"regarde de près|recherche|trouver|examin|audit|d[ée]couvr"),
+    ("arrow_up", r"arrow|flèche|fleche|\bup\b|monte|augment|progress|croissance|"
+                 r"growth|améliore|ameliore|d[ée]colle|doubl|tripl|scale|"
+                 r"[ée]volu|d[ée]velopp|objectif atteint"),
+    ("chart", r"chart|graph|barre|courbe|stat|chiffre|donn[ée]e|"
+              r"résultats mesur|performance|pourcentage|%|taux|mesure|bilan|"
+              r"rapport|tableau"),
+    ("gift", r"gift|cadeau|bonus|offert|free|gratuit|surprise|ruban|ribbon|"
+             r"parrainage|avantage"),
+    ("person", r"person|people|silhouette|client|utilisateur|user|femme|homme|"
+               r"visage|face|customer|\bmoi\b|[ée]quipe|communaut[ée]|public|"
+               r"abonn[ée]|audience|gens|monde|patron|entrepreneur"),
+    ("mirror", r"mirror|miroir|avant|before|après|apres|after|transformation|"
+               r"changement|comparaison|diff[ée]rence|contraste"),
+    ("shirt", r"shirt|vêtement|vetement|robe|tshirt|t-shirt|pull|veste|clothes|"
+              r"mode\b|taille|tissu|couture"),
+    ("shoe", r"shoe|chaussure|basket\b|sneaker|semelle|\bpieds?\b"),
+    ("lock", r"lock|cadenas|padlock|secret|exclusi|accès|acces|privé|prive|"
+             r"verrou|mot de passe|code\b|otp|bloqu|ferm[ée]|confidentiel"),
+    ("door", r"door|porte|opportunit|entrée|entree|ouvre|open path|seuil|"
+             r"acc[ée]der|d[ée]marrer|commencer|d[ée]but|lancer"),
 ]
 
 _COMPILED_RULES = [(name, re.compile(pattern, re.I)) for name, pattern in _KEYWORD_RULES]
 
 
-def resolve_pictogram(name: str) -> str:
-    """Pictogramme le plus proche du mot *name* (FR ou EN)."""
+#: Mots vides: ils ne doivent JAMAIS décider d'une découpe.
+_STOPWORDS = frozenset("""
+le la les un une des du de d au aux et ou mais donc or ni car a à en dans sur
+sous pour par avec sans vers chez que qui quoi dont ce cet cette ces mon ton
+son notre votre leur mes tes ses nos vos leurs il elle ils elles on nous vous
+je tu me te se y est sont était être avoir fait faire plus moins très trop
+the a an of in on at to for with and or but from is are was were be been this
+that these those it its my your his her our their
+""".split())
+
+
+#: Un mot isolé n'est reconnu que si la règle couvre l'essentiel du mot, DEPUIS
+#: SON DÉBUT. Le français décline par la fin (livraison/livraisons, adore/
+#: adorent), jamais par le début: un préfixe long est donc un vrai indice, alors
+#: qu'un fragment interne est presque toujours un faux ami — « franc » dans
+#: « franchement », « vite » dans « éviter », « port » dans « important ».
+_TOKEN_COVERAGE = 0.62
+
+
+def _match_single_word(word: str) -> Optional[str]:
+    """Pictogramme d'un MOT isolé, ou None si aucune règle ne le couvre vraiment."""
+    best: Optional[tuple[float, str]] = None
+    for pictogram, pattern in _COMPILED_RULES:
+        m = pattern.search(word)
+        if not m or m.start() != 0:
+            continue
+        coverage = (m.end() - m.start()) / max(1, len(word))
+        if coverage < _TOKEN_COVERAGE:
+            continue
+        if best is None or coverage > best[0]:
+            best = (coverage, pictogram)
+    return best[1] if best else None
+
+
+def resolve_pictogram_ex(name: str) -> tuple[str, bool]:
+    """(pictogramme, correspondance_réelle) pour le mot ou groupe de mots *name*.
+
+    RÈGLE PRODUIT: une pièce de collage doit amener à l'écran CE QUE LA PERSONNE
+    DIT. Tant qu'aucune règle ne reconnaît le mot, on ne doit pas inventer une
+    découpe au hasard — l'ancien repli tirait une forme par empreinte du mot,
+    et le montage affichait une chaussure pendant qu'on parlait de garantie.
+
+    Le second membre du tuple dit si la découpe a un SENS: l'appelant peut alors
+    écarter l'objet plutôt que de montrer n'importe quoi (voir
+    `collage_concept_planner`).
+    """
     text = (name or "").strip()
     if not text:
-        return DEFAULT_PICTOGRAM
-    if text.lower() in PICTOGRAMS:
-        return text.lower()
+        return DEFAULT_PICTOGRAM, False
+    lowered = text.lower()
+    if lowered in PICTOGRAMS:
+        return lowered, True
+    tokens = [t for t in re.findall(r"[A-Za-zÀ-ÿ]{2,}", lowered)
+              if t not in _STOPWORDS]
+
+    # 1) MOT ISOLÉ — c'est le cas du texte prononcé: on exige que la règle
+    #    couvre le mot depuis son début (voir _match_single_word).
+    if len(tokens) <= 1:
+        word = tokens[0] if tokens else lowered
+        hit = _match_single_word(word)
+        return (hit, True) if hit else (DEFAULT_PICTOGRAM, False)
+
+    # 2) GROUPE DE MOTS ("bank card", "pot de crème") — c'est le cas des objets
+    #    nommés par le planner: la règle la plus spécifique gagne sur l'ensemble.
     for pictogram, pattern in _COMPILED_RULES:
         if pattern.search(text):
-            return pictogram
-    # Aucune correspondance: on prend une forme STABLE dérivée du mot, pour que
-    # deux objets différents ne finissent jamais sur la même découpe par défaut.
-    digest = hashlib.sha1(text.lower().encode("utf-8")).digest()[0]
-    names = sorted(PICTOGRAMS)
-    return names[digest % len(names)]
+            return pictogram, True
+    # 3) Puis mot à mot, avec la même exigence de couverture. On garde le mot le
+    #    plus LONG qui déclenche: c'est le plus porteur de sens.
+    best: Optional[tuple[int, str]] = None
+    for token in tokens:
+        hit = _match_single_word(token)
+        if hit and (best is None or len(token) > best[0]):
+            best = (len(token), hit)
+    if best is not None:
+        return best[1], True
+    return DEFAULT_PICTOGRAM, False
+
+
+def resolve_pictogram(name: str) -> str:
+    """Pictogramme le plus proche du mot *name* (FR ou EN).
+
+    Sans correspondance, renvoie la découpe NEUTRE (`DEFAULT_PICTOGRAM`) et non
+    une forme tirée au sort: mieux vaut un éclat abstrait qu'une chaussure sur
+    une phrase qui parle de virement.
+    """
+    return resolve_pictogram_ex(name)[0]
 
 
 # --------------------------------------------------------------------------- #

@@ -158,9 +158,40 @@ def test_silhouette_is_never_counted_as_a_paid_ai_image(tmp_path, monkeypatch):
             captured["wrote"] = True
 
     monkeypatch.setattr(md, "ProResPipe", _FakePipe)
+    # La silhouette n'est plus le PREMIER repli (c'est la scène 3D): on coupe
+    # le moteur 3D pour tester spécifiquement ce chemin-là.
+    monkeypatch.setattr(md, "STYLE_3D", None)
     scene = {"id": "x", "kind": "idea", "headline": "ACCORD", "icon": "handshake",
              "layout": "board_stage", "duration": 0.2}
     out = md.render_scene(scene, str(tmp_path / "x.mov"))
     assert captured.get("wrote") is True
     assert out["illustrated"] is False          # aucune image IA
     assert out["silhouette"] == "handshake"     # mais bien illustré
+
+
+def test_render3d_is_the_first_fallback_and_costs_no_credit(tmp_path, monkeypatch):
+    """Sans image IA, la scène part en 3D PROCÉDURALE — pas en dessin au trait,
+    et sans jamais compter comme une illustration payée."""
+    class _FakePipe:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def write(self, frame):
+            pass
+
+    monkeypatch.setattr(md, "ProResPipe", _FakePipe)
+    monkeypatch.setattr(md, "STYLE_3D", "clay_studio")
+    scene = {"id": "x", "kind": "idea", "headline": "ACCORD", "icon": "handshake",
+             "layout": "stage_center", "duration": 0.2}
+    out = md.render_scene(scene, str(tmp_path / "x.mov"))
+    assert out["render3d"] == "clay_studio"
+    assert out["illustrated"] is False
+    assert out["silhouette"] is None
+    # La scène 3D s'anime: elle n'a donc PAS de cue "dessin qui se trace".
+    assert "draw" not in out["events"]

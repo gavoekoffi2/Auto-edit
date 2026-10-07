@@ -373,6 +373,22 @@ MOTION_3D_STYLES = [
 # Style signature (rétro-compat: modules/tests qui référencent le préfixe unique).
 MOTION_STYLE_PREFIX = MOTION_STYLE_3D_PREFIXES[0]
 
+# --------------------------------------------------------------------------- #
+# MOTEUR 3D PROCÉDURAL (`motion_3d`) — le repli QUAND il n'y a pas d'image IA.
+#
+# Avant, ce repli était un dessin au trait: quatre lignes blanches qui se
+# tracent. Sur un vrai montage ça ne raconte rien — c'est ce que le produit
+# appelait « le motion design ne fonctionne pas ». Désormais la scène est
+# rendue en 3D (volumes ombrés, caméra qui tourne, ombre de contact), sans
+# aucun crédit image et sans aucun asset externe.
+#
+#   MOTION_3D=0            revient au repli au trait (rollback d'urgence)
+#   MOTION_3D_STYLE=nom    force un style (clay_studio, glass_neon,
+#                          chrome_metal, iso_blocks, paper_relief)
+# --------------------------------------------------------------------------- #
+MOTION_3D_ENABLED = os.getenv("MOTION_3D", "1").lower() not in {"0", "false", "no"}
+MOTION_3D_STYLE = (os.getenv("MOTION_3D_STYLE", "") or "").strip() or None
+
 # Densité du motion design — le NOMBRE de scènes grandit avec la durée:
 # ~1 scène toutes les 11 s (court) / 16 s (long), rythme dense. Le plafond est
 # ÉLEVÉ pour que les vidéos longues reçoivent BEAUCOUP plus de motion design.
