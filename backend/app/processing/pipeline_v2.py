@@ -228,6 +228,21 @@ V2_MODE_PRESETS["collage_ugc_motion"] = {
 }
 
 
+# --- Moteur YouTube long (app/processing/longform) ---------------------------
+# Vidéos longues 16:9. Ces presets ne servent qu'à documenter les options: le
+# rendu est délégué à `run_longform` dès l'entrée de `run_pipeline_v2`.
+from app.processing.longform import LONGFORM_MODES  # noqa: E402
+
+for _lf_mode in LONGFORM_MODES:
+    V2_MODE_PRESETS[_lf_mode] = {
+        "remove_silence": True, "dynamic_captions": True, "ai_broll": False,
+        "motion_design": False, "music": True, "sfx": True,
+        "vertical_9_16": False, "final_cta": False, "visual_mode": "credit_saver",
+        "keyword_popups": True, "chapter_cards": True, "zoom_cuts": True,
+        "llm_titles": True,
+    }
+
+
 ProgressFn = Callable[[int, str], None]
 
 
@@ -533,6 +548,12 @@ def run_pipeline_v2(
         return _run_studio(video_path, output_dir, mode, options, params or {}, progress_callback)
     if mode == "shorts_facecam":
         return _run_shorts(video_path, output_dir, mode, options, params or {}, progress_callback)
+    # Vidéos longues YouTube: moteur dédié (16:9, coupe « dernière prise »,
+    # assemblage image/son exact, chapitres). Il a son propre contrat.
+    if mode in LONGFORM_MODES:
+        from app.processing.longform.pipeline import run_longform
+        return run_longform(video_path, output_dir, mode=mode, options=options,
+                            progress_callback=progress_callback)
 
     # Collage Premium: le moteur lit sa configuration dans os.environ (comme le
     # reste du moteur Auto Edit). On la dérive des réglages produit + options du

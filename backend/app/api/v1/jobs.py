@@ -243,6 +243,9 @@ async def create_job(
     pipeline_version = data.pipeline_version or settings.PIPELINE_VERSION
     if (data.mode or "") in ("studio_facecam", "shorts_facecam"):
         pipeline_version = "v2"  # moteurs Studio / Shorts = pipeline v2 uniquement
+    from app.processing.longform import LONGFORM_MODES
+    if (data.mode or "") in LONGFORM_MODES:
+        pipeline_version = "v2"  # moteur YouTube long = pipeline v2 uniquement
 
     # Même pour les clients API qui omettent `mode`, le moteur produit par
     # défaut doit être explicite et persistant dans le job.

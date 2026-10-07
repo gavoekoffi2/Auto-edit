@@ -64,6 +64,12 @@ export interface JobOptions {
   shorts_theme?: 'auto' | 'or_noir' | 'braise' | 'ocean' | 'menthe' | 'royal'
   /** Shorts face caméra: auto | cadre (fenêtre 4:5) | plein (9:16 plein écran). */
   shorts_layout?: 'auto' | 'cadre' | 'plein'
+  /** Moteur YouTube long : auto | studio_clean | energie_createur | documentaire | tech_minimal */
+  longform_style?: 'auto' | 'studio_clean' | 'energie_createur' | 'documentaire' | 'tech_minimal'
+  keyword_popups?: boolean
+  chapter_cards?: boolean
+  zoom_cuts?: boolean
+  llm_titles?: boolean
 }
 
 export interface JobCreateData {

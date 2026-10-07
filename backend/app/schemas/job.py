@@ -81,6 +81,23 @@ class JobOptions(BaseModel):
     # et cadrage (auto | cadre = fenêtre 4:5 | plein = 9:16 plein écran).
     shorts_theme: Optional[str] = Field(default=None, pattern=r"^(auto|or_noir|braise|ocean|menthe|royal)$")
     shorts_layout: Optional[str] = Field(default=None, pattern=r"^(auto|cadre|plein)$")
+    # --- Moteur YouTube long ------------------------------------------------
+    # Style visuel/sonore: auto | studio_clean | energie_createur |
+    # documentaire | tech_minimal (auto = change d'une vidéo à l'autre).
+    longform_style: Optional[str] = None
+    keyword_popups: Optional[bool] = None   # chiffres / mots forts animés
+    chapter_cards: Optional[bool] = None    # cartes chapitre plein écran
+    zoom_cuts: Optional[bool] = None        # zoom alterné qui masque les coupes
+    llm_titles: Optional[bool] = None       # titres de chapitres par l'IA
+
+    @field_validator("longform_style")
+    @classmethod
+    def validate_longform_style(cls, v: Optional[str]) -> Optional[str]:
+        from app.processing.longform.styles import STYLES
+        allowed = set(STYLES) | {"auto"}
+        if v is not None and v not in allowed:
+            raise ValueError(f"longform_style must be one of: {', '.join(sorted(allowed))}")
+        return v
 
     @field_validator("broll_demographic")
     @classmethod
