@@ -30,7 +30,7 @@ export default function ForgotPassword() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="mx-auto mb-4 w-fit"><Logo size={48} /></div>
-          <h1 className="text-2xl font-bold">Mot de passe oublié</h1>
+          <h1 className="text-title font-bold">Mot de passe oublié</h1>
           <p className="text-dark-400 mt-2">
             Entre ton email : nous t’envoyons un lien pour choisir un nouveau mot de passe
           </p>
@@ -56,7 +56,7 @@ export default function ForgotPassword() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="input-field"
+                className="field"
                 placeholder="toi@exemple.com"
                 required
                 autoComplete="email"

@@ -118,8 +118,17 @@ class CollagePromptBuilder:
             f"never overlapping more than a third of each other: {placement}.",
             f"Emotional direction: {concept.emotion.value} — {direction}.",
             f"Vertical {self.aspect_ratio} full-frame composition.",
-            STYLE_BANS,
         ]
+        # ANCRAGE LITTÉRAL. Le style pousse à l'abstraction: sans cette ligne,
+        # un modèle d'image illustre volontiers « la liberté » quand la personne
+        # parle de sa voiture. Ce qui est NOMMÉ doit être reconnaissable.
+        subject = _literal_subject(concept)
+        if subject:
+            parts.append(
+                f"The subject actually being talked about is: {subject}. "
+                f"It must be immediately recognisable as {subject}, "
+                "cut from paper — never replaced by an unrelated object.")
+        parts.append(STYLE_BANS)
         if quality_hints:
             parts.append("Corrections required on this retry: "
                          + "; ".join(quality_hints[:4]) + ".")
@@ -151,6 +160,20 @@ class CollagePromptBuilder:
             f"{concept.metaphor}.",
             STYLE_BANS,
         ]).strip()
+
+
+def _literal_subject(concept: CollageConcept) -> str:
+    """Les choses CONCRÈTES nommées dans l'extrait, telles quelles.
+
+    Se lit dans l'extrait source plutôt que dans les objets du concept: c'est
+    la parole qui fait foi. Renvoie une chaîne vide quand la phrase ne nomme
+    rien de matériel — dans ce cas la métaphore reste seule aux commandes, ce
+    qui est exactement le rôle du moteur éditorial.
+    """
+    from . import collage_lexicon
+
+    entities = collage_lexicon.ground(concept.excerpt, limit=2)
+    return " and ".join(entity.noun for entity in entities)
 
 
 _ENTRANCE_WORDS = {

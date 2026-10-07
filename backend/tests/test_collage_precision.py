@@ -115,7 +115,9 @@ def test_price_and_guarantee_are_shown_not_paraphrased():
         "Le prix est de 15 000 francs et la garantie te rembourse si tu n'es pas satisfait."
     ])[0]
     picto = {cs.resolve_pictogram(o.name) for o in concept.objects}
-    assert {"tag", "coins", "shield"} <= picto
+    assert {"tag", "shield"} <= picto
+    # « francs » : pièces (règles regex) ou billet (lexique d'ancrage, plus précis).
+    assert picto & {"coins", "banknote"}
 
 
 def test_generic_sentence_still_produces_a_readable_scene():

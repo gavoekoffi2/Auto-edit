@@ -122,11 +122,16 @@ LAYOUT_TEMPLATES: dict[int, list[list[tuple[str, float, float, float]]]] = {
             ("mid_left", 0.29, 0.62, 0.20),
             ("bottom_right", 0.72, 0.82, 0.19),
         ],
-        [   # grille 2x2 franche
-            ("top_left", 0.28, 0.28, 0.22),
-            ("top_right", 0.73, 0.28, 0.22),
-            ("bottom_left", 0.28, 0.72, 0.22),
-            ("bottom_right", 0.73, 0.72, 0.22),
+        [   # héros à gauche, trois satellites qui tournent autour
+            #
+            # C'était une grille 2×2 à cellules rigoureusement égales: quatre
+            # pièces de même taille dans les quatre coins, un trou au centre,
+            # et aucune dominante — la seule composition du jeu où l'œil ne
+            # savait pas où se poser.
+            ("center_left", 0.37, 0.42, 0.30),
+            ("top_right", 0.75, 0.21, 0.19),
+            ("mid_right", 0.74, 0.58, 0.18),
+            ("bottom_center", 0.46, 0.79, 0.21),
         ],
     ],
     5: [
@@ -190,13 +195,34 @@ def layout_for(count: int, seed: object = None) -> list[tuple[str, float, float,
     deux scènes voisines n'ont plus la même composition, tout en restant
     parfaitement reproductibles. Sans graine, on renvoie le gabarit historique
     — les appelants existants et les rendus déjà produits sont préservés.
+
+    **Le premier objet reçoit toujours la plus grande cellule.** L'objet n°1
+    est le SUJET (celui que la phrase nomme, cf. l'ancrage lexical): le laisser
+    tomber sur une cellule d'appui donnait des scènes où la voiture dont on
+    parle était deux fois plus petite que la coche décorative à côté. On ne
+    réécrit pas la composition pour autant — les cellules gardent leurs places,
+    seul l'ORDRE d'attribution change, si bien que chaque gabarit conserve son
+    équilibre.
     """
     count = max(ccfg.MIN_OBJECTS, min(ccfg.MAX_OBJECTS, int(count or 0)))
     variants = LAYOUT_TEMPLATES[count]
     if seed is None:
-        return variants[0]
-    digest = hashlib.sha1(str(seed).encode("utf-8")).digest()[0]
-    return variants[digest % len(variants)]
+        cells = variants[0]
+    else:
+        digest = hashlib.sha1(str(seed).encode("utf-8")).digest()[0]
+        cells = variants[digest % len(variants)]
+    return _hero_first(cells)
+
+
+def _hero_first(cells: list[tuple[str, float, float, float]]
+                ) -> list[tuple[str, float, float, float]]:
+    """Remonte la cellule au plus grand rayon en tête, l'ordre du reste intact."""
+    if len(cells) < 2:
+        return list(cells)
+    hero = max(range(len(cells)), key=lambda i: cells[i][3])
+    if hero == 0:
+        return list(cells)
+    return [cells[hero]] + [c for i, c in enumerate(cells) if i != hero]
 
 
 # --------------------------------------------------------------------------- #

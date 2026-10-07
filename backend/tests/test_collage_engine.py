@@ -541,19 +541,32 @@ def test_clip_starts_empty_and_ends_assembled():
 
 
 def test_elements_appear_in_the_planned_order():
+    """Juste après la 1re pose, SEULE la zone de la 1re pièce a changé.
+
+    Le test lit la zone attendue dans le gabarit du concept plutôt que de
+    supposer « le héros est en haut »: la cellule héros dépend du gabarit tiré
+    pour la scène, et c'est l'ORDRE qu'on vérifie ici, pas la composition.
+    """
     renderer = LocalAssembleRenderer(width=180, height=320, fps=12)
     concept = _concept(n_objects=3)
     background = renderer._background_plate(concept)
     pieces = renderer._pictogram_pieces(concept)
 
-    # Zone de la 1re pièce vs zone de la dernière, juste après la 1re pose.
     frame = np.asarray(renderer._compose(background, pieces, 0.9, 4.0), dtype=np.int16)
     plate = np.asarray(background, dtype=np.int16)
     changed = np.abs(frame - plate).sum(axis=2) > 8
-    top_half = changed[: changed.shape[0] // 2].mean()
-    bottom_half = changed[changed.shape[0] // 2:].mean()
-    # Le layout à 3 objets pose le héros en haut en premier.
-    assert top_half > bottom_half
+
+    cells = concept.layout()
+    first_row = int(cells[0][2] * changed.shape[0])
+    last_row = int(cells[-1][2] * changed.shape[0])
+    band = max(12, changed.shape[0] // 8)
+
+    def density(row: int) -> float:
+        lo = max(0, row - band)
+        hi = min(changed.shape[0], row + band)
+        return changed[lo:hi].mean()
+
+    assert density(first_row) > density(last_row)
 
 
 def test_renderer_never_blocks_on_a_missing_image():
